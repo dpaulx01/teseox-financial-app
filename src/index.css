@@ -1,0 +1,476 @@
+/* Dashboard styles */
+@import './styles/dashboard.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Variables CSS para temas dinámicos */
+:root {
+  /* Tema Claro (por defecto) */
+  --color-bg: #F8FAFC;
+  --color-surface: #F1F5F9;
+  --color-card: #FFFFFF;
+  --color-glass: rgba(255, 255, 255, 0.8);
+  --color-glass-border: rgba(26, 54, 93, 0.1);
+  
+  --color-primary: #1a365d;
+  --color-secondary: #2c5282;
+  --color-accent: #3182ce;
+  --color-warning: #D97706;
+  --color-danger: #DC2626;
+  --color-purple: #6B46C1;
+  
+  --color-primary-glow: rgba(26, 54, 93, 0.1);
+  --color-accent-glow: rgba(49, 130, 206, 0.1);
+  --color-danger-glow: rgba(220, 38, 38, 0.1);
+  
+  --color-text-primary: #1a202c;
+  --color-text-secondary: #2d3748;
+  --color-text-light: #4a5568;
+  --color-text-muted: #718096;
+  --color-text-dim: #a0aec0;
+  
+  --color-border: rgba(26, 54, 93, 0.2);
+  --color-border-muted: rgba(160, 174, 192, 0.3);
+  --color-divider: rgba(226, 232, 240, 1);
+  
+  --font-display: 'Inter';
+  --font-mono: 'SF Mono', 'Consolas';
+  
+  --grid-size: 40px;
+  --shadow-soft: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --shadow-medium: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Tema Oscuro (JARVIS Cyberpunk) */
+.dark {
+  --color-bg: #0A0A0F;
+  --color-surface: #111118;
+  --color-card: #1A1A25;
+  --color-glass: rgba(26, 26, 37, 0.6);
+  --color-glass-border: rgba(0, 240, 255, 0.2);
+  
+  --color-primary: #00F0FF;
+  --color-secondary: #0080FF;
+  --color-accent: #00FF99;
+  --color-warning: #FFB800;
+  --color-danger: #FF0080;
+  --color-purple: #8000FF;
+  
+  --color-primary-glow: rgba(0, 240, 255, 0.5);
+  --color-accent-glow: rgba(0, 255, 153, 0.5);
+  --color-danger-glow: rgba(255, 0, 128, 0.5);
+  
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #E0E7FF;
+  --color-text-light: #F8FAFC;
+  --color-text-muted: #8B9DC3;
+  --color-text-dim: #5A6B8C;
+  
+  --color-border: rgba(0, 240, 255, 0.3);
+  --color-border-muted: rgba(139, 157, 195, 0.2);
+  --color-divider: rgba(0, 240, 255, 0.1);
+  
+  --font-display: 'Orbitron';
+  --font-mono: 'Roboto Mono';
+}
+
+/* Reset y estilos base */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+  /* Fondo dinámico según tema */
+  background: var(--color-bg);
+  min-height: 100vh;
+  color: var(--color-text-primary);
+  overflow-x: hidden;
+  line-height: 1.6;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+#root {
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Efectos de scroll personalizados */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-primary);
+  border-radius: 4px;
+  opacity: 0.7;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  opacity: 0.9;
+}
+
+/* Scrollbar para tema oscuro con efecto glow */
+.dark ::-webkit-scrollbar-thumb {
+  background: linear-gradient(45deg, var(--color-primary), var(--color-accent));
+  box-shadow: 0 0 10px var(--color-primary-glow);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  box-shadow: 0 0 15px var(--color-primary-glow);
+}
+
+/* Scrollbar para Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-primary) var(--color-surface);
+}
+
+/* Efectos de selección de texto */
+::selection {
+  background: var(--color-primary-glow);
+  color: var(--color-text-primary);
+}
+
+::-moz-selection {
+  background: var(--color-primary-glow);
+  color: var(--color-text-primary);
+}
+
+/* Selección para tema oscuro con efecto neón */
+.dark ::selection {
+  background: var(--color-primary);
+  color: var(--color-bg);
+  text-shadow: 0 0 10px var(--color-primary-glow);
+}
+
+.dark ::-moz-selection {
+  background: var(--color-primary);
+  color: var(--color-bg);
+  text-shadow: 0 0 10px var(--color-primary-glow);
+}
+
+/* Fondo dinámico según tema */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -1;
+  transition: all 0.3s ease;
+}
+
+/* Fondo para tema claro */
+body:not(.dark)::before {
+  background: linear-gradient(135deg, rgba(248, 250, 252, 0.9) 0%, rgba(241, 245, 249, 0.9) 100%);
+}
+
+/* Fondo para tema oscuro con efectos JARVIS */
+.dark body::before {
+  background-image: 
+    radial-gradient(circle at 25% 25%, rgba(0, 240, 255, 0.1) 0%, transparent 25%),
+    radial-gradient(circle at 75% 75%, rgba(0, 255, 153, 0.08) 0%, transparent 25%),
+    radial-gradient(circle at 50% 100%, rgba(255, 0, 128, 0.05) 0%, transparent 50%),
+    linear-gradient(rgba(0, 240, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.02) 1px, transparent 1px);
+  background-size: 
+    100% 100%,
+    100% 100%, 
+    100% 100%,
+    var(--grid-size) var(--grid-size),
+    var(--grid-size) var(--grid-size);
+  background-attachment: fixed;
+  animation: float 20s linear infinite;
+}
+
+/* Componentes base que se adaptan al tema */
+@layer components {
+  .glass-card {
+    @apply bg-dark-card border border-glass-border rounded-lg shadow-glass;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  
+  .glass-panel {
+    @apply bg-glass backdrop-blur-xl border border-border rounded-2xl shadow-glass-lg;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  
+  /* Efecto hologram solo en tema oscuro */
+  .dark .hologram-card {
+    @apply glass-card shadow-hologram;
+    background: linear-gradient(135deg, rgba(26, 26, 37, 0.8) 0%, rgba(26, 26, 37, 0.4) 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .dark .hologram-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.1), transparent);
+    animation: scanLine 3s infinite;
+    pointer-events: none;
+  }
+  
+  .cyber-button {
+    @apply relative px-6 py-3 font-semibold text-white bg-primary border border-primary rounded-lg;
+    @apply transition-all duration-200 hover:bg-secondary hover:border-secondary hover:shadow-lg;
+    @apply active:scale-95;
+  }
+  
+  .cyber-button-sm {
+    @apply relative px-4 py-2 font-medium text-white bg-primary border border-primary rounded-md text-sm;
+    @apply transition-all duration-200 hover:bg-secondary hover:border-secondary hover:shadow-md;
+    @apply active:scale-95;
+  }
+  
+  .cyber-button-sm:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+  
+  .cyber-button-sm:disabled:hover {
+    @apply bg-primary border-primary;
+    transform: none;
+    box-shadow: none;
+  }
+  
+  /* Efectos de texto que cambian según el tema */
+  .neon-text {
+    @apply text-primary font-semibold;
+  }
+  
+  .dark .neon-text {
+    text-shadow: 
+      0 0 5px currentColor,
+      0 0 10px currentColor,
+      0 0 15px currentColor;
+  }
+  
+  .data-display {
+    @apply font-mono text-lg font-semibold text-primary;
+  }
+  
+  .dark .data-display {
+    background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 10px var(--color-primary-glow));
+  }
+  
+  .slider-thumb {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary;
+  }
+  
+  .slider-thumb::-webkit-slider-thumb {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #1a365d;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+  }
+  
+  .slider-thumb::-webkit-slider-thumb:hover {
+    background: #2c5282;
+    transform: scale(1.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+  
+  .slider-thumb::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #1a365d;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+  }
+  
+  .slider-thumb::-moz-range-thumb:hover {
+    background: #2c5282;
+    transform: scale(1.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Utilidades adicionales */
+@layer utilities {
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+  
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+  
+  .backface-hidden {
+    backface-visibility: hidden;
+  }
+  
+  .text-shadow-soft {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+  
+  .text-shadow-medium {
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  }
+  
+  .border-professional {
+    border: 1px solid rgba(26, 54, 93, 0.2);
+  }
+  
+  /* Fix para botones que no responden debido a efectos holográficos */
+  .button-fix {
+    position: relative !important;
+    z-index: 100 !important;
+    pointer-events: auto !important;
+  }
+  
+  .button-fix::before {
+    pointer-events: none !important;
+  }
+  
+  /* Asegurar que los cyber-buttons funcionen correctamente */
+  .cyber-button {
+    position: relative;
+    z-index: 50;
+    pointer-events: auto;
+  }
+  
+  .cyber-button::before {
+    pointer-events: none !important;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  :root {
+    --grid-size: 20px;
+  }
+  
+  body {
+    background-size: 
+      100% 100%,
+      100% 100%, 
+      100% 100%,
+      20px 20px,
+      20px 20px;
+  }
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  body::before {
+    animation: none;
+  }
+}
+
+/* Estilos profesionales para los sliders */
+.slider-primary::-webkit-slider-thumb {
+  appearance: none;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #1a365d;
+  cursor: pointer;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.slider-accent::-webkit-slider-thumb {
+  appearance: none;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #3182ce;
+  cursor: pointer;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.slider-warning::-webkit-slider-thumb {
+  appearance: none;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #D97706;
+  cursor: pointer;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.slider-success::-webkit-slider-thumb {
+  appearance: none;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #059669;
+  cursor: pointer;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Track profesional de los sliders */
+.slider-primary::-webkit-slider-track {
+  height: 8px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  border: 1px solid #cbd5e0;
+}
+
+.slider-accent::-webkit-slider-track {
+  height: 8px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  border: 1px solid #cbd5e0;
+}
+
+.slider-warning::-webkit-slider-track {
+  height: 8px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  border: 1px solid #cbd5e0;
+}
+
+.slider-success::-webkit-slider-track {
+  height: 8px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  border: 1px solid #cbd5e0;
+}
