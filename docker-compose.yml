@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # MySQL Database for RBAC version
+  mysql-rbac:
+    image: mysql:8.0
+    container_name: artyco-mysql-rbac
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword123
+      MYSQL_DATABASE: artyco_financial_rbac
+      MYSQL_USER: artyco_user
+      MYSQL_PASSWORD: artyco_password123
+    ports:
+      - "3307:3306"  # Puerto diferente para no conflicto
+    volumes:
+      - mysql-rbac-data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - ./docker/mysql/rbac_schema.sql:/docker-entrypoint-initdb.d/02_rbac.sql
+    networks:
+      - artyco-rbac-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Python API Server with RBAC
+  api-rbac:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: artyco-api-rbac
+    environment:
+      - DATABASE_URL=mysql+pymysql://artyco_user:artyco_password123@mysql-rbac:3306/artyco_financial_rbac
+      - JWT_SECRET_KEY=your-super-secret-jwt-key-change-this-in-production
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRATION_HOURS=24
+      - CORS_ORIGINS=http://localhost:3001
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8001:8000"  # Puerto diferente
+    volumes:
+      - ./:/app
+    depends_on:
+      mysql-rbac:
+        condition: service_healthy
+    networks:
+      - artyco-rbac-network
+    command: python api_server.py
+
+  # React Frontend with RBAC UI
+  frontend-rbac:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: artyco-frontend-rbac
+    environment:
+      - REACT_APP_API_URL=http://localhost:8001
+      - PORT=3001
+    ports:
+      - "3001:3001"  # Puerto diferente
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./package.json:/app/package.json
+    depends_on:
+      - api-rbac
+    networks:
+      - artyco-rbac-network
+    command: npm start
+
+  # phpMyAdmin para gestión de BD (opcional)
+  phpmyadmin-rbac:
+    image: phpmyadmin/phpmyadmin
+    container_name: artyco-phpmyadmin-rbac
+    environment:
+      PMA_HOST: mysql-rbac
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: rootpassword123
+    ports:
+      - "8081:80"  # Puerto diferente
+    depends_on:
+      - mysql-rbac
+    networks:
+      - artyco-rbac-network
+
+volumes:
+  mysql-rbac-data:
+
+networks:
+  artyco-rbac-network:
+    driver: bridge

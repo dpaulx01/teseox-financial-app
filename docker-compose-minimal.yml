@@ -1,0 +1,41 @@
+services:
+  mysql-rbac:
+    image: mysql:8.0
+    container_name: artyco-mysql-rbac
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword123
+      MYSQL_DATABASE: artyco_financial_rbac
+      MYSQL_USER: artyco_user
+      MYSQL_PASSWORD: artyco_password123
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-rbac-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  api-rbac:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: artyco-api-rbac
+    environment:
+      - DATABASE_URL=mysql+pymysql://artyco_user:artyco_password123@mysql-rbac:3306/artyco_financial_rbac
+      - JWT_SECRET_KEY=your-super-secret-jwt-key-change-this-in-production
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRATION_HOURS=24
+      - CORS_ORIGINS=http://localhost:3001,http://localhost:8001
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8001:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      mysql-rbac:
+        condition: service_healthy
+    command: python api_server.py
+
+volumes:
+  mysql-rbac-data:

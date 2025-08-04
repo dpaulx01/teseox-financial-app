@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Artyco Financial - Sistema RBAC</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #fff;
+            min-height: 100vh;
+        }
+        
+        .login-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .login-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo h1 {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #ccc;
+            font-weight: 500;
+        }
+        
+        input {
+            width: 100%;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .alert-error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fecaca;
+        }
+        
+        .alert-success {
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: #bbf7d0;
+        }
+        
+        .dashboard {
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logout-btn {
+            padding: 10px 20px;
+            background: rgba(239, 68, 68, 0.2);
+            color: #fecaca;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(239, 68, 68, 0.3);
+        }
+        
+        .modules-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .module-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .module-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            border-color: #667eea;
+        }
+        
+        .module-card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+        
+        .module-card p {
+            color: #ccc;
+            line-height: 1.6;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #4ade80;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-left: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        function App() {
+            const [isAuthenticated, setIsAuthenticated] = useState(false);
+            const [user, setUser] = useState(null);
+            const [loading, setLoading] = useState(true);
+            
+            useEffect(() => {
+                const token = localStorage.getItem('access_token');
+                if (token) {
+                    verifyToken(token);
+                } else {
+                    setLoading(false);
+                }
+            }, []);
+            
+            const verifyToken = async (token) => {
+                try {
+                    const response = await fetch('http://localhost:8001/api/auth/me', {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const userData = await response.json();
+                        setUser(userData);
+                        setIsAuthenticated(true);
+                    } else {
+                        localStorage.removeItem('access_token');
+                    }
+                } catch (error) {
+                    console.error('Error verifying token:', error);
+                    localStorage.removeItem('access_token');
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            if (loading) {
+                return (
+                    <div className="loading">
+                        <div className="spinner"></div>
+                        <p>Verificando autenticación...</p>
+                    </div>
+                );
+            }
+            
+            return isAuthenticated ? (
+                <Dashboard user={user} setIsAuthenticated={setIsAuthenticated} />
+            ) : (
+                <Login setIsAuthenticated={setIsAuthenticated} setUser={setUser} />
+            );
+        }
+        
+        function Login({ setIsAuthenticated, setUser }) {
+            const [username, setUsername] = useState('admin');
+            const [password, setPassword] = useState('admin123');
+            const [error, setError] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+            
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setIsLoading(true);
+                setError('');
+                
+                try {
+                    const response = await fetch('http://localhost:8001/api/auth/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ username, password }),
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        localStorage.setItem('access_token', data.access_token);
+                        
+                        // Get user info
+                        const userResponse = await fetch('http://localhost:8001/api/auth/me', {
+                            headers: {
+                                'Authorization': `Bearer ${data.access_token}`
+                            }
+                        });
+                        
+                        if (userResponse.ok) {
+                            const userData = await userResponse.json();
+                            setUser(userData);
+                            setIsAuthenticated(true);
+                        }
+                    } else {
+                        setError(data.detail || 'Error al iniciar sesión');
+                    }
+                } catch (err) {
+                    setError('Error de conexión. Verifica que la API esté funcionando en puerto 8001.');
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+            
+            return (
+                <div className="login-container">
+                    <div className="login-card">
+                        <div className="logo">
+                            <h1>🏦 Artyco</h1>
+                            <p style={{color: '#ccc'}}>Sistema Financiero con RBAC</p>
+                        </div>
+                        
+                        {error && (
+                            <div className="alert alert-error">
+                                {error}
+                            </div>
+                        )}
+                        
+                        <form onSubmit={handleSubmit}>
+                            <div className="form-group">
+                                <label>Usuario</label>
+                                <input
+                                    type="text"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    placeholder="Ingresa tu usuario"
+                                    required
+                                />
+                            </div>
+                            
+                            <div className="form-group">
+                                <label>Contraseña</label>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="Ingresa tu contraseña"
+                                    required
+                                />
+                            </div>
+                            
+                            <button
+                                type="submit"
+                                className="btn"
+                                disabled={isLoading}
+                            >
+                                {isLoading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+        
+        function Dashboard({ user, setIsAuthenticated }) {
+            const handleLogout = () => {
+                localStorage.removeItem('access_token');
+                setIsAuthenticated(false);
+            };
+            
+            const modules = [
+                {
+                    title: '📊 Dashboard KPIs',
+                    description: 'Indicadores clave de rendimiento y métricas financieras principales',
+                    action: () => alert('Módulo disponible en la aplicación completa React')
+                },
+                {
+                    title: '💰 Análisis PyG',
+                    description: 'Análisis de pérdidas y ganancias con comparativas históricas',
+                    action: () => alert('Módulo disponible en la aplicación completa React')
+                },
+                {
+                    title: '⚖️ Punto de Equilibrio',
+                    description: 'Cálculo del breakeven point y análisis de sensibilidad',
+                    action: () => alert('Módulo disponible en la aplicación completa React')
+                },
+                {
+                    title: '🏭 Análisis Operacional',
+                    description: 'Métricas de producción y eficiencia operativa',
+                    action: () => alert('Módulo disponible en la aplicación completa React')
+                },
+                {
+                    title: '⚙️ Configuración',
+                    description: 'Configuración de datos y parámetros del sistema',
+                    action: () => alert('Módulo disponible en la aplicación completa React')
+                },
+                {
+                    title: '🧠 Brain System',
+                    description: 'Sistema de inteligencia artificial para análisis avanzados',
+                    action: () => testBrainSystem()
+                }
+            ];
+            
+            const testBrainSystem = async () => {
+                try {
+                    const token = localStorage.getItem('access_token');
+                    const response = await fetch('http://localhost:8001/api/financial/brain/query', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ query: 'Analiza las tendencias financieras' })
+                    });
+                    
+                    const data = await response.json();
+                    if (response.ok) {
+                        alert(`Brain System responde: ${data.response}`);
+                    } else {
+                        alert(`Error: ${data.detail}`);
+                    }
+                } catch (error) {
+                    alert('Error conectando con Brain System');
+                }
+            };
+            
+            return (
+                <div className="dashboard">
+                    <div className="header">
+                        <div>
+                            <h1>🏦 Artyco Financial</h1>
+                            <p style={{color: '#ccc', marginTop: '5px'}}>
+                                <span className="status-indicator"></span>
+                                Sistema RBAC Activo
+                            </p>
+                        </div>
+                        
+                        <div className="user-info">
+                            <div>
+                                <p><strong>{user.first_name} {user.last_name}</strong></p>
+                                <p style={{color: '#ccc', fontSize: '14px'}}>
+                                    {user.is_superuser ? '👑 Administrador' : '👤 Usuario'}
+                                </p>
+                            </div>
+                            <button className="logout-btn" onClick={handleLogout}>
+                                Cerrar Sesión
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div className="alert alert-success">
+                        ✅ <strong>¡Éxito!</strong> Has iniciado sesión en tu sistema financiero con RBAC activado.
+                    </div>
+                    
+                    <h2 style={{marginBottom: '20px', color: '#667eea'}}>Módulos Disponibles</h2>
+                    
+                    <div className="modules-grid">
+                        {modules.map((module, index) => (
+                            <div key={index} className="module-card" onClick={module.action}>
+                                <h3>{module.title}</h3>
+                                <p>{module.description}</p>
+                            </div>
+                        ))}
+                    </div>
+                    
+                    <div style={{
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        padding: '20px',
+                        borderRadius: '15px',
+                        border: '1px solid rgba(255, 255, 255, 0.1)'
+                    }}>
+                        <h3 style={{color: '#667eea', marginBottom: '15px'}}>🚀 Para acceder a la aplicación completa:</h3>
+                        <p style={{color: '#ccc', lineHeight: '1.6'}}>
+                            1. Ejecuta <code style={{background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px'}}>npm install --legacy-peer-deps</code><br/>
+                            2. Luego <code style={{background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px'}}>npm run dev</code><br/>
+                            3. O simplemente ejecuta <code style={{background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px'}}>start-dev.bat</code>
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+        
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

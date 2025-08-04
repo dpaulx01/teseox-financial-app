@@ -1,0 +1,46 @@
+# SiteGround .htaccess configuration for Python FastAPI app
+
+# Prevent directory browsing
+Options -Indexes
+
+# Deny access to sensitive files
+<FilesMatch "\.(env|py|pyc|log|sql|db|sqlite)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Deny access to specific directories
+<DirectoryMatch "^(brain|models|auth|routes|database|docker|__pycache__)">
+    Order allow,deny
+    Deny from all
+</DirectoryMatch>
+
+# Redirect all requests to the FastAPI app (if using CGI/FastCGI)
+# This assumes you're using a Python CGI handler
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+    
+    # Don't redirect static files
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    
+    # Redirect to Python app handler
+    RewriteRule ^api/(.*)$ /cgi-bin/api_handler.py/$1 [L]
+</IfModule>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "DENY"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Enable compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE text/html
+</IfModule>

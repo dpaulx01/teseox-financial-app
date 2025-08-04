@@ -1,0 +1,158 @@
+/* Dashboard Grid Layout Styles */
+.layout {
+  position: relative;
+}
+
+.widget-container {
+  background: transparent;
+}
+
+/* React Grid Layout overrides for dark theme */
+.react-grid-item {
+  transition: all 200ms ease;
+  transition-property: left, top;
+  border-radius: 8px;
+}
+
+.react-grid-item.cssTransforms {
+  transition-property: transform;
+}
+
+.react-grid-item > .react-resizable-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  bottom: 0;
+  right: 0;
+  background: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNiIgaGVpZ2h0PSI2IiB2aWV3Qm94PSIwIDAgNiA2IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8ZG90cyBmaWxsPSIjOGI1Y2Y2IiBvcGFjaXR5PSIwLjUiLz4KPC9zdmc+');
+  background-repeat: no-repeat;
+  background-position: bottom right;
+  padding: 0 3px 3px 0;
+  cursor: nw-resize;
+  opacity: 0.3;
+  transition: opacity 0.2s;
+}
+
+.react-grid-item:hover > .react-resizable-handle {
+  opacity: 1;
+}
+
+.react-grid-item.react-grid-placeholder {
+  background: rgba(139, 92, 246, 0.2) !important;
+  border: 2px dashed rgba(139, 92, 246, 0.5) !important;
+  border-radius: 8px;
+  opacity: 0.8;
+  transition-duration: 100ms;
+  z-index: 2;
+  user-select: none;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 5px;
+  height: 5px;
+  border-right: 2px solid rgba(139, 92, 246, 0.6);
+  border-bottom: 2px solid rgba(139, 92, 246, 0.6);
+}
+
+.react-grid-item.react-draggable-dragging {
+  transition: none;
+  z-index: 3;
+  opacity: 0.8;
+  transform: rotate(5deg);
+}
+
+.react-grid-item.react-resizable-resizing {
+  opacity: 0.6;
+  z-index: 3;
+}
+
+/* Custom scrollbars for widgets */
+.widget-container ::-webkit-scrollbar {
+  width: 4px;
+}
+
+.widget-container ::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.3);
+  border-radius: 2px;
+}
+
+.widget-container ::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.5);
+  border-radius: 2px;
+}
+
+.widget-container ::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.7);
+}
+
+/* Widget hover effects */
+.widget-container:hover {
+  transform: translateY(-2px);
+}
+
+/* Grid lines for edit mode */
+.react-grid-layout.edit-mode::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(90deg, rgba(139, 92, 246, 0.1) 1px, transparent 1px),
+    linear-gradient(rgba(139, 92, 246, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Widget animations */
+@keyframes widget-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.widget-container {
+  animation: widget-appear 0.3s ease-out;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .react-grid-item {
+    margin-bottom: 10px;
+  }
+  
+  .react-grid-item > .react-resizable-handle {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+/* Loading state for widgets */
+.widget-loading {
+  background: linear-gradient(90deg, 
+    rgba(139, 92, 246, 0.1) 25%, 
+    rgba(139, 92, 246, 0.2) 50%, 
+    rgba(139, 92, 246, 0.1) 75%);
+  background-size: 200% 100%;
+  animation: loading-shimmer 1.5s infinite;
+}
+
+@keyframes loading-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

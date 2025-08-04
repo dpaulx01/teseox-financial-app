@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Artyco Financial - Sistema RBAC</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #0a0a0a;
+            color: #fff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 30px;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        .status-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .status-card h3 {
+            margin-top: 0;
+            color: #667eea;
+        }
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #4ade80;
+        }
+        .status-indicator.offline {
+            background: #ef4444;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            margin: 5px;
+            transition: transform 0.2s;
+        }
+        .button:hover {
+            transform: translateY(-2px);
+        }
+        .instructions {
+            background: rgba(255,255,255,0.05);
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .code {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            overflow-x: auto;
+        }
+        .warning {
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏦 Artyco Financial - Sistema RBAC</h1>
+        
+        <div class="status-grid">
+            <div class="status-card">
+                <h3>🔐 Backend RBAC</h3>
+                <div class="status">
+                    <div class="status-indicator" id="api-status"></div>
+                    <span>API en puerto 8001</span>
+                </div>
+                <div class="status">
+                    <div class="status-indicator" id="db-status"></div>
+                    <span>MySQL en puerto 3307</span>
+                </div>
+                <div class="status">
+                    <div class="status-indicator" id="phpmyadmin-status"></div>
+                    <span>phpMyAdmin en puerto 8082</span>
+                </div>
+            </div>
+            
+            <div class="status-card">
+                <h3>🎨 Frontend</h3>
+                <div class="status">
+                    <div class="status-indicator offline"></div>
+                    <span>Aplicación Web (No iniciada)</span>
+                </div>
+                <p style="color: #999; font-size: 14px;">
+                    El frontend requiere instalación de dependencias
+                </p>
+            </div>
+            
+            <div class="status-card">
+                <h3>👤 Credenciales</h3>
+                <p><strong>Usuario:</strong> admin</p>
+                <p><strong>Contraseña:</strong> admin123</p>
+            </div>
+        </div>
+
+        <h2>🚀 Accesos Rápidos</h2>
+        <div>
+            <a href="http://localhost:8001/docs" class="button" target="_blank">📚 API Documentation</a>
+            <a href="http://localhost:8082" class="button" target="_blank">🗄️ phpMyAdmin</a>
+            <a href="http://localhost:8001/api/health" class="button" target="_blank">🔍 API Health Check</a>
+        </div>
+
+        <div class="warning">
+            <h3>⚠️ Frontend No Disponible Automáticamente</h3>
+            <p>La aplicación financiera completa requiere instalación manual debido al tamaño de las dependencias.</p>
+        </div>
+
+        <h2>📋 Instrucciones para Iniciar el Frontend</h2>
+        
+        <div class="instructions">
+            <h3>Opción 1: Desde Windows (Recomendado)</h3>
+            <div class="code">
+1. Abre el Explorador de Windows<br>
+2. Navega a: C:\Users\dpaul\OneDrive\Escritorio\artyco-financial-app-rbac<br>
+3. Haz doble clic en: <strong>start-dev.bat</strong><br>
+4. Espera a que se instalen las dependencias (primera vez toma varios minutos)<br>
+5. La aplicación se abrirá automáticamente en http://localhost:5173
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>Opción 2: Desde Terminal</h3>
+            <div class="code">
+cd /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac<br>
+npm install --legacy-peer-deps<br>
+npm run dev
+            </div>
+        </div>
+
+        <h2>✅ Lo que ya tienes funcionando:</h2>
+        <ul>
+            <li><strong>Sistema de Autenticación:</strong> Login con JWT tokens</li>
+            <li><strong>Control de Acceso:</strong> 4 roles con permisos específicos</li>
+            <li><strong>Base de Datos:</strong> Todas las tablas financieras + RBAC</li>
+            <li><strong>API Protegida:</strong> Todos los endpoints requieren autenticación</li>
+            <li><strong>Tu Aplicación Completa:</strong> Todo el código está listo, solo falta ejecutarlo</li>
+        </ul>
+
+        <h2>🎯 ¿Para qué sirve todo esto?</h2>
+        <div class="instructions">
+            <p><strong>1. Seguridad Empresarial:</strong> Solo usuarios autorizados pueden acceder a los datos financieros</p>
+            <p><strong>2. Multi-Usuario:</strong> Puedes crear usuarios con diferentes niveles de acceso</p>
+            <p><strong>3. Auditoría:</strong> Todo queda registrado - quién, qué y cuándo</p>
+            <p><strong>4. Escalabilidad:</strong> Listo para crecer con tu empresa</p>
+            <p><strong>5. Profesional:</strong> Sistema similar a los que usan grandes empresas</p>
+        </div>
+    </div>
+
+    <script>
+        // Check API status
+        async function checkStatus() {
+            try {
+                const response = await fetch('http://localhost:8001/api/health');
+                if (response.ok) {
+                    document.getElementById('api-status').style.background = '#4ade80';
+                    document.getElementById('db-status').style.background = '#4ade80';
+                }
+            } catch (error) {
+                document.getElementById('api-status').style.background = '#ef4444';
+            }
+
+            // Check phpMyAdmin
+            try {
+                const response = await fetch('http://localhost:8082', { mode: 'no-cors' });
+                document.getElementById('phpmyadmin-status').style.background = '#4ade80';
+            } catch (error) {
+                document.getElementById('phpmyadmin-status').style.background = '#ef4444';
+            }
+        }
+
+        checkStatus();
+        setInterval(checkStatus, 5000);
+    </script>
+</body>
+</html>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, User, AlertCircle, Zap, Shield, Activity } from 'lucide-react';
 import AnimatedBackground from '../components/ui/AnimatedBackground';
 import ThemeToggle from '../components/ui/ThemeToggle';
+import SimpleThemeToggle from '../components/ui/SimpleThemeToggle';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -56,6 +57,9 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-dark-bg relative overflow-hidden transition-colors duration-300">
       <AnimatedBackground />
+      
+      {/* Debug Theme Toggle */}
+      <SimpleThemeToggle />
       
       {/* Theme Toggle */}
       <div className="absolute top-4 right-4 z-50">

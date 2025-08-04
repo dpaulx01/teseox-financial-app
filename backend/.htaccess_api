@@ -1,0 +1,24 @@
+# .htaccess para el directorio /api/
+# Subir como /public_html/kpi/api/.htaccess
+
+# Deshabilitar cualquier rewrite del directorio padre
+RewriteEngine Off
+
+# Headers CORS
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type, Authorization"
+</IfModule>
+
+# PHP Settings
+<IfModule mod_php.c>
+    php_value display_errors On
+    php_value error_reporting E_ALL
+</IfModule>
+
+# Permitir ejecución de PHP
+AddHandler application/x-httpd-php .php
+
+# No aplicar reglas del directorio padre
+RewriteOptions InheritBefore Off

@@ -1,0 +1,32 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    default-libmysqlclient-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install only essential RBAC dependencies
+RUN pip install --no-cache-dir \
+    fastapi==0.116.1 \
+    uvicorn==0.35.0 \
+    sqlalchemy==2.0.23 \
+    pymysql==1.1.0 \
+    cryptography==41.0.7 \
+    PyJWT==2.8.0 \
+    passlib[bcrypt]==1.7.4 \
+    python-multipart==0.0.6 \
+    pydantic[email]==2.5.0 \
+    email-validator==2.1.0
+
+# Copy minimal API
+COPY api_rbac_minimal.py .
+
+# Expose port
+EXPOSE 8000
+
+# Run the application
+CMD ["python", "api_rbac_minimal.py"]

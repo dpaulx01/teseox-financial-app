@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Artyco Financial - RBAC System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 400px;
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .logo h1 {
+            color: #333;
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .logo p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 0.75rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .alert {
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+        
+        .alert-error {
+            background: #fee;
+            color: #c33;
+            border: 1px solid #fcc;
+        }
+        
+        .alert-success {
+            background: #efe;
+            color: #3c3;
+            border: 1px solid #cfc;
+        }
+        
+        .dashboard {
+            display: none;
+        }
+        
+        .dashboard h2 {
+            color: #333;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        
+        .user-info {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+        
+        .user-info h3 {
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        
+        .user-info p {
+            margin: 0.25rem 0;
+            color: #666;
+        }
+        
+        .actions {
+            display: grid;
+            gap: 1rem;
+        }
+        
+        .action-btn {
+            padding: 0.75rem;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .action-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        .logout-btn {
+            background: #dc3545;
+            border-color: #dc3545;
+            color: white;
+            margin-top: 1rem;
+        }
+        
+        .logout-btn:hover {
+            background: #c82333;
+        }
+        
+        .response-box {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            font-family: monospace;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Login Form -->
+        <div id="loginForm">
+            <div class="logo">
+                <h1>🏦 Artyco Financial</h1>
+                <p>Sistema RBAC - Control de Acceso</p>
+            </div>
+            
+            <div id="alertBox" class="alert"></div>
+            
+            <form id="loginFormElement">
+                <div class="form-group">
+                    <label for="username">Usuario:</label>
+                    <input type="text" id="username" name="username" value="admin" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Contraseña:</label>
+                    <input type="password" id="password" name="password" value="admin123" required>
+                </div>
+                
+                <button type="submit" class="btn" id="loginBtn">
+                    Iniciar Sesión
+                </button>
+            </form>
+        </div>
+        
+        <!-- Dashboard -->
+        <div id="dashboard" class="dashboard">
+            <h2>🎛️ Panel de Control RBAC</h2>
+            
+            <div id="userInfo" class="user-info">
+                <h3>Información del Usuario</h3>
+                <p><strong>ID:</strong> <span id="userId">-</span></p>
+                <p><strong>Usuario:</strong> <span id="userUsername">-</span></p>
+                <p><strong>Email:</strong> <span id="userEmail">-</span></p>
+                <p><strong>Nombre:</strong> <span id="userName">-</span></p>
+                <p><strong>Admin:</strong> <span id="userAdmin">-</span></p>
+                <p><strong>Activo:</strong> <span id="userActive">-</span></p>
+            </div>
+            
+            <div class="actions">
+                <button class="action-btn" onclick="testHealthCheck()">
+                    🔍 Verificar Estado de la API
+                </button>
+                
+                <button class="action-btn" onclick="testDatabaseConnection()">
+                    🗄️ Probar Conexión a Base de Datos
+                </button>
+                
+                <button class="action-btn" onclick="listAllUsers()">
+                    👥 Listar Todos los Usuarios (Solo Admin)
+                </button>
+                
+                <button class="action-btn" onclick="getCurrentUser()">
+                    👤 Obtener Mi Información
+                </button>
+            </div>
+            
+            <div id="responseBox" class="response-box"></div>
+            
+            <button class="btn logout-btn" onclick="logout()">
+                🚪 Cerrar Sesión
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8001';
+        let authToken = null;
+
+        // Login functionality
+        document.getElementById('loginFormElement').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const loginBtn = document.getElementById('loginBtn');
+            
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Iniciando sesión...';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    authToken = data.access_token;
+                    showAlert('¡Inicio de sesión exitoso!', 'success');
+                    
+                    // Load user info and show dashboard
+                    await loadUserInfo();
+                    showDashboard();
+                } else {
+                    showAlert(data.detail || 'Error al iniciar sesión', 'error');
+                }
+            } catch (error) {
+                showAlert('Error de conexión: ' + error.message, 'error');
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Iniciar Sesión';
+            }
+        });
+
+        function showAlert(message, type) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.className = `alert alert-${type}`;
+            alertBox.textContent = message;
+            alertBox.style.display = 'block';
+            
+            setTimeout(() => {
+                alertBox.style.display = 'none';
+            }, 5000);
+        }
+
+        async function loadUserInfo() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const user = await response.json();
+                    
+                    document.getElementById('userId').textContent = user.id;
+                    document.getElementById('userUsername').textContent = user.username;
+                    document.getElementById('userEmail').textContent = user.email;
+                    document.getElementById('userName').textContent = `${user.first_name || ''} ${user.last_name || ''}`.trim() || '-';
+                    document.getElementById('userAdmin').textContent = user.is_superuser ? '✅ Sí' : '❌ No';
+                    document.getElementById('userActive').textContent = user.is_active ? '✅ Sí' : '❌ No';
+                }
+            } catch (error) {
+                console.error('Error loading user info:', error);
+            }
+        }
+
+        function showDashboard() {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+        }
+
+        function logout() {
+            authToken = null;
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('dashboard').style.display = 'none';
+            document.getElementById('responseBox').style.display = 'none';
+            
+            // Reset form
+            document.getElementById('username').value = 'admin';
+            document.getElementById('password').value = 'admin123';
+        }
+
+        function showResponse(data) {
+            const responseBox = document.getElementById('responseBox');
+            responseBox.textContent = JSON.stringify(data, null, 2);
+            responseBox.style.display = 'block';
+        }
+
+        // API Test Functions
+        async function testHealthCheck() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/health`);
+                const data = await response.json();
+                showResponse(data);
+            } catch (error) {
+                showResponse({ error: error.message });
+            }
+        }
+
+        async function testDatabaseConnection() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/db-test`);
+                const data = await response.json();
+                showResponse(data);
+            } catch (error) {
+                showResponse({ error: error.message });
+            }
+        }
+
+        async function listAllUsers() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/users`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResponse(data);
+                } else {
+                    showResponse({ error: data.detail || 'Error al obtener usuarios' });
+                }
+            } catch (error) {
+                showResponse({ error: error.message });
+            }
+        }
+
+        async function getCurrentUser() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResponse(data);
+                } else {
+                    showResponse({ error: data.detail || 'Error al obtener información del usuario' });
+                }
+            } catch (error) {
+                showResponse({ error: error.message });
+            }
+        }
+    </script>
+</body>
+</html>

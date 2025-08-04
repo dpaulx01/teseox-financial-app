@@ -1,0 +1,10 @@
+# .htaccess limpio para /api/
+# Subir como /public_html/kpi/api/.htaccess
+
+# Headers CORS simples
+Header set Access-Control-Allow-Origin "*"
+Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+Header set Access-Control-Allow-Headers "Content-Type"
+
+# NO rewrite rules
+# NO otras configuraciones complejas

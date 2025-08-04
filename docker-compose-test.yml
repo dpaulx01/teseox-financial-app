@@ -1,0 +1,41 @@
+services:
+  api-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: artyco-api-test
+    environment:
+      - DATABASE_URL=mysql+pymysql://artyco_user:artyco_password123@mysql-rbac:3306/artyco_financial_rbac
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8001:8000"
+    depends_on:
+      - mysql-rbac
+    networks:
+      - artyco-network
+
+  mysql-rbac:
+    image: mysql:8.0
+    container_name: artyco-mysql-rbac
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword123
+      MYSQL_DATABASE: artyco_financial_rbac
+      MYSQL_USER: artyco_user
+      MYSQL_PASSWORD: artyco_password123
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-rbac-data:/var/lib/mysql
+    networks:
+      - artyco-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+networks:
+  artyco-network:
+    driver: bridge
+
+volumes:
+  mysql-rbac-data:
