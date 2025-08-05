@@ -5,6 +5,7 @@ import { DataProvider } from './contexts/DataContext';
 import { MixedCostProvider } from './contexts/MixedCostContext';
 import { DashboardProvider } from './contexts/DashboardContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ScenarioProvider, useScenario } from './contexts/ScenarioContext';
 import { useErrorHandler } from './hooks/useErrorHandler';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { processFinancialData } from './utils/financialDataProcessor';
@@ -22,16 +23,22 @@ import OperationalAnalysis from './pages/OperationalAnalysis';
 import PygContainer from './components/pyg/PygContainer';
 import Login from './pages/Login';
 import UserManagement from './pages/UserManagement';
+import ScenarioManagement from './pages/ScenarioManagement';  
+import SimulationBanner from './components/scenario/SimulationBanner';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 // Importar script de migración para que esté disponible globalmente
 import './utils/migrateToMySQL';
 
-const MainApp: React.FC = () => {
+// Componente interno que usa ScenarioContext
+const MainAppContent: React.FC = () => {
   const [financialData, setFinancialData] = useState<FinancialData | null>(null);
   const [activeTab, setActiveTab] = useLocalStorage<string>('artyco-active-tab', 'kpi');
   const [savedData, setSavedData] = useLocalStorage<FinancialData | null>('artyco-financial-data', null);
   const { errors, addError, removeError } = useErrorHandler();
+  
+  // Usar contexto de escenarios
+  const { scenarioData, isSimulationMode } = useScenario();
 
   // Cargar datos persistentes al iniciar
   useEffect(() => {
@@ -112,6 +119,8 @@ const MainApp: React.FC = () => {
         return <OperationalAnalysis onNavigateToConfig={() => setActiveTab('config')} />;
       case 'config':
         return <DataConfiguration />;
+      case 'scenarios':
+        return <ScenarioManagement />;
       case 'rbac':
         return <UserManagement />;
       default:
@@ -122,15 +131,19 @@ const MainApp: React.FC = () => {
   // Add user info display
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
+  // Usar datos híbridos: escenario si está en simulación, sino datos reales
+  const activeData = isSimulationMode ? scenarioData : financialData;
+
   return (
     <ErrorBoundary>
-      <DataProvider data={financialData}>
+      <DataProvider data={activeData}>
         <MixedCostProvider>
           <DashboardProvider>
               <div className="flex h-screen bg-dark-bg font-sans text-text-primary relative overflow-hidden transition-colors duration-300">
               <AnimatedBackground />
+              {isSimulationMode && <SimulationBanner />}
               <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
-              <main className="flex-1 p-4 lg:p-8 overflow-y-auto lg:ml-16 relative z-10 transition-all duration-500">
+              <main className={`flex-1 p-4 lg:p-8 overflow-y-auto lg:ml-16 relative z-10 transition-all duration-500 ${isSimulationMode ? 'pt-20' : ''}`}>
                 {/* User info and logout button */}
                 <div className="absolute top-4 right-4 z-50 flex items-center gap-4">
                   <div className="bg-gray-800/80 backdrop-blur-lg px-4 py-2 rounded-lg border border-gray-700/50">
@@ -157,6 +170,15 @@ const MainApp: React.FC = () => {
           </MixedCostProvider>
         </DataProvider>
     </ErrorBoundary>
+  );
+};
+
+// Componente principal que envuelve con ScenarioProvider  
+const MainApp: React.FC = () => {
+  return (
+    <ScenarioProvider>
+      <MainAppContent />
+    </ScenarioProvider>
   );
 };
 

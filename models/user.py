@@ -41,6 +41,7 @@ class User(Base):
     )
     sessions = relationship('UserSession', back_populates='user', cascade='all, delete-orphan', lazy='dynamic')
     audit_logs = relationship('AuditLog', back_populates='user', lazy='dynamic')
+    financial_scenarios = relationship('FinancialScenario', back_populates='owner', cascade='all, delete-orphan', lazy='dynamic')
     
     def has_permission(self, resource: str, action: str) -> bool:
         """Check if user has specific permission"""

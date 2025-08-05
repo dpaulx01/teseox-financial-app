@@ -18,6 +18,7 @@ from database.connection import init_db
 from routes.auth import router as auth_router
 from routes.users import router as users_router
 from routes.admin import router as admin_router
+from routes.financial_scenarios import router as scenarios_router
 
 # Crear la aplicación FastAPI
 app = FastAPI(
@@ -61,6 +62,7 @@ async def startup_event():
 app.include_router(auth_router, prefix="/api", tags=["Authentication"])
 app.include_router(users_router, prefix="/api", tags=["Users"])
 app.include_router(admin_router, prefix="/api", tags=["Admin"])
+app.include_router(scenarios_router, tags=["Financial Scenarios"])
 
 @app.get("/")
 async def root():
@@ -69,12 +71,13 @@ async def root():
         "message": "Artyco Financial API - RBAC System",
         "status": "operational",
         "version": "2.0.0",
-        "features": ["RBAC", "Authentication", "User Management", "Admin Panel"],
+        "features": ["RBAC", "Authentication", "User Management", "Admin Panel", "Financial Scenarios"],
         "endpoints": {
             "login": "/api/auth/login",
             "register": "/api/auth/register", 
             "users": "/api/users/",
-            "admin": "/api/admin/"
+            "admin": "/api/admin/",
+            "scenarios": "/api/scenarios/"
         }
     }
 

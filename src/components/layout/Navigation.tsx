@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart2, FileText, Target, Menu, X, Settings, Factory, ChevronRight, ChevronLeft, TrendingUp, Shield } from 'lucide-react';
+import { BarChart2, FileText, Target, Menu, X, Settings, Factory, ChevronRight, ChevronLeft, TrendingUp, Shield, Calculator } from 'lucide-react';
 import { NavigationProps } from '../../types';
 import ThemeToggle from '../ui/ThemeToggle';
 
@@ -11,6 +11,7 @@ const iconMap = {
   Factory,
   TrendingUp,
   Shield,
+  Calculator,
 };
 
 const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
@@ -26,6 +27,7 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
     { id: 'kpi', label: 'Dashboard KPIs', icon: 'BarChart2' },
     { id: 'pnl', label: 'Análisis PyG', icon: 'FileText' },
     { id: 'pyg', label: 'PyG Comparativo', icon: 'TrendingUp' },
+    { id: 'scenarios', label: 'Balance Interno', icon: 'Calculator' },
     { id: 'breakeven', label: 'Punto de Equilibrio', icon: 'Target' },
     { id: 'operational', label: 'Análisis Operativo', icon: 'Factory' },
     { id: 'config', label: 'Configuración', icon: 'Settings' },
