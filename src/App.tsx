@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
 import { FinancialData } from './types';
 import { DataProvider } from './contexts/DataContext';
 import { MixedCostProvider } from './contexts/MixedCostContext';
@@ -8,7 +7,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { useErrorHandler } from './hooks/useErrorHandler';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { processFinancialData } from './utils/financialDataProcessor';
-import { loadFinancialData, saveFinancialData } from './utils/financialStorageNew';
+import { loadFinancialData, saveFinancialData } from './utils/financialStorage';
 import Navigation from './components/layout/Navigation';
 import DataUploader from './components/upload/DataUploader';
 import ErrorBoundary from './components/ui/ErrorBoundary';
@@ -20,14 +19,11 @@ import BreakEvenAnalysis from './pages/BreakEvenAnalysis';
 import DataConfiguration from './pages/DataConfiguration';
 import OperationalAnalysis from './pages/OperationalAnalysis';
 import PygContainer from './components/pyg/PygContainer';
-import Login from './pages/Login';
-import UserManagement from './pages/UserManagement';
-import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 // Importar script de migración para que esté disponible globalmente
 import './utils/migrateToMySQL';
 
-const MainApp: React.FC = () => {
+const App: React.FC = () => {
   const [financialData, setFinancialData] = useState<FinancialData | null>(null);
   const [activeTab, setActiveTab] = useLocalStorage<string>('artyco-active-tab', 'kpi');
   const [savedData, setSavedData] = useLocalStorage<FinancialData | null>('artyco-financial-data', null);
@@ -74,12 +70,6 @@ const MainApp: React.FC = () => {
     }
   }, [addError, setSavedData]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    window.location.href = '/login';
-  };
-
   const renderContent = () => {
     // La configuración no requiere datos financieros
     if (activeTab === 'config') {
@@ -112,70 +102,30 @@ const MainApp: React.FC = () => {
         return <OperationalAnalysis onNavigateToConfig={() => setActiveTab('config')} />;
       case 'config':
         return <DataConfiguration />;
-      case 'rbac':
-        return <UserManagement />;
       default:
         return <DashboardKPIs />;
     }
   };
 
-  // Add user info display
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-
   return (
     <ErrorBoundary>
-      <DataProvider data={financialData}>
-        <MixedCostProvider>
-          <DashboardProvider>
-            <div className="flex h-screen bg-dark-bg font-sans text-text-primary relative overflow-hidden transition-colors duration-300">
-              <AnimatedBackground />
-              <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
-              <main className="flex-1 p-4 lg:p-8 overflow-y-auto lg:ml-16 relative z-10 transition-all duration-500">
-                {/* User info and logout button */}
-                <div className="absolute top-4 right-4 z-50 flex items-center gap-4">
-                  <div className="bg-gray-800/80 backdrop-blur-lg px-4 py-2 rounded-lg border border-gray-700/50">
-                    <span className="text-sm text-gray-400">Usuario: </span>
-                    <span className="text-sm font-medium text-white">{user.username || 'Unknown'}</span>
-                    {user.is_superuser && (
-                      <span className="ml-2 px-2 py-1 text-xs bg-purple-500/20 text-purple-400 rounded-full">
-                        Admin
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    onClick={handleLogout}
-                    className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors"
-                  >
-                    Cerrar Sesión
-                  </button>
-                </div>
-                {renderContent()}
-              </main>
-              <ToastContainer errors={errors} onClose={removeError} />
-            </div>
-          </DashboardProvider>
-        </MixedCostProvider>
-      </DataProvider>
+      <ThemeProvider>
+        <DataProvider data={financialData}>
+          <MixedCostProvider>
+            <DashboardProvider>
+              <div className="flex h-screen bg-dark-bg font-sans text-text-primary relative overflow-hidden transition-colors duration-300">
+                <AnimatedBackground />
+                <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
+                <main className="flex-1 p-4 lg:p-8 overflow-y-auto lg:ml-16 relative z-10 transition-all duration-500">
+                  {renderContent()}
+                </main>
+                <ToastContainer errors={errors} onClose={removeError} />
+              </div>
+            </DashboardProvider>
+          </MixedCostProvider>
+        </DataProvider>
+      </ThemeProvider>
     </ErrorBoundary>
-  );
-};
-
-const App: React.FC = () => {
-  return (
-    <ThemeProvider>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route 
-          path="/dashboard/*" 
-          element={
-            <ProtectedRoute>
-              <MainApp />
-            </ProtectedRoute>
-          } 
-        />
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </ThemeProvider>
   );
 };
 

@@ -28,7 +28,16 @@ const SimpleThemeToggle: React.FC = () => {
   
   // Auto-test when theme changes
   useEffect(() => {
-    setTimeout(testCSSVariables, 100);
+    const timer = setTimeout(() => {
+      testCSSVariables();
+      // Verificar si el CSS está cargando correctamente
+      const styles = getComputedStyle(document.documentElement);
+      console.log('🎨 CSS Check:');
+      console.log('  HTML classes:', document.documentElement.className);
+      console.log('  Body classes:', document.body.className);
+      console.log('  CSS loaded?:', styles.getPropertyValue('--color-bg') !== '');
+    }, 200);
+    return () => clearTimeout(timer);
   }, [theme]);
   
   return (

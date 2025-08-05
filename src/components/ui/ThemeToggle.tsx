@@ -9,31 +9,18 @@ interface ThemeToggleProps {
 
 const ThemeToggle: React.FC<ThemeToggleProps> = ({ className = '' }) => {
   const { theme, toggleTheme } = useTheme();
-  
-  console.log('🎨 ThemeToggle render - Current theme:', theme);
-  
-  const handleToggle = () => {
-    console.log('🔄 Theme toggle clicked. Current theme:', theme);
-    toggleTheme();
-  };
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      {/* Debug info */}
-      <div className="text-xs text-text-muted">
-        {theme === 'light' ? '☀️ Light' : '🌙 Dark'}
-      </div>
-      
-      <motion.button
-        onClick={handleToggle}
-        className={`relative w-14 h-8 rounded-full p-1 transition-colors duration-300 ${
-          theme === 'dark' 
-            ? 'bg-primary/20 border border-primary shadow-glow-sm' 
-            : 'bg-gray-200 border border-gray-300'
-        } ${className}`}
-        whileTap={{ scale: 0.95 }}
-        aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-      >
+    <motion.button
+      onClick={toggleTheme}
+      className={`relative w-14 h-8 rounded-full p-1 transition-colors duration-300 ${
+        theme === 'dark' 
+          ? 'bg-primary/20 border border-primary shadow-glow-sm' 
+          : 'bg-gray-200 border border-gray-300'
+      } ${className}`}
+      whileTap={{ scale: 0.95 }}
+      aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+    >
       {/* Track del switch */}
       <div className="absolute inset-0 rounded-full overflow-hidden">
         <div className={`absolute inset-0 transition-opacity duration-300 ${
@@ -98,7 +85,6 @@ const ThemeToggle: React.FC<ThemeToggleProps> = ({ className = '' }) => {
         />
       )}
     </motion.button>
-    </div>
   );
 };
 
