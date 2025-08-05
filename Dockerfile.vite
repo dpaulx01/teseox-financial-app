@@ -1,18 +1,19 @@
-FROM node:20-alpine
+# Dockerfile para desarrollo con Vite
+FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files
+# Copiar package files
 COPY package*.json ./
 
-# Install dependencies with legacy peer deps
-RUN npm install --legacy-peer-deps
+# Instalar dependencias
+RUN npm install
 
-# Copy project files
+# Copiar código fuente
 COPY . .
 
-# Expose Vite's default port
-EXPOSE 5173
+# Exponer puerto de desarrollo
+EXPOSE 3001
 
-# Run Vite in development mode
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+# Comando para desarrollo con hot reload
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3001"]

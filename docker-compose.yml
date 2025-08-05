@@ -51,7 +51,7 @@ services:
   frontend-rbac:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
+      dockerfile: Dockerfile.vite
     container_name: artyco-frontend-rbac
     environment:
       - REACT_APP_API_URL=http://localhost:8001
@@ -62,11 +62,14 @@ services:
       - ./src:/app/src
       - ./public:/app/public
       - ./package.json:/app/package.json
+      - ./index.html:/app/index.html
+      - ./tailwind.config.js:/app/tailwind.config.js
+      - ./postcss.config.js:/app/postcss.config.js
+      - ./vite.config.js:/app/vite.config.js
     depends_on:
       - api-rbac
     networks:
       - artyco-rbac-network
-    command: npm start
 
   # phpMyAdmin para gestión de BD (opcional)
   phpmyadmin-rbac:

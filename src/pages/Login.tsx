@@ -4,9 +4,11 @@ import { Eye, EyeOff, Lock, User, AlertCircle, Zap, Shield, Activity } from 'luc
 import AnimatedBackground from '../components/ui/AnimatedBackground';
 import ThemeToggle from '../components/ui/ThemeToggle';
 import SimpleThemeToggle from '../components/ui/SimpleThemeToggle';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { theme } = useTheme();
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('admin123');
   const [showPassword, setShowPassword] = useState(false);
@@ -55,7 +57,11 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden transition-colors duration-300 bg-dark-bg text-text-primary">
+    <div className={`min-h-screen flex items-center justify-center relative overflow-hidden transition-colors duration-300 ${
+      theme === 'dark' 
+        ? 'bg-dark-bg text-white' 
+        : 'bg-gray-50 text-gray-900'
+    }`}>
       <AnimatedBackground />
       
       {/* Debug Theme Toggle */}
@@ -66,35 +72,46 @@ export default function Login() {
         <ThemeToggle />
       </div>
       
-      {/* Animated grid pattern - solo en tema oscuro */}
-      <div className="absolute inset-0 opacity-10 dark:block hidden">
-        <div className="absolute inset-0 bg-cyber-grid bg-grid" />
-      </div>
-
-      {/* Floating elements - solo en tema oscuro */}
-      <div className="absolute top-20 left-20 w-32 h-32 bg-primary/20 rounded-full blur-3xl animate-pulse dark:block hidden" />
-      <div className="absolute bottom-20 right-20 w-40 h-40 bg-secondary/20 rounded-full blur-3xl animate-pulse dark:block hidden" />
-      
       <div className="relative z-10 w-full max-w-md px-6">
-        <div className="bg-dark-card backdrop-blur-xl rounded-3xl shadow-2xl border border-border p-8 transform transition-all hover:scale-105 duration-300">
+        <div className={`backdrop-blur-xl rounded-3xl shadow-2xl p-8 transform transition-all hover:scale-105 duration-300 ${
+          theme === 'dark'
+            ? 'bg-gray-900/90 border border-cyan-500/30 shadow-cyan-500/20'
+            : 'bg-white border border-gray-200 shadow-gray-200/50'
+        }`}>
           {/* Logo and Title */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-primary to-secondary rounded-3xl mb-4 relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-3xl animate-pulse opacity-50 dark:block hidden" />
-              <span className="text-3xl font-display font-bold text-white relative z-10">AF</span>
+            <div className={`inline-flex items-center justify-center w-20 h-20 rounded-3xl mb-4 relative ${
+              theme === 'dark'
+                ? 'bg-gradient-to-br from-cyan-500 to-blue-500'
+                : 'bg-gradient-to-br from-blue-600 to-indigo-600'
+            }`}>
+              {theme === 'dark' && (
+                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-3xl animate-pulse opacity-50" />
+              )}
+              <span className="text-3xl font-bold text-white relative z-10">AF</span>
             </div>
-            <h1 className="text-4xl font-display font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent mb-2">
+            <h1 className={`text-4xl font-bold mb-2 ${
+              theme === 'dark'
+                ? 'bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent'
+                : 'text-gray-800'
+            }`}>
               ARTYCO FINANCIAL
             </h1>
-            <p className="text-text-secondary font-mono text-sm">
+            <p className={`font-mono text-sm ${
+              theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+            }`}>
               SISTEMA DE INTELIGENCIA FINANCIERA
             </p>
             <div className="flex items-center justify-center gap-4 mt-4">
-              <div className="flex items-center gap-2 text-accent text-xs">
+              <div className={`flex items-center gap-2 text-xs ${
+                theme === 'dark' ? 'text-green-400' : 'text-green-600'
+              }`}>
                 <Activity className="w-3 h-3" />
                 <span className="font-mono">SISTEMA ACTIVO</span>
               </div>
-              <div className="flex items-center gap-2 text-primary text-xs">
+              <div className={`flex items-center gap-2 text-xs ${
+                theme === 'dark' ? 'text-cyan-400' : 'text-blue-600'
+              }`}>
                 <Shield className="w-3 h-3" />
                 <span className="font-mono">RBAC HABILITADO</span>
               </div>
