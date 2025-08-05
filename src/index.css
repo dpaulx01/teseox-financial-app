@@ -1,9 +1,9 @@
-/* Dashboard styles */
-@import './styles/dashboard.css';
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Dashboard styles - imported after Tailwind for proper priority */
+@import './styles/dashboard.css';
 
 /* Variables CSS para temas dinámicos */
 :root {
@@ -94,12 +94,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
   
   /* Fondo dinámico según tema */
-  background: var(--color-bg);
+  background-color: var(--color-bg);
   min-height: 100vh;
   color: var(--color-text-primary);
   overflow-x: hidden;
   line-height: 1.6;
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Theme switching rules */
+html.dark body {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
 }
 
 #root {

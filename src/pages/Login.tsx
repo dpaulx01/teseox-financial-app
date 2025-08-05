@@ -55,7 +55,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-dark-bg relative overflow-hidden transition-colors duration-300">
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden transition-colors duration-300 bg-dark-bg text-text-primary">
       <AnimatedBackground />
       
       {/* Debug Theme Toggle */}
@@ -66,41 +66,35 @@ export default function Login() {
         <ThemeToggle />
       </div>
       
-      {/* Animated grid pattern */}
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `
-            linear-gradient(rgba(102, 126, 234, 0.1) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(102, 126, 234, 0.1) 1px, transparent 1px)
-          `,
-          backgroundSize: '50px 50px'
-        }} />
+      {/* Animated grid pattern - solo en tema oscuro */}
+      <div className="absolute inset-0 opacity-10 dark:block hidden">
+        <div className="absolute inset-0 bg-cyber-grid bg-grid" />
       </div>
 
-      {/* Floating elements */}
-      <div className="absolute top-20 left-20 w-32 h-32 bg-accent-primary/20 rounded-full blur-3xl animate-pulse" />
-      <div className="absolute bottom-20 right-20 w-40 h-40 bg-accent-secondary/20 rounded-full blur-3xl animate-pulse" />
+      {/* Floating elements - solo en tema oscuro */}
+      <div className="absolute top-20 left-20 w-32 h-32 bg-primary/20 rounded-full blur-3xl animate-pulse dark:block hidden" />
+      <div className="absolute bottom-20 right-20 w-40 h-40 bg-secondary/20 rounded-full blur-3xl animate-pulse dark:block hidden" />
       
       <div className="relative z-10 w-full max-w-md px-6">
-        <div className="bg-glass backdrop-blur-xl rounded-3xl shadow-2xl border border-border-secondary p-8 transform transition-all hover:scale-105 duration-300">
+        <div className="bg-dark-card backdrop-blur-xl rounded-3xl shadow-2xl border border-border p-8 transform transition-all hover:scale-105 duration-300">
           {/* Logo and Title */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-primary rounded-3xl mb-4 relative">
-              <div className="absolute inset-0 bg-gradient-primary rounded-3xl animate-pulse opacity-50" />
-              <span className="text-3xl font-orbitron font-bold text-white relative z-10">AF</span>
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-primary to-secondary rounded-3xl mb-4 relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary to-secondary rounded-3xl animate-pulse opacity-50 dark:block hidden" />
+              <span className="text-3xl font-display font-bold text-white relative z-10">AF</span>
             </div>
-            <h1 className="text-4xl font-orbitron font-bold bg-gradient-primary bg-clip-text text-transparent mb-2">
+            <h1 className="text-4xl font-display font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent mb-2">
               ARTYCO FINANCIAL
             </h1>
             <p className="text-text-secondary font-mono text-sm">
               SISTEMA DE INTELIGENCIA FINANCIERA
             </p>
             <div className="flex items-center justify-center gap-4 mt-4">
-              <div className="flex items-center gap-2 text-success text-xs">
+              <div className="flex items-center gap-2 text-accent text-xs">
                 <Activity className="w-3 h-3" />
                 <span className="font-mono">SISTEMA ACTIVO</span>
               </div>
-              <div className="flex items-center gap-2 text-accent-primary text-xs">
+              <div className="flex items-center gap-2 text-primary text-xs">
                 <Shield className="w-3 h-3" />
                 <span className="font-mono">RBAC HABILITADO</span>
               </div>
@@ -130,7 +124,7 @@ export default function Login() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-3 bg-white/5 border border-border-secondary rounded-xl text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary focus:border-transparent transition-all font-mono hover:bg-white/10"
+                  className="block w-full pl-10 pr-3 py-3 bg-dark-surface border border-border rounded-xl text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all font-mono hover:bg-dark-card"
                   placeholder="USUARIO"
                   required
                 />
@@ -151,7 +145,7 @@ export default function Login() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-10 py-3 bg-white/5 border border-border-secondary rounded-xl text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary focus:border-transparent transition-all font-mono hover:bg-white/10"
+                  className="block w-full pl-10 pr-10 py-3 bg-dark-surface border border-border rounded-xl text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all font-mono hover:bg-dark-card"
                   placeholder="CONTRASEÑA"
                   required
                 />
@@ -173,9 +167,9 @@ export default function Login() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-4 px-4 bg-gradient-primary text-white font-orbitron font-semibold rounded-xl shadow-lg hover:shadow-accent-primary/50 focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2 focus:ring-offset-dark-bg transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 duration-200 relative overflow-hidden group"
+              className="w-full py-4 px-4 bg-gradient-to-r from-primary to-secondary text-white font-display font-semibold rounded-xl shadow-lg hover:shadow-primary/50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-dark-bg transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 duration-200 relative overflow-hidden group"
             >
-              <div className="absolute inset-0 bg-gradient-secondary opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute inset-0 bg-gradient-to-r from-secondary to-accent opacity-0 group-hover:opacity-100 transition-opacity" />
               {isLoading ? (
                 <span className="flex items-center justify-center relative z-10">
                   <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
