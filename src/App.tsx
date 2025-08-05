@@ -124,10 +124,9 @@ const MainApp: React.FC = () => {
 
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <DataProvider data={financialData}>
-          <MixedCostProvider>
-            <DashboardProvider>
+      <DataProvider data={financialData}>
+        <MixedCostProvider>
+          <DashboardProvider>
               <div className="flex h-screen bg-dark-bg font-sans text-text-primary relative overflow-hidden transition-colors duration-300">
               <AnimatedBackground />
               <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -157,25 +156,26 @@ const MainApp: React.FC = () => {
             </DashboardProvider>
           </MixedCostProvider>
         </DataProvider>
-      </ThemeProvider>
     </ErrorBoundary>
   );
 };
 
 const App: React.FC = () => {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route 
-        path="/dashboard/*" 
-        element={
-          <ProtectedRoute>
-            <MainApp />
-          </ProtectedRoute>
-        } 
-      />
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+    <ThemeProvider>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route 
+          path="/dashboard/*" 
+          element={
+            <ProtectedRoute>
+              <MainApp />
+            </ProtectedRoute>
+          } 
+        />
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </ThemeProvider>
   );
 };
 
