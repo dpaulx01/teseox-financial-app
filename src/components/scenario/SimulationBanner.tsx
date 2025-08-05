@@ -109,7 +109,7 @@ const SimulationBanner: React.FC = () => {
         <div className="absolute top-1 right-1/4 w-1 h-1 bg-cyan-400/20 rounded-full animate-float animation-delay-2000"></div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .animation-delay-200 {
           animation-delay: 0.2s;
         }
