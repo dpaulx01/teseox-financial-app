@@ -81,7 +81,7 @@ services:
       PMA_USER: root
       PMA_PASSWORD: rootpassword123
     ports:
-      - "8081:80"  # Puerto diferente
+      - "8082:80"  # Puerto diferente para RBAC
     depends_on:
       - mysql-rbac
     networks:
