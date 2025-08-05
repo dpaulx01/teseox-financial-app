@@ -45,7 +45,7 @@ services:
         condition: service_healthy
     networks:
       - artyco-rbac-network
-    command: python api_server.py
+    command: python api_server_rbac.py
 
   # React Frontend with RBAC UI
   frontend-rbac:

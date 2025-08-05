@@ -5,6 +5,7 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime, Table, Foreig
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database.connection import Base
+from .user import user_roles
 
 # Association table for many-to-many relationship between roles and permissions
 role_permissions = Table(
@@ -27,7 +28,13 @@ class Role(Base):
     updated_at = Column(DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
     
     # Relationships
-    users = relationship('User', secondary='user_roles', back_populates='roles')
+    users = relationship(
+        'User', 
+        secondary=user_roles, 
+        back_populates='roles',
+        primaryjoin='Role.id == user_roles.c.role_id',
+        secondaryjoin='User.id == user_roles.c.user_id'
+    )
     permissions = relationship('Permission', secondary=role_permissions, back_populates='roles')
     
     def has_permission(self, resource: str, action: str) -> bool:

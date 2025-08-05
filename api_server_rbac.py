@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""
+FastAPI Server para RBAC - VERSIÓN FUNCIONAL
+Solo autenticación, usuarios y funcionalidades básicas
+"""
+
+import os
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer
+import uvicorn
+
+# Configuración
+from config import Config
+from database.connection import init_db
+
+# Routes RBAC
+from routes.auth import router as auth_router
+from routes.users import router as users_router
+from routes.admin import router as admin_router
+
+# Crear la aplicación FastAPI
+app = FastAPI(
+    title="Artyco Financial API - RBAC",
+    description="API con sistema RBAC completo",
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=Config.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Security
+security = HTTPBearer()
+
+@app.on_event("startup")
+async def startup_event():
+    """Inicializar sistemas al arrancar la API"""
+    print("🚀 Starting Artyco Financial API Server with RBAC...")
+    print(f"🌍 Environment: {'Production' if Config.IS_PRODUCTION else 'Development'}")
+    
+    # Inicializar Database
+    print("🔧 Initializing database...")
+    try:
+        init_db()  # NOT async - remove await
+        print("✅ Database initialized successfully")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        raise
+    
+    print("✅ RBAC API Server ready!")
+
+# Incluir rutas RBAC
+app.include_router(auth_router, prefix="/api", tags=["Authentication"])
+app.include_router(users_router, prefix="/api", tags=["Users"])
+app.include_router(admin_router, prefix="/api", tags=["Admin"])
+
+@app.get("/")
+async def root():
+    """Endpoint raíz con información del sistema"""
+    return {
+        "message": "Artyco Financial API - RBAC System",
+        "status": "operational",
+        "version": "2.0.0",
+        "features": ["RBAC", "Authentication", "User Management", "Admin Panel"],
+        "endpoints": {
+            "login": "/api/auth/login",
+            "register": "/api/auth/register", 
+            "users": "/api/users/",
+            "admin": "/api/admin/"
+        }
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy", 
+        "message": "RBAC API is running",
+        "database": "connected"
+    }
+
+@app.get("/api/status")
+async def api_status():
+    """Estado detallado del API"""
+    return {
+        "api_version": "2.0.0",
+        "system": "RBAC Authentication",
+        "status": "operational",
+        "features": {
+            "authentication": True,
+            "user_management": True,
+            "role_based_access": True,
+            "admin_panel": True
+        }
+    }
+
+if __name__ == "__main__":
+    print("🚀 Starting Artyco Financial API Server - RBAC System...")
+    print(f"📡 CORS Origins: {Config.CORS_ORIGINS}")
+    print(f"🔐 JWT Secret configured: {'Yes' if Config.JWT_SECRET_KEY else 'No'}")
+    
+    uvicorn.run(
+        "api_server_rbac:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=False,
+        log_level="info"
+    )

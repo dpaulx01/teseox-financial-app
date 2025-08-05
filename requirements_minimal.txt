@@ -1,0 +1,34 @@
+# Artyco Financial App - RBAC MINIMAL Requirements
+# Solo lo esencial para autenticación y RBAC
+
+# ================================
+# API SERVER (FastAPI)
+# ================================
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# ================================
+# DATABASE & STORAGE
+# ================================
+sqlalchemy>=2.0.0  # Database ORM
+alembic>=1.12.0  # Database migrations
+pymysql>=1.1.0  # MySQL connector
+
+# ================================
+# RBAC & AUTHENTICATION
+# ================================
+PyJWT>=2.8.0  # JWT token handling
+passlib[bcrypt]>=1.7.4  # Password hashing
+
+# ================================
+# UTILITIES
+# ================================
+python-dotenv>=1.0.0  # Environment variable management
+python-multipart>=0.0.6  # File upload support
+
+# ================================
+# ASYNC SUPPORT
+# ================================
+aiohttp>=3.8.0
+httpx>=0.25.0  # Modern HTTP client

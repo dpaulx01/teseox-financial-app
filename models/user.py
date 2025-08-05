@@ -32,7 +32,13 @@ class User(Base):
     last_login = Column(DateTime, nullable=True)
     
     # Relationships
-    roles = relationship('Role', secondary=user_roles, back_populates='users')
+    roles = relationship(
+        'Role', 
+        secondary=user_roles, 
+        back_populates='users',
+        primaryjoin='User.id == user_roles.c.user_id',
+        secondaryjoin='Role.id == user_roles.c.role_id'
+    )
     sessions = relationship('UserSession', back_populates='user', cascade='all, delete-orphan', lazy='dynamic')
     audit_logs = relationship('AuditLog', back_populates='user', lazy='dynamic')
     
