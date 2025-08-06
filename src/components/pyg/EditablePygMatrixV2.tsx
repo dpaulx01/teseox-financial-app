@@ -86,7 +86,7 @@ const EditablePygMatrixV2: React.FC = () => {
     console.log('🔍 DEBUG: Using last available month directly:', lastAvailableMonth);
     setPeriodoActual(lastAvailableMonth);
     
-    log.debug('EditablePygMatrixV2', 'Set periods:', { actual });
+    log.debug('EditablePygMatrixV2', 'Set periods:', { actual: lastAvailableMonth });
   }, [workingData]);
 
   // SIMPLIFICADO: No convertir períodos, usar tal como están
