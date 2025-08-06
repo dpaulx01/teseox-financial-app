@@ -205,7 +205,8 @@ export const processFinancialData = (data: RawDataRow[]): FinancialData => {
       ? monthData.costosFijos / margenContribucionPorc 
       : 0;
 
-    processed.monthly[month] = monthData;
+    // Guardar siempre con mes en minúsculas para consistencia
+    processed.monthly[month.toLowerCase()] = monthData;
 
     // Acumular totales anuales
     processed.yearly.ingresos += monthData.ingresos;
@@ -230,7 +231,7 @@ export const processFinancialData = (data: RawDataRow[]): FinancialData => {
   let cumulativeCostosVariables = 0;
 
   months.forEach(month => {
-    const monthData = processed.monthly[month];
+    const monthData = processed.monthly[month.toLowerCase()];
     cumulativeIngresos += monthData.ingresos;
     cumulativeCostosFijos += monthData.costosFijos;
     cumulativeCostosVariables += monthData.costosVariables;
@@ -239,7 +240,7 @@ export const processFinancialData = (data: RawDataRow[]): FinancialData => {
       ? (cumulativeIngresos - cumulativeCostosVariables) / cumulativeIngresos 
       : 0;
     
-    monthData.puntoEquilibrioAcumulado = cumulativeMargenContribucionPorc > 0 
+    processed.monthly[month.toLowerCase()].puntoEquilibrioAcumulado = cumulativeMargenContribucionPorc > 0 
       ? cumulativeCostosFijos / cumulativeMargenContribucionPorc 
       : 0;
   });

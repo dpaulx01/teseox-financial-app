@@ -179,26 +179,33 @@ export const ScenarioProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   }, [refreshScenarios]);
 
-  const updateScenario = useCallback(async (id: number, data: Partial<FinancialData>) => {
+  const updateScenario = useCallback(async (id: number, data: Partial<FinancialData> | FinancialData) => {
     setError(null);
     
     try {
+      // Optimistic UI: actualizar inmediatamente el estado local
+      if (id === activeScenarioId) {
+        setScenarioData(data as FinancialData);
+      }
+
       await apiRequest(`/api/scenarios/${id}`, {
         method: 'PUT',
         body: JSON.stringify({ financial_data: data }),
       });
       
-      // Actualizar datos locales si es el escenario activo
-      if (id === activeScenarioId) {
-        setScenarioData(data as FinancialData);
+      // Solo refrescar escenarios si no es el activo para evitar loops
+      if (id !== activeScenarioId) {
+        await refreshScenarios();
       }
-      
-      await refreshScenarios();
     } catch (error: any) {
+      // En caso de error, revertir el estado optimistic
+      if (id === activeScenarioId && scenarioData) {
+        setScenarioData(scenarioData);
+      }
       handleApiError(error, 'Error updating scenario');
       throw error;
     }
-  }, [activeScenarioId, refreshScenarios]);
+  }, [activeScenarioId, refreshScenarios, scenarioData]);
 
   const duplicateScenario = useCallback(async (id: number, newName: string) => {
     setIsLoading(true);

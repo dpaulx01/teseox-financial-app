@@ -623,7 +623,25 @@ function calculateNodeValue(row: any, month: string): number {
       return sum;
     }, 0);
   } else {
-    return parseNumericValue(row[month] || '0');
+    const value = parseNumericValue(row[month] || '0');
+    
+    // DEBUG: Solo para las primeras filas
+    if ((row['COD.'] === '4' || row['COD.'] === '5') && Math.random() < 0.1) {
+      console.log(`🔍 calculateNodeValue DEBUG:`, {
+        code: row['COD.'],
+        cuenta: row['CUENTA'],
+        monthSearched: month,
+        rowKeys: Object.keys(row),
+        rawValue: row[month],
+        parsedValue: value,
+        hasEnero: !!row['Enero'],
+        hasEneroLower: !!row['enero'],
+        hasMayo: !!row['Mayo'],
+        hasMayoLower: !!row['mayo']
+      });
+    }
+    
+    return value;
   }
 }
 

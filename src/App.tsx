@@ -25,6 +25,9 @@ import Login from './pages/Login';
 import UserManagement from './pages/UserManagement';
 import ScenarioManagement from './pages/ScenarioManagement';  
 import SimulationBanner from './components/scenario/SimulationBanner';
+import EditablePygMatrix from './components/pyg/EditablePygMatrix';
+import EditablePygMatrixV2 from './components/pyg/EditablePygMatrixV2';
+import BalanceInternoLayout from './components/scenario/BalanceInternoLayout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 // Importar script de migración para que esté disponible globalmente
@@ -112,7 +115,7 @@ const MainAppContent: React.FC = () => {
       case 'pnl':
         return <PnlAnalysis />;
       case 'pyg':
-        return <PygContainer />;
+        return isSimulationMode ? <EditablePygMatrixV2 /> : <PygContainer />;
       case 'breakeven':
         return <BreakEvenAnalysis />;
       case 'operational':
@@ -134,6 +137,28 @@ const MainAppContent: React.FC = () => {
   // Usar datos híbridos: escenario si está en simulación, sino datos reales
   const activeData = isSimulationMode ? scenarioData : financialData;
 
+  // Renderizado para Balance Interno (modo simulación)
+  if (isSimulationMode) {
+    return (
+      <ErrorBoundary>
+        <DataProvider data={activeData}>
+          <MixedCostProvider>
+            <DashboardProvider>
+              <BalanceInternoLayout onExit={() => setActiveTab('kpi')}>
+                <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
+                <main className="flex-1 p-4 lg:p-8 overflow-y-auto lg:ml-16 relative z-10">
+                  {renderContent()}
+                </main>
+                <ToastContainer errors={errors} onClose={removeError} />
+              </BalanceInternoLayout>
+            </DashboardProvider>
+          </MixedCostProvider>
+        </DataProvider>
+      </ErrorBoundary>
+    );
+  }
+
+  // Renderizado normal del sistema
   return (
     <ErrorBoundary>
       <DataProvider data={activeData}>
@@ -141,9 +166,8 @@ const MainAppContent: React.FC = () => {
           <DashboardProvider>
               <div className="flex h-screen bg-dark-bg font-sans text-text-primary relative overflow-hidden transition-colors duration-300">
               <AnimatedBackground />
-              {isSimulationMode && <SimulationBanner />}
               <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
-              <main className={`flex-1 p-4 lg:p-8 overflow-y-auto lg:ml-16 relative z-10 transition-all duration-500 ${isSimulationMode ? 'pt-20' : ''}`}>
+              <main className="flex-1 p-4 lg:p-8 overflow-y-auto lg:ml-16 relative z-10 transition-all duration-500">
                 {/* User info and logout button */}
                 <div className="absolute top-4 right-4 z-50 flex items-center gap-4">
                   <div className="bg-gray-800/80 backdrop-blur-lg px-4 py-2 rounded-lg border border-gray-700/50">
