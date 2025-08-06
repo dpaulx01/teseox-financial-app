@@ -61,47 +61,39 @@ const EditablePygMatrixV2: React.FC = () => {
       'Septiembre': '09', 'Octubre': '10', 'Noviembre': '11', 'Diciembre': '12'
     };
     
+    // DEBUG: Ver qué meses tenemos realmente
+    console.log('🔍 DEBUG: Raw available months:', availableMonths);
+    
     // Si los meses están en español, convertir a formato estándar
     const standardizedMonths = availableMonths.map(month => {
-      if (monthsMap[month]) {
+      const monthLower = month.toLowerCase();
+      const monthCapitalized = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+      
+      if (monthsMap[monthCapitalized]) {
         // Asumir año actual si viene en formato de nombre
         const currentYear = new Date().getFullYear();
-        return `${currentYear}-${monthsMap[month]}`;
+        return `${currentYear}-${monthsMap[monthCapitalized]}`;
       }
       return month; // Ya está en formato correcto
     }).sort();
     
+    console.log('🔍 DEBUG: Standardized months:', standardizedMonths);
+    
     log.debug('EditablePygMatrixV2', 'Standardized months:', standardizedMonths);
     
-    // Período actual = último mes disponible
-    const actual = standardizedMonths[standardizedMonths.length - 1];
-    setPeriodoActual(actual);
+    // SIMPLIFICADO: Usar directamente el último mes disponible sin conversión
+    const lastAvailableMonth = availableMonths[availableMonths.length - 1];
+    console.log('🔍 DEBUG: Using last available month directly:', lastAvailableMonth);
+    setPeriodoActual(lastAvailableMonth);
     
     log.debug('EditablePygMatrixV2', 'Set periods:', { actual });
   }, [workingData]);
 
-  // COPIAR EXACTAMENTE la función convertPeriodForCalculation de PygContainer
+  // SIMPLIFICADO: No convertir períodos, usar tal como están
   const convertPeriodForCalculation = useCallback((periodo: string): string => {
-    if (!workingData?.monthly) return periodo;
-    
-    const monthsMap: Record<string, string> = {
-      '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril',
-      '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto',
-      '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre'
-    };
-    
-    // Si el período está en formato YYYY-MM, convertir al formato que usa financialData
-    if (periodo.includes('-')) {
-      const [year, month] = periodo.split('-');
-      const monthName = monthsMap[month];
-      if (monthName && workingData.monthly[monthName]) {
-        log.debug('EditablePygMatrixV2', 'Converting period:', { from: periodo, to: monthName });
-        return monthName;
-      }
-    }
-    
-    return periodo; // Devolver tal como está si no necesita conversión
-  }, [workingData]);
+    console.log('🔍 DEBUG: convertPeriodForCalculation - usando período directamente:', periodo);
+    return periodo; // Balance Interno usa períodos tal como los genera ProjectionEngine
+  }, []);
 
   // COPIAR EXACTAMENTE la función calculatePnlData de PygContainer
   const calculatePnlData = useCallback(async (periodo: string): Promise<PnlResult | null> => {
