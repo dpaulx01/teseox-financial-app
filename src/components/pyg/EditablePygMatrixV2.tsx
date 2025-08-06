@@ -81,9 +81,18 @@ const EditablePygMatrixV2: React.FC = () => {
     
     log.debug('EditablePygMatrixV2', 'Standardized months:', standardizedMonths);
     
-    // SIMPLIFICADO: Usar directamente el último mes disponible sin conversión
-    const lastAvailableMonth = availableMonths[availableMonths.length - 1];
-    console.log('🔍 DEBUG: Using last available month directly:', lastAvailableMonth);
+    // NORMALIZAR: Buscar el último mes en minúsculas (formato ProjectionEngine)
+    const monthsInLowercase = availableMonths.filter(month => month === month.toLowerCase());
+    const lastAvailableMonth = monthsInLowercase.length > 0 
+      ? monthsInLowercase[monthsInLowercase.length - 1]
+      : availableMonths[availableMonths.length - 1];
+    
+    console.log('🔍 DEBUG: Month selection:', {
+      allMonths: availableMonths,
+      lowercaseMonths: monthsInLowercase,
+      selectedMonth: lastAvailableMonth
+    });
+    
     setPeriodoActual(lastAvailableMonth);
     
     log.debug('EditablePygMatrixV2', 'Set periods:', { actual: lastAvailableMonth });
