@@ -197,6 +197,18 @@ const EditablePygMatrixV2: React.FC = () => {
         return;
       }
       
+      // VERIFICACIÓN CRÍTICA: Comprobar si workingData tiene valores
+      console.log('🔍 CRITICAL DEBUG - workingData state:', {
+        hasWorkingData: !!workingData,
+        hasRaw: !!workingData?.raw,
+        rawLength: workingData?.raw?.length || 0,
+        hasMonthly: !!workingData?.monthly,
+        monthlyKeys: workingData?.monthly ? Object.keys(workingData.monthly) : [],
+        isEnhanced: workingData === enhancedData,
+        enhancedDataExists: !!enhancedData,
+        financialDataExists: !!financialData
+      });
+      
       try {
         const monthLowerCase = availableMonths[0]; // Primer mes disponible
         
@@ -244,6 +256,18 @@ const EditablePygMatrixV2: React.FC = () => {
             value: node.value,
             childrenCount: node.children.length
           }))
+        });
+        
+        // DEBUG: Verificar datos raw para el mes usado
+        console.log('🔍 DEBUG: Raw data sample for month:', {
+          month: periodForCalculation,
+          rawDataCount: workingData.raw?.length || 0,
+          sampleRawRows: workingData.raw?.slice(0, 5).map(row => ({
+            code: row['COD.'],
+            cuenta: row['CUENTA'],
+            monthValue: row[periodForCalculation],
+            allMonthKeys: Object.keys(row).filter(k => k !== 'COD.' && k !== 'CUENTA')
+          })) || []
         });
         
         setPygTreeData(result.treeData);
