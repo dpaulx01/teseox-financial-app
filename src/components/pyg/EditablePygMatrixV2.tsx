@@ -4,7 +4,7 @@ import { EditableCell } from './EditableCell';
 import { FinancialData, MonthlyData } from '../../types';
 import { Save, RefreshCw, Calculator, AlertTriangle, TrendingUp, Zap, ChevronDown, ChevronRight } from 'lucide-react';
 import { getSortedMonths } from '../../utils/dateUtils';
-// ProjectionEngine removido - causaba conflicto con calculatePnl
+import ProjectionEngine from '../../utils/projectionEngine';
 import { formatCurrency } from '../../utils/formatters';
 import { RawDataRow } from '../../types';
 import { parseNumericValue } from '../../utils/formatters';
@@ -26,14 +26,20 @@ interface PygRow {
 const EditablePygMatrixV2: React.FC = () => {
   const { data: financialData } = useFinancialData();
 
-  // Variables de estado simplificadas - Balance Interno es read-only
+  const [enhancedData, setEnhancedData] = useState<FinancialData | null>(null);
   const [analysisType, setAnalysisType] = useState<AnalysisType>('contable');
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
 
-  // REMOVIDO: useEffect del ProjectionEngine que causaba conflicto
-  // y reseteo de valores. Solo usar el useEffect de calculatePnl que funciona correctamente.
+  // ProjectionEngine: completar año con proyecciones DESPUÉS de procesar datos base
+  useEffect(() => {
+    if (financialData && financialData.monthly && !enhancedData) {
+      console.log('🧠 Ejecutando ProjectionEngine para completar año 2025...');
+      const completed = ProjectionEngine.completeYear(financialData, 2025);
+      setEnhancedData(completed);
+    }
+  }, [financialData, enhancedData]);
 
-  const workingData = financialData; // Usar datos financieros directos sin ProjectionEngine
+  const workingData = enhancedData || financialData;
 
   // Estructura jerárquica del PyG - BASADA EN CSV REAL
   const pygStructure: PygRow[] = [
@@ -177,11 +183,17 @@ const EditablePygMatrixV2: React.FC = () => {
     return workingData?.monthly ? getSortedMonths(workingData.monthly) : [];
   }, [workingData]);
   
-  // USAR LA MISMA LÓGICA QUE PygContainer.tsx que SÍ FUNCIONA
+  // CALCULAR PyG SOLO DESPUÉS de que ProjectionEngine complete los datos
   useEffect(() => {
     const calculatePygData = async () => {
       if (!workingData || !availableMonths.length) {
         console.log('🔍 DEBUG: Missing data', { hasWorkingData: !!workingData, monthsLength: availableMonths.length });
+        return;
+      }
+      
+      // ESPERAR a que ProjectionEngine termine (solo si hay enhancedData o no hay financialData.monthly)
+      if (financialData?.monthly && !enhancedData) {
+        console.log('⏳ Esperando ProjectionEngine...');
         return;
       }
       
@@ -241,7 +253,7 @@ const EditablePygMatrixV2: React.FC = () => {
     };
     
     calculatePygData();
-  }, [workingData, availableMonths]);
+  }, [workingData, availableMonths, enhancedData]);
   
   // Cache para búsquedas en el árbol (evitar logs excesivos)
   const nodeCache = useMemo(() => {
@@ -279,8 +291,30 @@ const EditablePygMatrixV2: React.FC = () => {
   const handleSave = async (month: string, row: PygRow, newValue: number) => {
     if (!workingData || row.isCalculated) return;
 
-    // SIMPLIFICADO: Balance Interno es READ-ONLY para mostrar datos, no para editar
-    console.log('Balance Interno es solo lectura:', { month, code: row.code, newValue });
+    try {
+      const updatedData: FinancialData = JSON.parse(JSON.stringify(workingData));
+      
+      // Actualizar valor en raw data si existe
+      if (updatedData.raw) {
+        const rawRowIndex = updatedData.raw.findIndex(r => r['COD.'] === row.code);
+        if (rawRowIndex >= 0) {
+          updatedData.raw[rawRowIndex] = {
+            ...updatedData.raw[rawRowIndex],
+            [month]: newValue
+          };
+        }
+      }
+
+      // Recalcular métricas derivadas
+      if (updatedData.monthly[month]) {
+        updatedData.monthly[month] = ProjectionEngine.recalculateMetrics(updatedData.monthly[month]);
+      }
+
+      setEnhancedData(updatedData);
+    } catch (error) {
+      console.error('Error saving matrix cell:', error);
+      throw error;
+    }
   };
 
   if (!financialData) {
