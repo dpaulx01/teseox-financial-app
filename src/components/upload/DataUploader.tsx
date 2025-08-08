@@ -43,9 +43,9 @@ const DataUploader: React.FC<DataUploaderProps> = ({ onDataLoaded }) => {
       complete: async (results) => {
         try {
           // Convertir array de arrays a objetos con claves numéricas
-          const cleanedData = (results.data || []).map((row: any[]) => {
+          const cleanedData = results.data.map((row: any[]) => {
             const cleanedRow: any = {};
-            (row || []).forEach((value, index) => {
+            row.forEach((value, index) => {
               // Usar índices numéricos como claves
               const cleanedValue = typeof value === 'string' ? value.replace(/\uFFFD/g, 'ñ').trim() : value;
               cleanedRow[index.toString()] = cleanedValue;

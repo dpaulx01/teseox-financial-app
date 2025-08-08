@@ -11,6 +11,15 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
   const [userRole, setUserRole] = useState<string | null>(null);
   
   useEffect(() => {
+    // TEMPORAL: Saltar autenticación para funcionalidad inmediata
+    const skipAuth = false;
+    
+    if (skipAuth) {
+      setIsAuthenticated(true);
+      setUserRole('admin');
+      return;
+    }
+    
     const checkAuth = async () => {
       const token = localStorage.getItem('access_token');
       

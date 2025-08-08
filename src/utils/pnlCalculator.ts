@@ -625,19 +625,16 @@ function calculateNodeValue(row: any, month: string): number {
   } else {
     const value = parseNumericValue(row[month] || '0');
     
-    // DEBUG: Solo para las primeras filas
-    if ((row['COD.'] === '4' || row['COD.'] === '5') && Math.random() < 0.1) {
-      console.log(`🔍 calculateNodeValue DEBUG:`, {
+    // DEBUG CRÍTICO: Ver exactamente qué está pasando
+    if (row['COD.'] === '4' || row['COD.'] === '4.1' || row['COD.'] === '4.1.1' || row['COD.'] === '4.1.1.1') {
+      console.log(`🔥 CRITICAL calculateNodeValue:`, {
         code: row['COD.'],
         cuenta: row['CUENTA'],
         monthSearched: month,
         rowKeys: Object.keys(row),
         rawValue: row[month],
         parsedValue: value,
-        hasEnero: !!row['Enero'],
-        hasEneroLower: !!row['enero'],
-        hasMayo: !!row['Mayo'],
-        hasMayoLower: !!row['mayo']
+        entireRow: row
       });
     }
     

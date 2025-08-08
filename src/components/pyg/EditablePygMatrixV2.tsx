@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFinancialData } from '../../contexts/DataContext';
+import { useScenario } from '../../contexts/ScenarioContext';
 import { EditableCell } from './EditableCell';
 import { FinancialData, MonthlyData } from '../../types';
 import { Save, RefreshCw, Calculator, AlertTriangle, TrendingUp, Zap, ChevronDown, ChevronRight } from 'lucide-react';
@@ -24,11 +25,31 @@ interface PygRow {
 }
 
 const EditablePygMatrixV2: React.FC = () => {
-  const { data: financialData } = useFinancialData();
+  // IMPORTANTE: Este componente es para BALANCE INTERNO, debe usar datos del escenario/simulación
+  const { scenarioData, isSimulationMode } = useScenario();
+  const { data: realFinancialData } = useFinancialData();
+  
+  // Usar datos del escenario si está en modo simulación, sino usar datos reales
+  const financialData = isSimulationMode && scenarioData ? scenarioData : realFinancialData;
 
   const [enhancedData, setEnhancedData] = useState<FinancialData | null>(null);
   const [analysisType, setAnalysisType] = useState<AnalysisType>('contable');
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  
+  // DEBUG: Verificar qué datos estamos recibiendo
+  useEffect(() => {
+    console.log('🔵 CONTEXT DEBUG - Balance Interno data:', {
+      isSimulationMode,
+      usingScenarioData: isSimulationMode && !!scenarioData,
+      hasData: !!financialData,
+      hasMonthly: !!financialData?.monthly,
+      hasRaw: !!financialData?.raw,
+      rawLength: financialData?.raw?.length || 0,
+      monthlyKeys: financialData?.monthly ? Object.keys(financialData.monthly) : [],
+      firstRawData: financialData?.raw?.[0],
+      sampleMonthlyData: financialData?.monthly ? Object.entries(financialData.monthly)[0] : null
+    });
+  }, [financialData, isSimulationMode, scenarioData]);
 
   // ProjectionEngine: completar año con proyecciones DESPUÉS de procesar datos base
   useEffect(() => {
@@ -200,15 +221,15 @@ const EditablePygMatrixV2: React.FC = () => {
       try {
         const monthLowerCase = availableMonths[0]; // Primer mes disponible
         
-        // NORMALIZAR BÚSQUEDA: Primero intentar minúsculas, luego cualquier clave disponible
+        // NORMALIZAR BÚSQUEDA: Los datos RAW usan 'Enero' (mayúscula) pero monthly usa 'enero' (minúscula)
         let periodForCalculation = null;
         const availableKeys = Object.keys(workingData.monthly);
         
-        // Buscar mes en minúsculas primero
+        // Buscar mes en minúsculas primero (para monthly data)
         if (workingData.monthly[monthLowerCase]) {
           periodForCalculation = monthLowerCase;
         } 
-        // Si no existe, buscar variante con mayúscula
+        // Si no existe, buscar variante con mayúscula (para raw data compatibility)
         else if (workingData.monthly[monthLowerCase.charAt(0).toUpperCase() + monthLowerCase.slice(1)]) {
           periodForCalculation = monthLowerCase.charAt(0).toUpperCase() + monthLowerCase.slice(1);
         }
@@ -217,31 +238,40 @@ const EditablePygMatrixV2: React.FC = () => {
           periodForCalculation = availableKeys[0];
         }
         
+        // CRÍTICO: Pero para calculatePnl necesitamos pasar el formato de RAW data (con mayúscula)
+        const rawDataPeriod = monthLowerCase.charAt(0).toUpperCase() + monthLowerCase.slice(1);
+        
         // Validar que encontramos un período válido
         if (!periodForCalculation) {
           console.error('❌ No se pudo encontrar ningún período válido para calcular PyG');
           return;
         }
         
-        console.log('🔍 DEBUG: Using real monthly key:', {
+        // DEBUG CRÍTICO: Ver qué datos exactos estamos pasando
+        console.log('🔴 CRITICAL DEBUG: Data being passed to calculatePnl:', {
           monthLowerCase,
           periodForCalculation,
           hasMonthlyData: !!workingData.monthly[periodForCalculation],
           monthlyKeys: Object.keys(workingData.monthly || {}),
           selectedMonth: workingData.monthly[periodForCalculation] ? 'FOUND' : 'NOT FOUND',
           rawDataCount: workingData.raw ? workingData.raw.length : 0,
-          sampleRawData: workingData.raw ? workingData.raw.slice(0, 3).map(r => ({
+          firstRawRows: workingData.raw ? workingData.raw.slice(0, 5).map(r => ({
             code: r['COD.'],
             cuenta: r['CUENTA'],
             enero: r['enero'],
-            Mayo: r['Mayo']
-          })) : []
+            Enero: r['Enero'],
+            mayo: r['mayo'],
+            Mayo: r['Mayo'],
+            allKeys: Object.keys(r)
+          })) : [],
+          monthlyDataSample: workingData.monthly[periodForCalculation] || 'NO DATA'
         });
         
         // USAR EXACTAMENTE LA MISMA LLAMADA QUE PygContainer.tsx
+        // CRITICAL FIX: Usar rawDataPeriod (con mayúscula) para que coincida con los datos raw
         const result = await calculatePnl(
           workingData,
-          periodForCalculation, // Usar la clave que realmente existe
+          rawDataPeriod, // FIXED: Usar rawDataPeriod en lugar de periodForCalculation
           'contable',
           undefined, // mixedCosts como PygContainer
           1 // company_id por defecto como PygContainer
@@ -257,6 +287,31 @@ const EditablePygMatrixV2: React.FC = () => {
             childrenCount: node.children.length
           }))
         });
+        
+        // SUPER DEBUG: Verificar si hay valores en raw para código 4
+        if (workingData.raw) {
+          const ingresosData = workingData.raw.filter(r => r['COD.']?.toString().startsWith('4'));
+          console.log('🔴 SUPER DEBUG - Ingresos raw data:', {
+            count: ingresosData.length,
+            samples: ingresosData.slice(0, 3).map(r => ({
+              code: r['COD.'],
+              cuenta: r['CUENTA'],
+              valueInPeriod: r[periodForCalculation],
+              allValues: Object.entries(r).filter(([k, v]) => k !== 'COD.' && k !== 'CUENTA').map(([k, v]) => ({ month: k, value: v }))
+            }))
+          });
+          
+          // ULTRA DEBUG: Ver EXACTAMENTE qué hay en el primer registro
+          if (workingData.raw.length > 0) {
+            console.log('🔥 ULTRA DEBUG - First raw record COMPLETE:', workingData.raw[0]);
+            console.log('🔥 ULTRA DEBUG - All keys in first record:', Object.keys(workingData.raw[0]));
+            console.log('🔥 ULTRA DEBUG - Looking for period:', periodForCalculation);
+            console.log('🔥 ULTRA DEBUG - Value for enero:', workingData.raw[0]['enero']);
+            console.log('🔥 ULTRA DEBUG - Value for Enero:', workingData.raw[0]['Enero']);
+            console.log('🔥 ULTRA DEBUG - Type of raw data:', typeof workingData.raw);
+            console.log('🔥 ULTRA DEBUG - Is array?:', Array.isArray(workingData.raw));
+          }
+        }
         
         setPygTreeData(result.treeData);
       } catch (error) {

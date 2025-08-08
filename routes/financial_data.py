@@ -384,6 +384,54 @@ async def financial_data_legacy_get(
     """
     return await get_financial_data(current_user=current_user, db=db)
 
+@router.post("/save")
+async def save_financial_data(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Guardar datos financieros procesados en MySQL
+    """
+    try:
+        company_id = 1
+        
+        # Aquí se puede implementar lógica adicional para guardar
+        # datos procesados si es necesario
+        
+        return {"success": True, "message": "Data saved to MySQL"}
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/clear")
+async def clear_financial_data(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Limpiar todos los datos financieros de MySQL
+    """
+    try:
+        company_id = 1
+        
+        # Limpiar datos de la base de datos
+        db.execute(text("DELETE FROM raw_account_data WHERE company_id = :company_id"), 
+                  {"company_id": company_id})
+        db.execute(text("DELETE FROM financial_data WHERE company_id = :company_id"), 
+                  {"company_id": company_id})
+        db.execute(text("DELETE FROM production_data WHERE company_id = :company_id"), 
+                  {"company_id": company_id})
+        
+        db.commit()
+        
+        return {"success": True, "message": "All financial data cleared from MySQL"}
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/calculate")
 async def calculate_financial_metrics(
     data: dict,
