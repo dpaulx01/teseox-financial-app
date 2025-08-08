@@ -84,7 +84,9 @@ export const loadProductionData = async (year?: number): Promise<ProductionData[
       
       if (token) {
         const response = await fetch(`${API_BASE}/production?year=${selectedYear}`, {
+          method: 'GET',
           headers: {
+            'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           }
         });
@@ -330,11 +332,16 @@ export const clearAllProductionData = async (year?: number): Promise<void> => {
     // 1. Intentar borrar de MySQL via API
     try {
       const currentYear = year || new Date().getFullYear();
-      const response = await fetch(`${API_BASE}/production_data_v1.php?year=${currentYear}`, {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
+      const response = await fetch(`${API_BASE}/clear`, {
         method: 'DELETE',
         headers: { 
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Authorization': `Bearer ${token}`
         }
       });
       
@@ -357,7 +364,18 @@ export const clearAllProductionData = async (year?: number): Promise<void> => {
 
 export const getAvailableYears = async (): Promise<number[]> => {
   try {
-    const response = await fetch(`${API_BASE}/production_data_v1.php?action=years`);
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      log.warn('ProductionStorage', 'No authentication token found');
+      return [new Date().getFullYear()];
+    }
+    
+    const response = await fetch(`${API_BASE}/production?action=years`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
     if (response.ok) {
       const result = await response.json();
       if (result && result.years) {
