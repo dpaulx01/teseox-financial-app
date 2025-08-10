@@ -10,8 +10,38 @@ from datetime import datetime
 import re
 
 from database.connection import get_db
-from auth.dependencies import get_current_user
 from models.user import User
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import jwt
+import os
+
+# Same JWT config as main API
+JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-super-secret-jwt-key-change-this-in-production')
+JWT_ALGORITHM = 'HS256'
+security = HTTPBearer()
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
+    """Same authentication logic as main API"""
+    from fastapi import HTTPException, status
+    
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        user_id: int = payload.get("sub")  # Same as main API
+        if user_id is None:
+            raise credentials_exception
+    except jwt.PyJWTError:
+        raise credentials_exception
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise credentials_exception
+    return user
 
 router = APIRouter(prefix="/api/financial", tags=["Financial Data"])
 
