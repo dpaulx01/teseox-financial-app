@@ -32,7 +32,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        user_id: int = payload.get("sub")  # Same as main API
+        user_id: int = payload.get("user_id")  # Cambio de "sub" a "user_id"
         if user_id is None:
             raise credentials_exception
     except jwt.PyJWTError:
@@ -437,26 +437,40 @@ async def save_financial_data(
 
 @router.delete("/clear")
 async def clear_financial_data(
+    year: int = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Limpiar todos los datos financieros de MySQL
+    Limpiar datos financieros de MySQL - todos o por año específico
     """
     try:
         company_id = 1
         
-        # Limpiar datos de la base de datos
-        db.execute(text("DELETE FROM raw_account_data WHERE company_id = :company_id"), 
-                  {"company_id": company_id})
-        db.execute(text("DELETE FROM financial_data WHERE company_id = :company_id"), 
-                  {"company_id": company_id})
-        db.execute(text("DELETE FROM production_data WHERE company_id = :company_id"), 
-                  {"company_id": company_id})
+        if year:
+            # Limpiar datos de un año específico
+            db.execute(text("DELETE FROM raw_account_data WHERE company_id = :company_id AND period_year = :year"), 
+                      {"company_id": company_id, "year": year})
+            db.execute(text("DELETE FROM financial_data WHERE company_id = :company_id AND year = :year"), 
+                      {"company_id": company_id, "year": year})
+            db.execute(text("DELETE FROM production_data WHERE company_id = :company_id AND year = :year"), 
+                      {"company_id": company_id, "year": year})
+            
+            message = f"Data for year {year} cleared from MySQL"
+        else:
+            # Limpiar todos los datos
+            db.execute(text("DELETE FROM raw_account_data WHERE company_id = :company_id"), 
+                      {"company_id": company_id})
+            db.execute(text("DELETE FROM financial_data WHERE company_id = :company_id"), 
+                      {"company_id": company_id})
+            db.execute(text("DELETE FROM production_data WHERE company_id = :company_id"), 
+                      {"company_id": company_id})
+            
+            message = "All financial data cleared from MySQL"
         
         db.commit()
         
-        return {"success": True, "message": "All financial data cleared from MySQL"}
+        return {"success": True, "message": message}
         
     except Exception as e:
         db.rollback()

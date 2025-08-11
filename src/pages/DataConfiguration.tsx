@@ -61,6 +61,8 @@ import {
 } from '../utils/configSuggestions';
 import DataUploader from '../components/upload/DataUploader';
 import CSVUploader from '../components/upload/CSVUploader';
+import CSVUploaderYearAware from '../components/upload/CSVUploaderYearAware';
+import { useYear } from '../contexts/YearContext';
 import { formatCurrency } from '../utils/formatters';
 import { useAnalysisConfig, useExclusionPatterns } from '../services/analysisConfigService';
 import { intelligentPatternMatcher } from '../utils/intelligentPatternMatcher';
@@ -78,8 +80,8 @@ const DataConfiguration: React.FC = () => {
     refreshPatterns
   } = useExclusionPatterns();
   
-  // Estados para datos de producción
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  // Usar contexto global de año
+  const { selectedYear, setSelectedYear, availableYears, refreshYears } = useYear();
   const [productionData, setProductionData] = useState<ProductionData[]>([]);
   const [productionConfig, setProductionConfig] = useState<ProductionConfig>({
     capacidadMaximaMensual: 1000,
@@ -612,13 +614,58 @@ const DataConfiguration: React.FC = () => {
             <div className="flex items-center space-x-3 mb-6">
               <FileText className="w-6 h-6 text-primary" />
               <h3 className="text-2xl font-display text-primary text-glow">
-                Datos Financieros (CSV)
+                Datos Financieros (CSV Multi-Año)
               </h3>
             </div>
             
-            {financialData && financialData.yearly.ingresos > 0 ? (
-              <div className="space-y-4">
-                <h4 className="text-lg font-medium text-white">Datos Actuales</h4>
+            {/* CSV Uploader Year-Aware - Siempre visible */}
+            <CSVUploaderYearAware />
+            
+            {/* Panel de años disponibles */}
+            {availableYears && availableYears.length > 0 && (
+              <div className="glass-card p-4 border border-border rounded-lg mt-6">
+                <h4 className="font-display text-primary mb-3">Años disponibles</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {availableYears.map(y => (
+                    <div key={y.year} className={`p-3 rounded-lg border ${selectedYear===y.year ? 'border-primary bg-primary/10' : 'border-border'}`}>
+                      <div className="flex items-center justify-between">
+                        <button
+                          className="text-lg font-semibold hover:text-primary"
+                          onClick={() => setSelectedYear(y.year)}
+                        >
+                          {y.year}
+                        </button>
+                        <button
+                          className="text-danger text-sm hover:underline"
+                          onClick={async () => {
+                            if (!confirm(`¿Eliminar datos del año ${y.year}? Esta acción no se puede deshacer.`)) return;
+                            const token = localStorage.getItem('access_token');
+                            await fetch(`http://localhost:8001/api/financial/clear?year=${y.year}`, {
+                              method: 'DELETE',
+                              headers: { 'Authorization': `Bearer ${token ?? ''}` }
+                            });
+                            await refreshYears();
+                            if (selectedYear === y.year) setSelectedYear(null);
+                            setSuccess(`✅ Datos del año ${y.year} eliminados correctamente`);
+                            setTimeout(() => setSuccess(''), 3000);
+                          }}
+                        >
+                          Borrar
+                        </button>
+                      </div>
+                      <p className="text-xs text-text-muted mt-1">
+                        Registros: {y.records?.toLocaleString('es-EC')} · Cuentas: {y.accounts?.toLocaleString('es-EC')} · Ingresos: ${y.total_revenue?.toLocaleString('es-EC')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Mostrar datos del año seleccionado si están disponibles */}
+            {selectedYear && financialData && financialData.yearly?.ingresos > 0 && (
+              <div className="space-y-4 mt-6">
+                <h4 className="text-lg font-medium text-white">Datos de {selectedYear}</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="glass-card p-4 border border-accent/30 rounded-lg">
                     <div className="text-center">
@@ -649,45 +696,10 @@ const DataConfiguration: React.FC = () => {
                 <div className="flex items-center justify-between p-4 bg-accent/10 border border-accent/30 rounded-lg">
                   <div className="flex items-center space-x-3">
                     <CheckCircle className="w-6 h-6 text-accent" />
-                    <span className="text-accent font-display">Datos financieros cargados correctamente</span>
+                    <span className="text-accent font-display">Datos de {selectedYear} cargados correctamente</span>
                   </div>
-                  <button
-                    onClick={async () => {
-                      try {
-                        // console.log('🧹 LIMPIAR: Iniciando limpieza...');
-                        
-                        // Limpiar manualmente en localStorage primero
-                        localStorage.removeItem('artyco-financial-data-persistent');
-                        localStorage.removeItem('artyco-financial-data');
-                        localStorage.removeItem('artyco-combined-data');
-                        // console.log('🧹 LIMPIAR: localStorage limpiado');
-                        
-                        // Ejecutar función oficial
-                        await clearFinancialData();
-                        // console.log('🧹 LIMPIAR: clearFinancialData ejecutado');
-                        
-                        setSuccess('✅ Datos financieros eliminados completamente');
-                        setTimeout(() => setSuccess(''), 3000);
-                        
-                        // Recargar para actualizar la UI
-                        setTimeout(() => {
-                          // console.log('🧹 LIMPIAR: Recargando página...');
-                          window.location.reload();
-                        }, 1000);
-                      } catch (error) {
-                        console.error('❌ Error en limpieza:', error);
-                        setErrors(['Error limpiando datos']);
-                      }
-                    }}
-                    className="px-4 py-2 bg-danger/20 text-danger border border-danger/50 rounded-lg hover:bg-danger hover:text-white transition-colors flex items-center space-x-2 relative z-50 pointer-events-auto"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span>Limpiar</span>
-                  </button>
                 </div>
               </div>
-            ) : (
-              <DataUploader onDataLoaded={handleFinancialDataLoaded} />
             )}
           </motion.div>
         )}
