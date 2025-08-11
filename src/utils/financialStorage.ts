@@ -47,7 +47,7 @@ export const saveFinancialData = async (data: FinancialData): Promise<void> => {
   }
 };
 
-export const loadFinancialData = async (): Promise<FinancialData | null> => {
+export const loadFinancialData = async (year?: number): Promise<FinancialData | null> => {
   try {
     // SOLO CARGAR DESDE MYSQL - NUNCA DE LOCALSTORAGE
     const token = localStorage.getItem('access_token');
@@ -57,8 +57,12 @@ export const loadFinancialData = async (): Promise<FinancialData | null> => {
     }
     
     try {
+      // Construir URL con filtro de año opcional
+      const baseUrl = 'http://localhost:8001/api/financial/data?include_raw=true';
+      const url = year ? `${baseUrl}&year=${year}` : baseUrl;
+      
       // Obtener datos desde MySQL via API RBAC
-      const response = await fetch('http://localhost:8001/api/financial/data?include_raw=true', {
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -70,12 +74,19 @@ export const loadFinancialData = async (): Promise<FinancialData | null> => {
         const result = await response.json();
         
         if (result.success && result.raw_data) {
+          const yearMsg = year ? ` for year ${year}` : '';
+          console.log(`🔍 Raw data from MySQL${yearMsg}:`, result.raw_data.length, 'records');
+          console.log('🔍 Sample raw record:', result.raw_data[0]);
+          
           // Procesar datos raw desde MySQL al formato esperado
           const processedData = await import('./financialDataProcessor').then(module => 
             module.processFinancialData(result.raw_data)
           );
           
-          console.log('📊 Financial data loaded from MySQL database');
+          console.log(`📊 Financial data loaded from MySQL database${yearMsg}`);
+          console.log('📊 Processed data:', processedData);
+          console.log('📊 Monthly keys:', Object.keys(processedData.monthly || {}));
+          console.log('📊 Yearly totals:', processedData.yearly);
           return processedData;
         }
       }

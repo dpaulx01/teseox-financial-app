@@ -6,10 +6,11 @@ import { MixedCostProvider } from './contexts/MixedCostContext';
 import { DashboardProvider } from './contexts/DashboardContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ScenarioProvider, useScenario } from './contexts/ScenarioContext';
+import { YearProvider, useYear } from './contexts/YearContext';
 import { useErrorHandler } from './hooks/useErrorHandler';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { processFinancialData } from './utils/financialDataProcessor';
-import { loadFinancialData, saveFinancialData } from './utils/financialStorageNew';
+import { loadFinancialData, saveFinancialData } from './utils/financialStorage';
 import Navigation from './components/layout/Navigation';
 import DataUploader from './components/upload/DataUploader';
 import ErrorBoundary from './components/ui/ErrorBoundary';
@@ -29,6 +30,7 @@ import EditablePygMatrix from './components/pyg/EditablePygMatrix';
 import EditablePygMatrixV2 from './components/pyg/EditablePygMatrixV2';
 import BalanceInternoLayout from './components/scenario/BalanceInternoLayout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import YearSelector from './components/year/YearSelector';
 
 // Importar script de migración para que esté disponible globalmente
 import './utils/migrateToMySQL';
@@ -40,15 +42,16 @@ const MainAppContent: React.FC = () => {
   const [savedData, setSavedData] = useLocalStorage<FinancialData | null>('artyco-financial-data', null);
   const { errors, addError, removeError } = useErrorHandler();
   
-  // Usar contexto de escenarios
+  // Usar contextos
   const { scenarioData, isSimulationMode } = useScenario();
+  const { selectedYear, availableYears } = useYear();
 
-  // Cargar datos persistentes al iniciar
+  // Cargar datos persistentes al iniciar - FILTRADO POR AÑO
   useEffect(() => {
     const loadData = async () => {
       try {
-        if (!financialData) {
-          const persistentData = await loadFinancialData();
+        if (!financialData && selectedYear) {
+          const persistentData = await loadFinancialData(selectedYear);
           if (persistentData) {
             setFinancialData(persistentData);
             setSavedData(persistentData);
@@ -70,7 +73,7 @@ const MainAppContent: React.FC = () => {
     };
 
     loadData();
-  }, [financialData, setSavedData, addError]);
+  }, [financialData, selectedYear, setSavedData, addError]);
 
   const handleDataLoaded = useCallback(async (data: FinancialData) => {
     try {
@@ -133,6 +136,20 @@ const MainAppContent: React.FC = () => {
 
   // Add user info display
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  // LÓGICA MULTI-AÑO: Mostrar selector de año si no hay ninguno seleccionado
+  if (!selectedYear || availableYears.length === 0) {
+    return (
+      <YearSelector 
+        onContinue={() => {
+          if (selectedYear) {
+            // El YearContext ya maneja la selección
+            console.log('Year selected:', selectedYear);
+          }
+        }}
+      />
+    );
+  }
 
   // Usar datos híbridos: escenario si está en simulación, sino datos reales
   const activeData = isSimulationMode ? scenarioData : financialData;
@@ -197,12 +214,14 @@ const MainAppContent: React.FC = () => {
   );
 };
 
-// Componente principal que envuelve con ScenarioProvider  
+// Componente principal que envuelve con providers  
 const MainApp: React.FC = () => {
   return (
-    <ScenarioProvider>
-      <MainAppContent />
-    </ScenarioProvider>
+    <YearProvider>
+      <ScenarioProvider>
+        <MainAppContent />
+      </ScenarioProvider>
+    </YearProvider>
   );
 };
 

@@ -493,3 +493,54 @@ async def calculate_financial_metrics(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/years")
+async def get_available_years(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Obtener años disponibles con estadísticas para selector multi-año
+    """
+    try:
+        company_id = 1
+        
+        # Query para obtener estadísticas por año
+        query = text("""
+            SELECT 
+                period_year as year,
+                COUNT(*) as total_records,
+                COUNT(DISTINCT account_code) as unique_accounts,
+                MIN(period_month) as min_month,
+                MAX(period_month) as max_month,
+                SUM(CASE WHEN account_code = '4' THEN amount ELSE 0 END) as total_revenue
+            FROM raw_account_data 
+            WHERE company_id = :company_id 
+            GROUP BY period_year 
+            ORDER BY period_year DESC
+        """)
+        
+        result = db.execute(query, {"company_id": company_id})
+        
+        years_data = []
+        for row in result:
+            years_data.append({
+                "year": row.year,
+                "records": row.total_records,
+                "accounts": row.unique_accounts,
+                "months": row.max_month - row.min_month + 1 if row.max_month and row.min_month else 0,
+                "month_range": f"{row.min_month}-{row.max_month}" if row.max_month and row.min_month else "No data",
+                "total_revenue": float(row.total_revenue) if row.total_revenue else 0.0,
+                "has_data": row.total_records > 0
+            })
+        
+        # Si no hay datos, devolver array vacío pero success true
+        return {
+            "success": True,
+            "years": years_data,
+            "current_year": datetime.now().year,
+            "total_years": len(years_data)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
