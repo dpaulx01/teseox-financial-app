@@ -246,23 +246,38 @@ const EditablePygMatrixV2: React.FC = () => {
         // que sabemos que tiene el formato correcto (Enero, Febrero, etc.)
         let periodForCalculation = availableKeys.length > 0 ? availableKeys[0] : null;
         
-        // DOUBLE CHECK: Verificar que el período esté en el formato correcto
-        if (periodForCalculation && workingData.raw && workingData.raw.length > 0) {
+        // CORRECCIÓN CRÍTICA: Determinar el formato correcto basado en los datos reales
+        // Verificar qué formato usan realmente los datos raw
+        let periodForRaw = periodForCalculation;
+        if (workingData.raw && workingData.raw.length > 0) {
           const firstRow = workingData.raw[0];
-          // Si el período no existe en raw data, intentar con capitalización
-          if (firstRow[periodForCalculation] === undefined) {
-            const capitalized = periodForCalculation.charAt(0).toUpperCase() + periodForCalculation.slice(1);
-            if (firstRow[capitalized] !== undefined) {
-              console.log('🔧 CRITICAL FIX: Converting period format:', {
-                from: periodForCalculation,
-                to: capitalized,
-                rawValueBefore: firstRow[periodForCalculation],
-                rawValueAfter: firstRow[capitalized]
-              });
-              periodForCalculation = capitalized;
-            }
+          const hasUppercase = firstRow[periodForCalculation.charAt(0).toUpperCase() + periodForCalculation.slice(1)] !== undefined;
+          const hasLowercase = firstRow[periodForCalculation] !== undefined;
+          
+          console.log('🔧 FORMAT DETECTION:', {
+            originalPeriod: periodForCalculation,
+            hasUppercase: hasUppercase,
+            hasLowercase: hasLowercase,
+            uppercaseValue: firstRow[periodForCalculation.charAt(0).toUpperCase() + periodForCalculation.slice(1)],
+            lowercaseValue: firstRow[periodForCalculation]
+          });
+          
+          if (hasUppercase && !hasLowercase) {
+            periodForRaw = periodForCalculation.charAt(0).toUpperCase() + periodForCalculation.slice(1);
+          } else if (hasLowercase) {
+            periodForRaw = periodForCalculation; // Keep lowercase
           }
         }
+        
+        const periodForMonthly = periodForCalculation; // Always use original for monthly
+        
+        console.log('🔧 FINAL FORMAT DECISION:', {
+          periodForMonthly,
+          periodForRaw,
+          monthlyExists: !!workingData.monthly[periodForMonthly],
+          rawExists: workingData.raw?.[0]?.[periodForRaw] !== undefined,
+          formatChanged: periodForRaw !== periodForCalculation
+        });
         
         console.log('🔥 CRITICAL FIX: Final period decision:', {
           availableKeys,
@@ -292,19 +307,19 @@ const EditablePygMatrixV2: React.FC = () => {
           rawKeysFirstRecord: workingData.raw && workingData.raw.length > 0 ? Object.keys(workingData.raw[0]) : 'NO KEYS'
         });
         
-        // VERIFICACIÓN ADICIONAL: Asegurar que periodForCalculation tenga datos
-        if (!workingData.monthly[periodForCalculation]) {
-          console.error('❌ CRITICAL ERROR: periodForCalculation no existe en monthly data');
+        // VERIFICACIÓN ADICIONAL: Usar periodForMonthly para verificar monthly data
+        if (!workingData.monthly[periodForMonthly]) {
+          console.error('❌ CRITICAL ERROR: periodForMonthly no existe en monthly data');
           console.error('Available monthly keys:', Object.keys(workingData.monthly));
-          console.error('Trying to access:', periodForCalculation);
+          console.error('Trying to access:', periodForMonthly);
           return;
         }
         
         // USAR EXACTAMENTE LA MISMA LLAMADA QUE PygContainer.tsx
-        // CRITICAL FIX: Usar periodForCalculation que ya existe en monthly
+        // CRITICAL FIX: Usar periodForRaw para calculatePnl (que busca en raw data)
         const result = await calculatePnl(
           workingData,
-          periodForCalculation, // FIXED: Usar el período que sabemos que existe
+          periodForRaw, // FIXED: Usar formato mayúscula para raw data
           'contable',
           undefined, // mixedCosts como PygContainer
           1 // company_id por defecto como PygContainer
@@ -338,17 +353,17 @@ const EditablePygMatrixV2: React.FC = () => {
           if (workingData.raw.length > 0) {
             console.log('🔥 ULTRA DEBUG - First raw record COMPLETE:', workingData.raw[0]);
             console.log('🔥 ULTRA DEBUG - All keys in first record:', Object.keys(workingData.raw[0]));
-            console.log('🔥 ULTRA DEBUG - Looking for period:', periodForCalculation);
+            console.log('🔥 ULTRA DEBUG - Looking for periodForRaw:', periodForRaw);
             console.log('🔥 ULTRA DEBUG - Value for enero:', workingData.raw[0]['enero']);
             console.log('🔥 ULTRA DEBUG - Value for Enero:', workingData.raw[0]['Enero']);
-            console.log('🔥 ULTRA DEBUG - Value in raw for our period:', workingData.raw[0][periodForCalculation]);
+            console.log('🔥 ULTRA DEBUG - Value in raw for our period:', workingData.raw[0][periodForRaw]);
             console.log('🔥 ULTRA DEBUG - Type of raw data:', typeof workingData.raw);
             console.log('🔥 ULTRA DEBUG - Is array?:', Array.isArray(workingData.raw));
           }
         }
         
         // SIMPLIFICAR: Usar exactamente el mismo call que PygContainer exitoso
-        console.log('✅ BALANCE INTERNO: Calling calculatePnl with period:', periodForCalculation);
+        console.log('✅ BALANCE INTERNO: Calling calculatePnl with periodForRaw:', periodForRaw);
         
         setPygTreeData(result.treeData);
       } catch (error) {

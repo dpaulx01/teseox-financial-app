@@ -29,6 +29,7 @@ import SimulationBanner from './components/scenario/SimulationBanner';
 import EditablePygMatrix from './components/pyg/EditablePygMatrix';
 import EditablePygMatrixV2 from './components/pyg/EditablePygMatrixV2';
 import BalanceInternoLayout from './components/scenario/BalanceInternoLayout';
+import ScenarioDashboard from './components/scenario/ScenarioDashboard';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import YearSelector from './components/year/YearSelector';
 import GlobalYearBar from './components/year/GlobalYearBar';
@@ -45,7 +46,7 @@ const MainAppContent: React.FC = () => {
   const { errors, addError, removeError } = useErrorHandler();
   
   // Usar contextos
-  const { scenarioData, isSimulationMode } = useScenario();
+  const { scenarioData, isSimulationMode, setActiveScenarioId } = useScenario();
   const { selectedYear, availableYears } = useYear();
   
   // Sincronizar año con URL
@@ -131,7 +132,24 @@ const MainAppContent: React.FC = () => {
       case 'pyg':
         return isSimulationMode ? <EditablePygMatrixV2 /> : <PygContainer />;
       case 'balance':
-        return <EditablePygMatrixV2 />;
+        if (isSimulationMode) {
+          // Usuario está en modo simulación, mostrar Balance Interno
+          return (
+            <BalanceInternoLayout onExit={() => setActiveTab('balance')}>
+              <EditablePygMatrixV2 />
+            </BalanceInternoLayout>
+          );
+        } else {
+          // Usuario no está en simulación, mostrar dashboard de escenarios
+          return (
+            <ScenarioDashboard 
+              onEnterScenario={(scenarioId) => {
+                setActiveScenarioId(scenarioId);
+                // El tab permanece en 'balance', pero ahora isSimulationMode será true
+              }}
+            />
+          );
+        }
       case 'breakeven':
         return <BreakEvenAnalysis />;
       case 'operational':

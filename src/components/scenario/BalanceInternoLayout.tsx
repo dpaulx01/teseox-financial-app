@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useScenario } from '../../contexts/ScenarioContext';
 import { BookOpen, TrendingUp, Calculator, ChevronLeft } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 
 interface BalanceInternoLayoutProps {
   children: React.ReactNode;
@@ -39,36 +38,21 @@ const BalanceInternoLayout: React.FC<BalanceInternoLayoutProps> = ({ children, o
         />
       </div>
 
-      {/* Animación de vuelta de página */}
-      <AnimatePresence>
-        {isEntering && (
-          <motion.div
-            initial={{ rotateY: 0, originX: 0 }}
-            animate={{ rotateY: -180, originX: 0 }}
-            exit={{ rotateY: -180, originX: 0 }}
-            transition={{ duration: 0.8, ease: "easeInOut" }}
-            className="absolute inset-0 bg-dark-bg z-50 shadow-2xl"
-            style={{ 
-              transformStyle: 'preserve-3d',
-              backfaceVisibility: 'hidden'
-            }}
-          >
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center text-white">
-                <BookOpen className="w-24 h-24 mx-auto mb-6 text-primary animate-pulse" />
-                <h2 className="text-3xl font-display mb-2">Cargando Balance Interno</h2>
-                <p className="text-text-secondary">Preparando entorno extracontable...</p>
-              </div>
+      {/* Animación de entrada simple */}
+      {isEntering && (
+        <div className="absolute inset-0 bg-dark-bg z-50 shadow-2xl animate-pulse">
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center text-white">
+              <BookOpen className="w-24 h-24 mx-auto mb-6 text-primary animate-pulse" />
+              <h2 className="text-3xl font-display mb-2">Cargando Balance Interno</h2>
+              <p className="text-text-secondary">Preparando entorno extracontable...</p>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      )}
 
       {/* Header del Balance Interno */}
-      <motion.header 
-        initial={{ opacity: 0, y: -50 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.8, duration: 0.5 }}
+      <header 
         className="relative z-40 bg-gradient-to-r from-purple-800/80 to-blue-800/80 backdrop-blur-xl border-b border-purple-500/30 shadow-xl"
       >
         <div className="flex items-center justify-between px-6 py-4">
@@ -111,17 +95,14 @@ const BalanceInternoLayout: React.FC<BalanceInternoLayoutProps> = ({ children, o
 
         {/* Línea decorativa inferior */}
         <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-400/50 to-transparent"></div>
-      </motion.header>
+      </header>
 
       {/* Contenido principal */}
-      <motion.main 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 1, duration: 0.5 }}
+      <main 
         className="relative z-10 p-6"
       >
         {children}
-      </motion.main>
+      </main>
 
       {/* Indicadores visuales en las esquinas */}
       <div className="fixed top-4 left-4 z-30">
