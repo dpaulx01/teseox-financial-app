@@ -11,8 +11,14 @@ export const processFinancialData = (data: RawDataRow[]): FinancialData => {
   const normalizedData = data.map(row => {
     const normalizedRow: RawDataRow = {};
     
-    // Estructura fija: 0=Código, 1=Descripción, 2+=Meses
-    if (row['0'] && row['1']) {
+    // DETECTAR formato automáticamente
+    // Si tiene 'COD.' y 'CUENTA', es formato MySQL directo
+    if (row['COD.'] && row['CUENTA']) {
+      // Los datos ya vienen en formato correcto desde MySQL
+      return row;
+    }
+    // Si tiene índices numéricos, es formato CSV crudo
+    else if (row['0'] && row['1']) {
       normalizedRow['COD.'] = row['0']; // Primera columna = Código
       normalizedRow['CUENTA'] = row['1']; // Segunda columna = Descripción
       

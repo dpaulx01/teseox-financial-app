@@ -66,6 +66,27 @@ app.include_router(admin_router, prefix="/api", tags=["Admin"])
 app.include_router(scenarios_router, tags=["Financial Scenarios"])
 app.include_router(financial_router, tags=["Financial Data"])
 
+# Endpoints adicionales para RBAC
+@app.get("/api/roles")
+async def get_roles():
+    """Get available roles"""
+    return {"success": True, "roles": [
+        {"id": 1, "name": "admin", "description": "Full system access"},
+        {"id": 2, "name": "user", "description": "Standard user access"},
+        {"id": 3, "name": "viewer", "description": "Read-only access"}
+    ]}
+
+@app.get("/api/permissions")
+async def get_permissions():
+    """Get available permissions"""
+    return {"success": True, "permissions": [
+        {"id": 1, "name": "*:*", "description": "Full access to all resources"},
+        {"id": 2, "name": "financial:read", "description": "Read financial data"},
+        {"id": 3, "name": "financial:write", "description": "Write financial data"},
+        {"id": 4, "name": "users:read", "description": "Read user data"},
+        {"id": 5, "name": "users:write", "description": "Write user data"}
+    ]}
+
 @app.get("/")
 async def root():
     """Endpoint raíz con información del sistema"""
