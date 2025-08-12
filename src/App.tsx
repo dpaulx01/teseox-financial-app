@@ -130,6 +130,8 @@ const MainAppContent: React.FC = () => {
         return <PnlAnalysis />;
       case 'pyg':
         return isSimulationMode ? <EditablePygMatrixV2 /> : <PygContainer />;
+      case 'balance':
+        return <EditablePygMatrixV2 />;
       case 'breakeven':
         return <BreakEvenAnalysis />;
       case 'operational':

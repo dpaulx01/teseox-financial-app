@@ -1,5 +1,8 @@
 import { FinancialData, MonthlyData } from '../types';
 import { getSortedMonths } from './dateUtils';
+import { TrendAnalysis } from './projectionEngine/TrendAnalysis';
+import { SeasonalityDetector } from './projectionEngine/SeasonalityDetector';
+import { CorrelationEngine } from './projectionEngine/CorrelationEngine';
 
 interface ProjectionMetadata {
   isProjected: boolean;
@@ -23,6 +26,117 @@ interface ProjectionAnalysis {
 }
 
 export class ProjectionEngine {
+  /**
+   * Nueva función de proyección avanzada usando algoritmos de IA
+   */
+  static generateAdvancedProjections(
+    financialData: FinancialData,
+    targetYear: number,
+    specificAccounts?: string[]
+  ): FinancialData {
+    const enhanced: FinancialData = JSON.parse(JSON.stringify(financialData));
+    
+    if (!enhanced.monthly) {
+      enhanced.monthly = {};
+    }
+
+    // Convertir datos mensuales a formato para análisis
+    const monthlyDataByAccount: Record<string, number[]> = {};
+    const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 
+                   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+    // Extraer datos históricos para cada cuenta
+    enhanced.raw?.forEach(row => {
+      const accountKey = `${row['COD.']} - ${row['CUENTA']}`;
+      if (!monthlyDataByAccount[accountKey]) {
+        monthlyDataByAccount[accountKey] = new Array(12).fill(0);
+      }
+
+      months.forEach((month, idx) => {
+        const value = parseFloat(row[month.charAt(0).toUpperCase() + month.slice(1)] as string) || 0;
+        if (!isNaN(value)) {
+          monthlyDataByAccount[accountKey][idx] = value;
+        }
+      });
+    });
+
+    // Aplicar algoritmos avanzados de proyección
+    const accountsToProject = specificAccounts || Object.keys(monthlyDataByAccount);
+    
+    accountsToProject.forEach(account => {
+      const accountData = monthlyDataByAccount[account];
+      if (!accountData || accountData.every(v => v === 0)) return;
+
+      // 1. Análisis de tendencias avanzado
+      const trendResult = TrendAnalysis.calculateTrend(accountData);
+      
+      // 2. Análisis estacional
+      const seasonalityResult = SeasonalityDetector.analyzeSeasonality({
+        [targetYear - 1]: accountData
+      });
+
+      // 3. Proyectar valores futuros
+      const projections = TrendAnalysis.projectFuture(accountData, {
+        monthsAhead: 12 - accountData.filter(v => v !== 0).length
+      });
+
+      // 4. Aplicar ajustes estacionales
+      const adjustedProjections = projections.map((value, monthIdx) => {
+        if (seasonalityResult.hasSeasonality) {
+          return SeasonalityDetector.applySeasonalAdjustment(
+            value,
+            monthIdx + 1,
+            seasonalityResult.patterns
+          );
+        }
+        return value;
+      });
+
+      // Actualizar datos con proyecciones
+      let projectionIndex = 0;
+      months.forEach((month, idx) => {
+        if (monthlyDataByAccount[account][idx] === 0 && projectionIndex < adjustedProjections.length) {
+          // Crear o actualizar datos mensuales
+          if (!enhanced.monthly![month]) {
+            enhanced.monthly![month] = {
+              ingresos: 0,
+              costoVentasTotal: 0,
+              costoMateriaPrima: 0,
+              costoProduccion: 0,
+              utilidadBruta: 0,
+              gastosOperativos: 0,
+              ebitda: 0,
+              depreciacion: 0,
+              utilidadNeta: 0
+            };
+          }
+
+          // Mapear cuenta a campo apropiado (simplificado)
+          const code = account.split(' - ')[0];
+          if (code.startsWith('4')) {
+            enhanced.monthly![month].ingresos += adjustedProjections[projectionIndex];
+          } else if (code.startsWith('5.1')) {
+            enhanced.monthly![month].costoProduccion += adjustedProjections[projectionIndex];
+          } else if (code.startsWith('5.2') || code.startsWith('5.3')) {
+            enhanced.monthly![month].gastosOperativos += adjustedProjections[projectionIndex];
+          }
+
+          projectionIndex++;
+        }
+      });
+    });
+
+    // Recalcular métricas derivadas
+    Object.keys(enhanced.monthly!).forEach(month => {
+      const data = enhanced.monthly![month];
+      data.costoVentasTotal = data.costoMateriaPrima + data.costoProduccion;
+      data.utilidadBruta = data.ingresos - data.costoVentasTotal;
+      data.ebitda = data.utilidadBruta - data.gastosOperativos;
+      data.utilidadNeta = data.ebitda - (data.depreciacion || 0);
+    });
+
+    return enhanced;
+  }
   /**
    * Completa automáticamente un año con todos los 12 meses
    */

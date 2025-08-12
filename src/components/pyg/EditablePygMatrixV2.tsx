@@ -219,27 +219,41 @@ const EditablePygMatrixV2: React.FC = () => {
       }
       
       try {
-        const monthLowerCase = availableMonths[0]; // Primer mes disponible
-        
-        // NORMALIZAR BÚSQUEDA: Los datos RAW usan 'Enero' (mayúscula) pero monthly usa 'enero' (minúscula)
-        let periodForCalculation = null;
+        // USAR LA MISMA LÓGICA QUE PygContainer.tsx
         const availableKeys = Object.keys(workingData.monthly);
         
-        // Buscar mes en minúsculas primero (para monthly data)
-        if (workingData.monthly[monthLowerCase]) {
-          periodForCalculation = monthLowerCase;
-        } 
-        // Si no existe, buscar variante con mayúscula (para raw data compatibility)
-        else if (workingData.monthly[monthLowerCase.charAt(0).toUpperCase() + monthLowerCase.slice(1)]) {
-          periodForCalculation = monthLowerCase.charAt(0).toUpperCase() + monthLowerCase.slice(1);
-        }
-        // Como último recurso, usar la primera clave disponible
-        else if (availableKeys.length > 0) {
-          periodForCalculation = availableKeys[0];
+        // Función para convertir período al formato correcto (copiada de PygContainer)
+        const convertPeriodForCalculation = (periodo: string): string => {
+          const monthsMap: Record<string, string> = {
+            '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril',
+            '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto',
+            '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre'
+          };
+          
+          // Si el período está en formato YYYY-MM, convertir al formato que usa financialData
+          if (periodo.includes('-')) {
+            const [year, month] = periodo.split('-');
+            const monthName = monthsMap[month];
+            if (monthName && workingData.monthly[monthName]) {
+              return monthName;
+            }
+          }
+          
+          return periodo; // Devolver tal como está si no necesita conversión
+        };
+        
+        // Usar el primer mes disponible o convertir correctamente
+        let periodForCalculation = availableKeys.length > 0 ? availableKeys[0] : null;
+        
+        // Si availableMonths tiene un formato específico, intentar conversión
+        if (availableMonths.length > 0) {
+          const firstAvailableMonth = availableMonths[0];
+          const converted = convertPeriodForCalculation(firstAvailableMonth);
+          if (workingData.monthly[converted]) {
+            periodForCalculation = converted;
+          }
         }
         
-        // CRÍTICO: Pero para calculatePnl necesitamos pasar el formato de RAW data (con mayúscula)
-        const rawDataPeriod = monthLowerCase.charAt(0).toUpperCase() + monthLowerCase.slice(1);
         
         // Validar que encontramos un período válido
         if (!periodForCalculation) {
@@ -249,29 +263,31 @@ const EditablePygMatrixV2: React.FC = () => {
         
         // DEBUG CRÍTICO: Ver qué datos exactos estamos pasando
         console.log('🔴 CRITICAL DEBUG: Data being passed to calculatePnl:', {
-          monthLowerCase,
+          availableMonths,
           periodForCalculation,
           hasMonthlyData: !!workingData.monthly[periodForCalculation],
           monthlyKeys: Object.keys(workingData.monthly || {}),
           selectedMonth: workingData.monthly[periodForCalculation] ? 'FOUND' : 'NOT FOUND',
           rawDataCount: workingData.raw ? workingData.raw.length : 0,
-          firstRawRows: workingData.raw ? workingData.raw.slice(0, 5).map(r => ({
-            code: r['COD.'],
-            cuenta: r['CUENTA'],
-            enero: r['enero'],
-            Enero: r['Enero'],
-            mayo: r['mayo'],
-            Mayo: r['Mayo'],
-            allKeys: Object.keys(r)
-          })) : [],
-          monthlyDataSample: workingData.monthly[periodForCalculation] || 'NO DATA'
+          monthlyDataSample: workingData.monthly[periodForCalculation] || 'NO DATA',
+          allMonthlyData: workingData.monthly,
+          firstRawRecord: workingData.raw && workingData.raw.length > 0 ? workingData.raw[0] : 'NO RAW DATA',
+          rawKeysFirstRecord: workingData.raw && workingData.raw.length > 0 ? Object.keys(workingData.raw[0]) : 'NO KEYS'
         });
         
+        // VERIFICACIÓN ADICIONAL: Asegurar que periodForCalculation tenga datos
+        if (!workingData.monthly[periodForCalculation]) {
+          console.error('❌ CRITICAL ERROR: periodForCalculation no existe en monthly data');
+          console.error('Available monthly keys:', Object.keys(workingData.monthly));
+          console.error('Trying to access:', periodForCalculation);
+          return;
+        }
+        
         // USAR EXACTAMENTE LA MISMA LLAMADA QUE PygContainer.tsx
-        // CRITICAL FIX: Usar rawDataPeriod (con mayúscula) para que coincida con los datos raw
+        // CRITICAL FIX: Usar periodForCalculation que ya existe en monthly
         const result = await calculatePnl(
           workingData,
-          rawDataPeriod, // FIXED: Usar rawDataPeriod en lugar de periodForCalculation
+          periodForCalculation, // FIXED: Usar el período que sabemos que existe
           'contable',
           undefined, // mixedCosts como PygContainer
           1 // company_id por defecto como PygContainer
@@ -312,6 +328,9 @@ const EditablePygMatrixV2: React.FC = () => {
             console.log('🔥 ULTRA DEBUG - Is array?:', Array.isArray(workingData.raw));
           }
         }
+        
+        // SIMPLIFICAR: Usar exactamente el mismo call que PygContainer exitoso
+        console.log('✅ BALANCE INTERNO: Calling calculatePnl with period:', periodForCalculation);
         
         setPygTreeData(result.treeData);
       } catch (error) {

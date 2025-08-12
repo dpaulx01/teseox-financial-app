@@ -27,7 +27,7 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
     { id: 'kpi', label: 'Dashboard KPIs', icon: 'BarChart2' },
     { id: 'pnl', label: 'Análisis PyG', icon: 'FileText' },
     { id: 'pyg', label: 'PyG Comparativo', icon: 'TrendingUp' },
-    { id: 'scenarios', label: 'Balance Interno', icon: 'Calculator' },
+    { id: 'balance', label: 'Balance Interno', icon: 'Calculator' },
     { id: 'breakeven', label: 'Punto de Equilibrio', icon: 'Target' },
     { id: 'operational', label: 'Análisis Operativo', icon: 'Factory' },
     { id: 'config', label: 'Configuración', icon: 'Settings' },
