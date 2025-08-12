@@ -51,34 +51,40 @@ const MainAppContent: React.FC = () => {
   // Sincronizar año con URL
   useYearParamSync();
 
-  // Cargar datos persistentes al iniciar - FILTRADO POR AÑO
+  // Cargar datos por año - REACTIVO AL CAMBIO DE AÑO
   useEffect(() => {
     const loadData = async () => {
+      if (!selectedYear) return; // No cargar si no hay año seleccionado
+      
       try {
-        if (!financialData && selectedYear) {
-          const persistentData = await loadFinancialData(selectedYear);
-          if (persistentData) {
-            setFinancialData(persistentData);
-            setSavedData(persistentData);
-            // Solo mostrar mensaje de éxito si realmente hay datos válidos
-            if (persistentData.monthly && Object.keys(persistentData.monthly).length > 0) {
-              addError('Datos financieros cargados desde almacenamiento', 'info');
-            }
+        console.log(`🔄 App: Loading data for year ${selectedYear}`);
+        const persistentData = await loadFinancialData(selectedYear);
+        if (persistentData) {
+          setFinancialData(persistentData);
+          setSavedData(persistentData);
+          // Solo mostrar mensaje de éxito si realmente hay datos válidos
+          if (persistentData.monthly && Object.keys(persistentData.monthly).length > 0) {
+            addError(`Datos financieros de ${selectedYear} cargados exitosamente`, 'info');
           }
+        } else {
+          // Si no hay datos para este año, limpiar el estado
+          setFinancialData(null);
+          setSavedData(null);
         }
       } catch (error) {
         // Solo logear errores críticos en modo desarrollo
         if (import.meta.env.DEV) {
-          console.warn('⚠️ App: Financial data not available, using upload flow');
+          console.warn(`⚠️ App: Financial data not available for year ${selectedYear}`);
         }
         
-        // No mostrar errores en UI para problemas de carga inicial
-        // El usuario puede cargar datos manualmente
+        // Limpiar datos si hay error
+        setFinancialData(null);
+        setSavedData(null);
       }
     };
 
     loadData();
-  }, [financialData, selectedYear, setSavedData, addError]);
+  }, [selectedYear, setSavedData, addError]); // DEPENDENCIA PRINCIPAL: selectedYear
 
   const handleDataLoaded = useCallback(async (data: FinancialData) => {
     try {
