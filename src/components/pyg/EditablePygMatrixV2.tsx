@@ -222,8 +222,10 @@ const EditablePygMatrixV2: React.FC = () => {
         // USAR LA MISMA LÓGICA QUE PygContainer.tsx
         const availableKeys = Object.keys(workingData.monthly);
         
-        // Función para convertir período al formato correcto (copiada de PygContainer)
+        // FUNCIÓN COPIADA EXACTAMENTE DE PygContainer.tsx (línea 94-114)
         const convertPeriodForCalculation = (periodo: string): string => {
+          if (!workingData?.monthly) return periodo;
+          
           const monthsMap: Record<string, string> = {
             '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril',
             '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto',
@@ -235,93 +237,53 @@ const EditablePygMatrixV2: React.FC = () => {
             const [year, month] = periodo.split('-');
             const monthName = monthsMap[month];
             if (monthName && workingData.monthly[monthName]) {
+              console.log('🔧 PygContainer logic - Converting period:', { from: periodo, to: monthName });
               return monthName;
+            }
+          }
+          
+          // NUEVO: Si availableKeys tiene minúsculas pero monthly tiene mayúsculas 
+          const monthsMapReverse: Record<string, string> = {
+            'enero': 'Enero', 'febrero': 'Febrero', 'marzo': 'Marzo', 'abril': 'Abril',
+            'mayo': 'Mayo', 'junio': 'Junio', 'julio': 'Julio', 'agosto': 'Agosto',
+            'septiembre': 'Septiembre', 'octubre': 'Octubre', 'noviembre': 'Noviembre', 'diciembre': 'Diciembre'
+          };
+          
+          if (monthsMapReverse[periodo.toLowerCase()]) {
+            const correctFormat = monthsMapReverse[periodo.toLowerCase()];
+            if (workingData.monthly[correctFormat]) {
+              console.log('🔧 Balance Interno - Converting case:', { from: periodo, to: correctFormat });
+              return correctFormat;
             }
           }
           
           return periodo; // Devolver tal como está si no necesita conversión
         };
         
-        // CORRECCIÓN CRÍTICA: Usar directamente el primer mes disponible en monthly
-        // que sabemos que tiene el formato correcto (Enero, Febrero, etc.)
-        let periodForCalculation = availableKeys.length > 0 ? availableKeys[0] : null;
+        // USAR LA MISMA LÓGICA QUE PygContainer.tsx (YA FUNCIONA)
+        const rawPeriod = availableKeys.length > 0 ? availableKeys[0] : null;
         
-        // CORRECCIÓN CRÍTICA: Determinar el formato correcto basado en los datos reales
-        // Verificar qué formato usan realmente los datos raw
-        let periodForRaw = periodForCalculation;
-        if (workingData.raw && workingData.raw.length > 0) {
-          const firstRow = workingData.raw[0];
-          const hasUppercase = firstRow[periodForCalculation.charAt(0).toUpperCase() + periodForCalculation.slice(1)] !== undefined;
-          const hasLowercase = firstRow[periodForCalculation] !== undefined;
-          
-          console.log('🔧 FORMAT DETECTION:', {
-            originalPeriod: periodForCalculation,
-            hasUppercase: hasUppercase,
-            hasLowercase: hasLowercase,
-            uppercaseValue: firstRow[periodForCalculation.charAt(0).toUpperCase() + periodForCalculation.slice(1)],
-            lowercaseValue: firstRow[periodForCalculation]
-          });
-          
-          if (hasUppercase && !hasLowercase) {
-            periodForRaw = periodForCalculation.charAt(0).toUpperCase() + periodForCalculation.slice(1);
-          } else if (hasLowercase) {
-            periodForRaw = periodForCalculation; // Keep lowercase
-          }
-        }
-        
-        const periodForMonthly = periodForCalculation; // Always use original for monthly
-        
-        console.log('🔧 FINAL FORMAT DECISION:', {
-          periodForMonthly,
-          periodForRaw,
-          monthlyExists: !!workingData.monthly[periodForMonthly],
-          rawExists: workingData.raw?.[0]?.[periodForRaw] !== undefined,
-          formatChanged: periodForRaw !== periodForCalculation
-        });
-        
-        console.log('🔥 CRITICAL FIX: Final period decision:', {
-          availableKeys,
-          selectedPeriod: periodForCalculation,
-          monthlyDataExists: !!workingData.monthly[periodForCalculation],
-          rawDataSample: workingData.raw?.[0]?.[periodForCalculation]
-        });
-        
-        
-        // Validar que encontramos un período válido
-        if (!periodForCalculation) {
+        // Validar que encontramos un período válido  
+        if (!rawPeriod) {
           console.error('❌ No se pudo encontrar ningún período válido para calcular PyG');
           return;
         }
         
-        // DEBUG CRÍTICO: Ver qué datos exactos estamos pasando
-        console.log('🔴 CRITICAL DEBUG: Data being passed to calculatePnl:', {
-          availableMonths,
-          periodForCalculation,
-          hasMonthlyData: !!workingData.monthly[periodForCalculation],
-          monthlyKeys: Object.keys(workingData.monthly || {}),
-          selectedMonth: workingData.monthly[periodForCalculation] ? 'FOUND' : 'NOT FOUND',
-          rawDataCount: workingData.raw ? workingData.raw.length : 0,
-          monthlyDataSample: workingData.monthly[periodForCalculation] || 'NO DATA',
-          allMonthlyData: workingData.monthly,
-          firstRawRecord: workingData.raw && workingData.raw.length > 0 ? workingData.raw[0] : 'NO RAW DATA',
-          rawKeysFirstRecord: workingData.raw && workingData.raw.length > 0 ? Object.keys(workingData.raw[0]) : 'NO KEYS'
+        // APLICAR CONVERSIÓN COMO PygContainer.tsx (línea 124)
+        const periodForCalculation = convertPeriodForCalculation(rawPeriod);
+        
+        console.log('✅ USANDO LÓGICA DE PygContainer:', { 
+          raw: rawPeriod, 
+          converted: periodForCalculation,
+          exists: !!workingData.monthly[periodForCalculation]
         });
         
-        // VERIFICACIÓN ADICIONAL: Usar periodForMonthly para verificar monthly data
-        if (!workingData.monthly[periodForMonthly]) {
-          console.error('❌ CRITICAL ERROR: periodForMonthly no existe en monthly data');
-          console.error('Available monthly keys:', Object.keys(workingData.monthly));
-          console.error('Trying to access:', periodForMonthly);
-          return;
-        }
-        
         // USAR EXACTAMENTE LA MISMA LLAMADA QUE PygContainer.tsx
-        // CRITICAL FIX: Usar periodForRaw para calculatePnl (que busca en raw data)
         const result = await calculatePnl(
           workingData,
-          periodForRaw, // FIXED: Usar formato mayúscula para raw data
+          periodForCalculation, // CONVERTIDO como PygContainer
           'contable',
-          undefined, // mixedCosts como PygContainer
+          undefined, // mixedCosts como PygContainer  
           1 // company_id por defecto como PygContainer
         );
         
@@ -336,34 +298,7 @@ const EditablePygMatrixV2: React.FC = () => {
           }))
         });
         
-        // SUPER DEBUG: Verificar si hay valores en raw para código 4
-        if (workingData.raw) {
-          const ingresosData = workingData.raw.filter(r => r['COD.']?.toString().startsWith('4'));
-          console.log('🔴 SUPER DEBUG - Ingresos raw data:', {
-            count: ingresosData.length,
-            samples: ingresosData.slice(0, 3).map(r => ({
-              code: r['COD.'],
-              cuenta: r['CUENTA'],
-              valueInPeriod: r[periodForCalculation],
-              allValues: Object.entries(r).filter(([k, v]) => k !== 'COD.' && k !== 'CUENTA').map(([k, v]) => ({ month: k, value: v }))
-            }))
-          });
-          
-          // ULTRA DEBUG: Ver EXACTAMENTE qué hay en el primer registro
-          if (workingData.raw.length > 0) {
-            console.log('🔥 ULTRA DEBUG - First raw record COMPLETE:', workingData.raw[0]);
-            console.log('🔥 ULTRA DEBUG - All keys in first record:', Object.keys(workingData.raw[0]));
-            console.log('🔥 ULTRA DEBUG - Looking for periodForRaw:', periodForRaw);
-            console.log('🔥 ULTRA DEBUG - Value for enero:', workingData.raw[0]['enero']);
-            console.log('🔥 ULTRA DEBUG - Value for Enero:', workingData.raw[0]['Enero']);
-            console.log('🔥 ULTRA DEBUG - Value in raw for our period:', workingData.raw[0][periodForRaw]);
-            console.log('🔥 ULTRA DEBUG - Type of raw data:', typeof workingData.raw);
-            console.log('🔥 ULTRA DEBUG - Is array?:', Array.isArray(workingData.raw));
-          }
-        }
-        
-        // SIMPLIFICAR: Usar exactamente el mismo call que PygContainer exitoso
-        console.log('✅ BALANCE INTERNO: Calling calculatePnl with periodForRaw:', periodForRaw);
+        console.log('✅ BALANCE INTERNO: Calling calculatePnl with:', periodForCalculation);
         
         setPygTreeData(result.treeData);
       } catch (error) {
