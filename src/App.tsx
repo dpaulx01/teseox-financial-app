@@ -64,7 +64,7 @@ const MainAppContent: React.FC = () => {
           setSavedData(persistentData);
           // Solo mostrar mensaje de éxito si realmente hay datos válidos
           if (persistentData.monthly && Object.keys(persistentData.monthly).length > 0) {
-            addError(`Datos financieros de ${selectedYear} cargados exitosamente`, 'info');
+            console.log(`✅ App: Financial data loaded for year ${selectedYear}`);
           }
         } else {
           // Si no hay datos para este año, limpiar el estado
@@ -84,7 +84,7 @@ const MainAppContent: React.FC = () => {
     };
 
     loadData();
-  }, [selectedYear, setSavedData, addError]); // DEPENDENCIA PRINCIPAL: selectedYear
+  }, [selectedYear]); // DEPENDENCIA ÚNICA para evitar bucles
 
   const handleDataLoaded = useCallback(async (data: FinancialData) => {
     try {
