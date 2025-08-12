@@ -242,17 +242,34 @@ const EditablePygMatrixV2: React.FC = () => {
           return periodo; // Devolver tal como está si no necesita conversión
         };
         
-        // Usar el primer mes disponible o convertir correctamente
+        // CORRECCIÓN CRÍTICA: Usar directamente el primer mes disponible en monthly
+        // que sabemos que tiene el formato correcto (Enero, Febrero, etc.)
         let periodForCalculation = availableKeys.length > 0 ? availableKeys[0] : null;
         
-        // Si availableMonths tiene un formato específico, intentar conversión
-        if (availableMonths.length > 0) {
-          const firstAvailableMonth = availableMonths[0];
-          const converted = convertPeriodForCalculation(firstAvailableMonth);
-          if (workingData.monthly[converted]) {
-            periodForCalculation = converted;
+        // DOUBLE CHECK: Verificar que el período esté en el formato correcto
+        if (periodForCalculation && workingData.raw && workingData.raw.length > 0) {
+          const firstRow = workingData.raw[0];
+          // Si el período no existe en raw data, intentar con capitalización
+          if (firstRow[periodForCalculation] === undefined) {
+            const capitalized = periodForCalculation.charAt(0).toUpperCase() + periodForCalculation.slice(1);
+            if (firstRow[capitalized] !== undefined) {
+              console.log('🔧 CRITICAL FIX: Converting period format:', {
+                from: periodForCalculation,
+                to: capitalized,
+                rawValueBefore: firstRow[periodForCalculation],
+                rawValueAfter: firstRow[capitalized]
+              });
+              periodForCalculation = capitalized;
+            }
           }
         }
+        
+        console.log('🔥 CRITICAL FIX: Final period decision:', {
+          availableKeys,
+          selectedPeriod: periodForCalculation,
+          monthlyDataExists: !!workingData.monthly[periodForCalculation],
+          rawDataSample: workingData.raw?.[0]?.[periodForCalculation]
+        });
         
         
         // Validar que encontramos un período válido
@@ -324,6 +341,7 @@ const EditablePygMatrixV2: React.FC = () => {
             console.log('🔥 ULTRA DEBUG - Looking for period:', periodForCalculation);
             console.log('🔥 ULTRA DEBUG - Value for enero:', workingData.raw[0]['enero']);
             console.log('🔥 ULTRA DEBUG - Value for Enero:', workingData.raw[0]['Enero']);
+            console.log('🔥 ULTRA DEBUG - Value in raw for our period:', workingData.raw[0][periodForCalculation]);
             console.log('🔥 ULTRA DEBUG - Type of raw data:', typeof workingData.raw);
             console.log('🔥 ULTRA DEBUG - Is array?:', Array.isArray(workingData.raw));
           }
