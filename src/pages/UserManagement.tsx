@@ -78,8 +78,8 @@ export default function UserManagement() {
       ]);
       
       setUsers(usersRes.data);
-      setRoles(rolesRes.data);
-      setPermissions(permsRes.data);
+      setRoles(rolesRes.data.roles || []);
+      setPermissions(permsRes.data.permissions || []);
     } catch (err) {
       setError('Error al cargar los datos');
       console.error(err);
