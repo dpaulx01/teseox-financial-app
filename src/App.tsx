@@ -136,7 +136,7 @@ const MainAppContent: React.FC = () => {
           // Usuario está en modo simulación, mostrar Balance Interno
           return (
             <BalanceInternoLayout onExit={() => setActiveTab('balance')}>
-              <EditablePygMatrixV2 />
+              <PygContainer />
             </BalanceInternoLayout>
           );
         } else {
