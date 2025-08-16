@@ -117,6 +117,9 @@ const EditablePygMatrixV2: React.FC = () => {
             };
           }
         });
+        } else {
+          // ProjectionEngine funcionó correctamente
+          console.log('✅ ProjectionEngine avanzado ejecutado exitosamente');
         }
         
         // CRÍTICO: Usar datos del ProjectionEngine avanzado
