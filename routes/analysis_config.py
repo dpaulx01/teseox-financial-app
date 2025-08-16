@@ -104,19 +104,13 @@ async def get_analysis_types():
 
 @router.get("/patterns")
 async def get_exclusion_patterns():
-    """Obtener patrones de exclusión"""
+    """Obtener patrones de exclusión para gestión (formato completo)"""
     try:
         # TODO: Implementar consulta a BD cuando las tablas estén creadas
-        # Por ahora devolver datos por defecto
-        # Convertir a formato compatible con frontend
-        converted_patterns = {
-            "depreciacion": [pattern["value"] for pattern in DEFAULT_PATTERNS["depreciacion"]],
-            "intereses": [pattern["value"] for pattern in DEFAULT_PATTERNS["intereses"]],
-            "impuestos": [pattern["value"] for pattern in DEFAULT_PATTERNS["impuestos"]]
-        }
+        # Por ahora devolver datos por defecto en formato completo
         return {
             "success": True,
-            "data": converted_patterns
+            "data": DEFAULT_PATTERNS
         }
     except Exception as e:
         logger.error(f"Error al obtener patrones: {e}")
