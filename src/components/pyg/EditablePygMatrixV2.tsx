@@ -59,14 +59,20 @@ const EditablePygMatrixV2: React.FC = () => {
       // Clonar datos profundamente
       const dataToEnhance: FinancialData = JSON.parse(JSON.stringify(financialData));
       
-      // GENERAR PROYECCIONES SIMPLES para meses faltantes (julio-diciembre)
-      if (dataToEnhance.raw && dataToEnhance.raw.length > 0) {
-        const monthsToProject = ['Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-        
-        dataToEnhance.raw = dataToEnhance.raw.map(row => {
-          const updatedRow = { ...row };
+      // CRÍTICO: Usar ProjectionEngine avanzado en lugar de proyección simple
+      console.log('🚀 Usando ProjectionEngine.generateAdvancedProjections...');
+      const enhancedWithProjections = ProjectionEngine.generateAdvancedProjections(dataToEnhance, 2025);
+      
+      // FALLBACK: Si falla, usar proyección simple como respaldo  
+      if (!enhancedWithProjections || !enhancedWithProjections.raw) {
+        console.log('⚠️ ProjectionEngine falló, usando proyección simple...');
+        if (dataToEnhance.raw && dataToEnhance.raw.length > 0) {
+          const monthsToProject = ['Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
           
-          // Calcular promedio de meses existentes para proyección simple
+          dataToEnhance.raw = dataToEnhance.raw.map(row => {
+            const updatedRow = { ...row };
+            
+            // Calcular promedio de meses existentes para proyección simple
           const existingMonths = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio'];
           const existingValues = existingMonths
             .map(m => parseFloat(row[m] as string) || 0)
@@ -111,25 +117,28 @@ const EditablePygMatrixV2: React.FC = () => {
             };
           }
         });
-      }
-      
-      // CRÍTICO: Asegurar que monthly siempre tenga claves en minúsculas
-      const normalizedMonthly: Record<string, any> = {};
-      Object.entries(dataToEnhance.monthly).forEach(([key, value]) => {
-        normalizedMonthly[key.toLowerCase()] = value;
-      });
-      dataToEnhance.monthly = normalizedMonthly;
+        }
+        
+        // CRÍTICO: Usar datos del ProjectionEngine avanzado
+        const finalData = enhancedWithProjections || dataToEnhance;
+        
+        // IMPORTANTE: Normalizar claves monthly a minúsculas
+        const normalizedMonthly: Record<string, any> = {};
+        Object.entries(finalData.monthly).forEach(([key, value]) => {
+          normalizedMonthly[key.toLowerCase()] = value;
+        });
+        finalData.monthly = normalizedMonthly;
       
       // Debug: Verificar que se generaron proyecciones
       console.log('📊 ProjectionEngine completado:', {
-        hasJulio: !!dataToEnhance.raw?.find(r => r['Julio'] !== undefined && r['Julio'] !== 0),
-        hasAgosto: !!dataToEnhance.raw?.find(r => r['Agosto'] !== undefined && r['Agosto'] !== 0),
-        monthlyKeys: dataToEnhance.monthly ? Object.keys(dataToEnhance.monthly) : [],
-        sampleJulioIngresos: dataToEnhance.raw?.find(r => r['COD.'] === '4')?.['Julio'],
-        sampleJulioCostos: dataToEnhance.raw?.find(r => r['COD.'] === '5')?.['Julio']
+        hasJulio: !!finalData.raw?.find(r => r['Julio'] !== undefined && r['Julio'] !== 0),
+        hasAgosto: !!finalData.raw?.find(r => r['Agosto'] !== undefined && r['Agosto'] !== 0),
+        monthlyKeys: finalData.monthly ? Object.keys(finalData.monthly) : [],
+        sampleJulioIngresos: finalData.raw?.find(r => r['COD.'] === '4')?.['Julio'],
+        sampleJulioCostos: finalData.raw?.find(r => r['COD.'] === '5')?.['Julio']
       });
       
-      setEnhancedData(dataToEnhance);
+      setEnhancedData(finalData);
     }
   }, [financialData, enhancedData]);
 
@@ -527,7 +536,22 @@ const EditablePygMatrixV2: React.FC = () => {
   };
 
   const handleSave = async (month: string, row: PygRow, newValue: number) => {
-    if (!workingData || row.isCalculated) return;
+    console.log(`💾 handleSave LLAMADO: ${row.code} ${month} = ${newValue} (isParent: ${row.isParent})`);
+    
+    if (!workingData) {
+      console.log('⚠️ handleSave: No hay workingData');
+      return;
+    }
+    
+    if (row.isCalculated) {
+      console.log('⚠️ handleSave: Cuenta calculada, no editable');
+      return;
+    }
+    
+    if (row.isParent) {
+      console.log('⚠️ handleSave: Cuenta padre, no editable');
+      return;
+    }
 
     try {
       const updatedData: FinancialData = JSON.parse(JSON.stringify(workingData));

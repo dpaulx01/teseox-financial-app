@@ -186,7 +186,7 @@ export class ProjectionEngine {
     
     // Reemplazar con datos limpios
     enhanced.monthly = cleanedMonthly;
-    // console.log(`🧹 Limpieza: ${Object.keys(financialData.monthly).length} meses → ${Object.keys(cleanedMonthly).length} meses únicos`); // Logs deshabilitados
+    console.log(`🧹 Limpieza: ${Object.keys(financialData.monthly).length} meses → ${Object.keys(cleanedMonthly).length} meses únicos`);
 
     const monthNames = [
       'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -204,14 +204,14 @@ export class ProjectionEngine {
       .map(month => month.toLowerCase())
       .filter((month, index, arr) => arr.indexOf(month) === index); // eliminar duplicados
 
-    // console.log(`📊 Meses existentes (normalizados): ${existingMonthsNormalized.join(', ')}`); // Logs deshabilitados
+    console.log(`📊 Meses existentes (normalizados): ${existingMonthsNormalized.join(', ')}`);
 
     monthNames.forEach((month, index) => {
       const monthLower = month.toLowerCase();
       
       if (!existingMonthsNormalized.includes(monthLower)) {
         // Solo generar proyección si NO existe este mes
-        // console.log(`🧠 Generando proyección IA para: ${month} (FALTABA)`); // Logs deshabilitados
+        console.log(`🧠 Generando proyección IA para: ${month} (FALTABA)`);
         const projectedData = this.generateSmartProjection(
           existingData,
           analysis,
@@ -222,7 +222,7 @@ export class ProjectionEngine {
         enhanced.monthly[month] = projectedData;
       } else {
         // Mes ya existe - mantener datos reales SIN metadata
-        // console.log(`📊 Manteniendo datos reales para: ${month} (YA EXISTÍA)`); // Logs deshabilitados
+        console.log(`📊 Manteniendo datos reales para: ${month} (YA EXISTÍA)`);
         // No tocar los datos existentes
       }
     });
