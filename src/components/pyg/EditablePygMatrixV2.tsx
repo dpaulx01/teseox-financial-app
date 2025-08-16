@@ -66,6 +66,7 @@ const EditablePygMatrixV2: React.FC = () => {
       // FALLBACK: Si falla, usar proyección simple como respaldo  
       if (!enhancedWithProjections || !enhancedWithProjections.raw) {
         console.log('⚠️ ProjectionEngine falló, usando proyección simple...');
+        
         if (dataToEnhance.raw && dataToEnhance.raw.length > 0) {
           const monthsToProject = ['Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
           
@@ -117,13 +118,14 @@ const EditablePygMatrixV2: React.FC = () => {
             };
           }
         });
-        } else {
-          // ProjectionEngine funcionó correctamente
-          console.log('✅ ProjectionEngine avanzado ejecutado exitosamente');
         }
+      } else {
+        // ProjectionEngine funcionó correctamente
+        console.log('✅ ProjectionEngine avanzado ejecutado exitosamente');
+      }
         
-        // CRÍTICO: Usar datos del ProjectionEngine avanzado
-        const finalData = enhancedWithProjections || dataToEnhance;
+      // CRÍTICO: Usar datos del ProjectionEngine avanzado
+      const finalData = enhancedWithProjections || dataToEnhance;
         
         // IMPORTANTE: Normalizar claves monthly a minúsculas
         const normalizedMonthly: Record<string, any> = {};
