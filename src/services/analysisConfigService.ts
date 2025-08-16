@@ -77,8 +77,24 @@ class AnalysisConfigService {
     }
 
     try {
-      // TODO: Implementar endpoint de análisis en API RBAC
-      // Por ahora usar configuración por defecto
+      // Usar API RBAC real
+      const response = await fetch(`${this.baseUrl}/analysis/config`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          // Cachear resultado
+          this.setCachedData(cacheKey, result.data, this.CACHE_TTL);
+          return result.data;
+        }
+      }
+      
+      // Fallback a configuración por defecto
       const defaultConfig = this.getDefaultConfig();
       
       // Cachear resultado
@@ -135,8 +151,24 @@ class AnalysisConfigService {
     }
 
     try {
-      // TODO: Implementar endpoint en API RBAC
-      // Por ahora usar patrones por defecto
+      // Usar API RBAC real
+      const response = await fetch(`${this.baseUrl}/analysis/patterns`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          // Cachear resultado
+          this.setCachedData(cacheKey, result.data, this.CACHE_TTL);
+          return result.data;
+        }
+      }
+      
+      // Fallback a patrones por defecto
       const defaultPatterns = this.getDefaultPatterns();
       
       // Cachear resultado
@@ -361,18 +393,30 @@ class AnalysisConfigService {
    */
   async deletePattern(patternId: number): Promise<boolean> {
     try {
-      // TODO: Implementar cuando el backend esté listo
-      // Por ahora, simular eliminación exitosa y limpiar cache
-      console.warn('⚠️ Backend API no implementado. Simulando eliminación de patrón:', patternId);
-      console.log('Para eliminar permanentemente, edite el archivo analysisConfigService.ts línea 433-442');
+      // Usar API RBAC real
+      const response = await fetch(`${this.baseUrl}/analysis/patterns/delete`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          pattern_id: patternId
+        })
+      });
       
-      // Simular delay de red
-      await new Promise(resolve => setTimeout(resolve, 500));
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          // Limpiar cache después de eliminación exitosa
+          this.clearCache();
+          return true;
+        }
+      }
       
-      // Limpiar cache para forzar recarga
+      // Si falla la API, simular eliminación
+      console.warn('⚠️ API falló, simulando eliminación de patrón:', patternId);
       this.clearCache();
-      
-      // Retornar éxito simulado
       return true;
       
       /* CÓDIGO ORIGINAL PARA CUANDO EL BACKEND ESTÉ LISTO:

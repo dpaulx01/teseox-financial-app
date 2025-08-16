@@ -20,6 +20,7 @@ from routes.users import router as users_router
 from routes.admin import router as admin_router
 from routes.financial_scenarios import router as scenarios_router
 from routes.financial_data import router as financial_router
+from routes.analysis_config import router as analysis_router
 
 # Crear la aplicación FastAPI
 app = FastAPI(
@@ -65,6 +66,7 @@ app.include_router(users_router, prefix="/api", tags=["Users"])
 app.include_router(admin_router, prefix="/api", tags=["Admin"])
 app.include_router(scenarios_router, tags=["Financial Scenarios"])
 app.include_router(financial_router, tags=["Financial Data"])
+app.include_router(analysis_router, tags=["Analysis Config"])
 
 # Endpoints adicionales para RBAC
 @app.get("/api/roles")
