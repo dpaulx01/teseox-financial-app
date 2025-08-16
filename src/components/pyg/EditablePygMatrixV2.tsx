@@ -107,49 +107,8 @@ const EditablePygMatrixV2: React.FC = () => {
     { code: '5.2.2', name: '    Gastos No Operacionales', level: 2, isParent: false },
     { code: '5.2.3', name: '    Gastos de Operaciones Descontinuadas', level: 2, isParent: false },
     
-    // MÉTRICAS CALCULADAS
-    { 
-      code: 'UB', 
-      name: '= UTILIDAD BRUTA', 
-      level: 0, 
-      isParent: false, 
-      isCalculated: true,
-      formula: (data: MonthlyData, month?: string, getValueFn?: (code: string) => number) => {
-        if (!getValueFn) return 0;
-        const ingresos = getValueFn('4');
-        const costos = getValueFn('5.1');
-        return ingresos - costos;
-      }
-    },
-    { 
-      code: 'UN', 
-      name: '= UTILIDAD NETA', 
-      level: 0, 
-      isParent: false, 
-      isCalculated: true,
-      formula: (data: MonthlyData, month?: string, getValueFn?: (code: string) => number) => {
-        if (!getValueFn) return 0;
-        // USAR LA MISMA FÓRMULA QUE pnlCalculator.ts: utilidad = ingresos - costos
-        const ingresos = getValueFn('4');
-        const totalCostos = Math.abs(getValueFn('5')); // Usar valor absoluto como en pnlCalculator
-        return ingresos - totalCostos;
-      }
-    },
-    { 
-      code: 'EBITDA', 
-      name: '= EBITDA', 
-      level: 0, 
-      isParent: false, 
-      isCalculated: true,
-      formula: (data: MonthlyData, month?: string, getValueFn?: (code: string) => number) => {
-        if (!getValueFn) return 0;
-        const ingresos = getValueFn('4');
-        const totalCostos = getValueFn('5');
-        const depreciacion = getValueFn('5.1.4.1');
-        const utilidadOperativa = ingresos - totalCostos;
-        return utilidadOperativa + depreciacion; // + depreciación
-      }
-    }
+    // ELIMINADO: Las 3 utilidades se calculan y muestran al final con utilityCalculations
+    // Ya no necesitamos estas filas duplicadas en la estructura principal
   ];
 
   const toggleNode = (code: string) => {
@@ -177,42 +136,58 @@ const EditablePygMatrixV2: React.FC = () => {
   };
 
 
-  // Función para calcular las 3 utilidades
+  // USAR EXACTAMENTE LA MISMA LÓGICA QUE PygContainer.tsx
   const calculateUtilities = useCallback(async (data: FinancialData, months: string[]) => {
-    const calculations = { ub: {}, un: {}, ebitda: {} };
+    const calculations = { 
+      'Utilidad Bruta (UB)': {}, 
+      'Utilidad Neta (UN)': {}, 
+      'EBITDA': {} 
+    };
     
     for (const month of months) {
       try {
-        // Calcular UB (Utilidad Bruta/Contable) - incluye todo
-        const ubResult = await calculatePnl(data, month.toLowerCase(), 'contable', undefined, 1);
-        calculations.ub[month] = ubResult.waterfallData?.netProfit || 0;
+        // Convertir mes al formato que espera calculatePnl (capitalizado)
+        const monthForCalculation = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
         
-        // Calcular UN (Utilidad Neta/EBIT) - excluye intereses e impuestos
-        const unResult = await calculatePnl(data, month.toLowerCase(), 'operativo', undefined, 1);
-        calculations.un[month] = unResult.waterfallData?.netProfit || 0;
+        console.log(`🔍 BALANCE INTERNO - Calculando utilidades para ${month} (usando: ${monthForCalculation})`);
         
-        // Calcular EBITDA - excluye depreciación, intereses e impuestos
-        const ebitdaResult = await calculatePnl(data, month.toLowerCase(), 'caja', undefined, 1);
-        calculations.ebitda[month] = ebitdaResult.waterfallData?.netProfit || 0;
+        // 1. UB = Utilidad Bruta/Contable (sin exclusiones) - EXACTO como PyG
+        const ubResult = await calculatePnl(data, monthForCalculation, 'contable', undefined, 1);
+        calculations['Utilidad Bruta (UB)'][month] = ubResult.summaryKpis?.utilidad || 0;
+        
+        // 2. UN = Utilidad Neta/EBIT (excluye intereses) - EXACTO como PyG  
+        const unResult = await calculatePnl(data, monthForCalculation, 'operativo', undefined, 1);
+        calculations['Utilidad Neta (UN)'][month] = unResult.summaryKpis?.utilidad || 0;
+        
+        // 3. EBITDA (excluye depreciación e intereses) - EXACTO como PyG
+        const ebitdaResult = await calculatePnl(data, monthForCalculation, 'caja', undefined, 1);
+        calculations['EBITDA'][month] = ebitdaResult.summaryKpis?.utilidad || 0;
+        
+        console.log(`💰 BALANCE INTERNO UTILIDADES ${month}:`, {
+          ub: calculations['Utilidad Bruta (UB)'][month],
+          un: calculations['Utilidad Neta (UN)'][month], 
+          ebitda: calculations['EBITDA'][month],
+          inputMonth: monthForCalculation
+        });
         
       } catch (error) {
-        console.warn(`Error calculando utilidades para ${month}:`, error);
-        calculations.ub[month] = 0;
-        calculations.un[month] = 0;
-        calculations.ebitda[month] = 0;
+        console.error(`Error calculando utilidades para ${month}:`, error);
+        calculations['Utilidad Bruta (UB)'][month] = 0;
+        calculations['Utilidad Neta (UN)'][month] = 0;
+        calculations['EBITDA'][month] = 0;
       }
     }
     
     setUtilityCalculations(calculations);
   }, []);
 
-  // Usar la misma lógica que el PyG principal - desde pnlCalculator
+  // PyG Tree Data (matriz principal) + 3 utilidades simples
   const [pygTreeData, setPygTreeData] = useState<any[]>([]);
-  const [utilityCalculations, setUtilityCalculations] = useState<{
-    ub: Record<string, number>;
-    un: Record<string, number>;
-    ebitda: Record<string, number>;
-  }>({ ub: {}, un: {}, ebitda: {} });
+  const [utilityCalculations, setUtilityCalculations] = useState<Record<string, Record<string, number>>>({
+    'Utilidad Bruta (UB)': {},
+    'Utilidad Neta (UN)': {},
+    'EBITDA': {}
+  });
   
   // Obtener meses disponibles de forma segura
   const availableMonths = useMemo(() => {
@@ -436,39 +411,35 @@ const EditablePygMatrixV2: React.FC = () => {
     return cache;
   }, [pygTreeData]);
   
-  // Obtener valor de cuenta desde los datos calculados del PyG
+  // Obtener valor de cuenta desde los datos raw por mes específico
   const getAccountValueForRow = (code: string, monthData: MonthlyData, month: string): number => {
-    // Para las métricas calculadas (UB, UO, UN, etc.), usar el cache del árbol PyG
-    if (code.match(/^(UB|UO|UN|EBITDA|MB|MO|MN)$/)) {
-      const node = nodeCache.get(code);
-      if (node) {
-        console.log(`🔍 DEBUG: Found calculated metric ${code}:`, { value: node.value, name: node.name });
-        return node.value || 0;
-      }
-    }
-    
-    // Para cuentas normales, buscar primero en el cache del árbol PyG
-    const node = nodeCache.get(code);
-    if (node) {
-      console.log(`🔍 DEBUG: Found node ${code} in cache:`, { value: node.value, name: node.name });
-      return node.value || 0;
-    }
-    
-    // Si no está en el cache, intentar buscar directamente en los datos raw
+    // SIEMPRE buscar en datos raw por mes específico
     if (workingData?.raw) {
       const rawRow = workingData.raw.find(r => r['COD.'] === code);
       if (rawRow) {
-        // Convertir el nombre del mes al formato correcto
+        // ⚠️ CRÍTICO: Convertir mes al formato correcto (capitalizado)
         const monthKey = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
         const value = parseFloat(rawRow[monthKey] as string) || 0;
-        if (value !== 0) {
-          console.log(`🔍 DEBUG: Found ${code} in raw data:`, { month: monthKey, value });
-          return value;
-        }
+        
+        // Debug para verificar valores por mes
+        console.log(`💰 BALANCE INTERNO - ${code} en ${monthKey}:`, { 
+          value, 
+          rawValue: rawRow[monthKey],
+          allMonths: {
+            enero: rawRow['Enero'],
+            febrero: rawRow['Febrero'], 
+            marzo: rawRow['Marzo'],
+            abril: rawRow['Abril'],
+            mayo: rawRow['Mayo'],
+            junio: rawRow['Junio']
+          }
+        });
+        
+        return value;
       }
     }
     
-    console.log(`🔍 DEBUG: Node ${code} NOT FOUND. Cache size: ${nodeCache.size}, Available codes:`, Array.from(nodeCache.keys()).slice(0, 5));
+    console.log(`⚠️ BALANCE INTERNO - Código ${code} no encontrado en raw data`);
     return 0;
   };
 
@@ -644,50 +615,28 @@ const EditablePygMatrixV2: React.FC = () => {
               </td>
             </tr>
             
-            {/* UB - Utilidad Bruta (Contable) */}
-            <tr className="bg-green-500/10 font-bold border-t-2 border-green-500/30">
-              <td className="px-4 py-3 text-green-400">
-                UB
-              </td>
-              <td className="px-4 py-3 text-green-400">
-                Utilidad Bruta (Contable)
-              </td>
-              {months.map(month => (
-                <td key={`ub-${month}`} className="px-2 py-3 text-center text-green-400 font-semibold">
-                  {formatCurrency(utilityCalculations.ub[month] || 0)}
-                </td>
-              ))}
-            </tr>
-            
-            {/* UN - Utilidad Neta (EBIT) */}
-            <tr className="bg-blue-500/10 font-bold border-t border-blue-500/30">
-              <td className="px-4 py-3 text-blue-400">
-                UN
-              </td>
-              <td className="px-4 py-3 text-blue-400">
-                Utilidad Neta (EBIT)
-              </td>
-              {months.map(month => (
-                <td key={`un-${month}`} className="px-2 py-3 text-center text-blue-400 font-semibold">
-                  {formatCurrency(utilityCalculations.un[month] || 0)}
-                </td>
-              ))}
-            </tr>
-            
-            {/* EBITDA */}
-            <tr className="bg-yellow-500/10 font-bold border-t border-yellow-500/30">
-              <td className="px-4 py-3 text-yellow-400">
-                EBITDA
-              </td>
-              <td className="px-4 py-3 text-yellow-400">
-                Flujo Operativo (EBITDA)
-              </td>
-              {months.map(month => (
-                <td key={`ebitda-${month}`} className="px-2 py-3 text-center text-yellow-400 font-semibold">
-                  {formatCurrency(utilityCalculations.ebitda[month] || 0)}
-                </td>
-              ))}
-            </tr>
+            {/* 3 UTILIDADES FINALES - CORREGIR ALINEACIÓN */}
+            {Object.keys(utilityCalculations).map((utilityType, index) => {
+              const colors = [
+                { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/30' },
+                { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30' },
+                { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/30' }
+              ];
+              const color = colors[index];
+              
+              return (
+                <tr key={utilityType} className={`${color.bg} font-bold border-t ${index === 0 ? 'border-t-2' : ''} ${color.border}`}>
+                  <td className={`px-4 py-3 ${color.text}`} colSpan={1}>
+                    {utilityType} {/* Usar una sola columna para el nombre completo */}
+                  </td>
+                  {months.map(month => (
+                    <td key={`${utilityType}-${month}`} className={`px-2 py-3 text-right ${color.text} font-semibold`}>
+                      {formatCurrency(utilityCalculations[utilityType][month] || 0)}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -673,21 +673,11 @@ function calculateNodeValue(row: any, month: string): number {
       return sum;
     }, 0);
   } else {
-    const value = parseNumericValue(row[month] || '0');
-    
-    // DEBUG CRÍTICO: Ver exactamente qué está pasando
-    if (row['COD.'] === '4' || row['COD.'] === '4.1' || row['COD.'] === '4.1.1' || row['COD.'] === '4.1.1.1') {
-      console.log(`🔥 CRITICAL calculateNodeValue:`, {
-        code: row['COD.'],
-        cuenta: row['CUENTA'],
-        monthSearched: month,
-        rowKeys: Object.keys(row),
-        rawValue: row[month],
-        parsedValue: value,
-        entireRow: row
-      });
-    }
-    
+    // ⚠️ PERMANENTE: Los CSV tienen meses capitalizados ('Enero', 'Febrero'), 
+    // pero calculatePnl recibe meses en minúsculas ('enero', 'febrero').
+    // SIEMPRE capitalizar antes de buscar en row[month]
+    const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+    const value = parseNumericValue(row[capitalizedMonth] || '0');
     return value;
   }
 }
