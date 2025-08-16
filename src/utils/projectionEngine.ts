@@ -45,19 +45,21 @@ export class ProjectionEngine {
     const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 
                    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
-    // Extraer datos históricos para cada cuenta
+    // Extraer datos históricos para cada cuenta - SOLO MESES REALES (enero-junio)
     enhanced.raw?.forEach(row => {
       const accountKey = `${row['COD.']} - ${row['CUENTA']}`;
       if (!monthlyDataByAccount[accountKey]) {
         monthlyDataByAccount[accountKey] = new Array(12).fill(0);
       }
 
-      months.forEach((month, idx) => {
-        // Intentar ambos formatos: capitalizado y minúscula
+      // CRÍTICO: Solo extraer datos reales hasta junio (índices 0-5)
+      const realMonths = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio'];
+      realMonths.forEach((month, idx) => {
         const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
-        const value = parseFloat(row[capitalizedMonth] as string) || parseFloat(row[month] as string) || 0;
-        if (!isNaN(value)) {
+        const value = parseFloat(row[capitalizedMonth] as string) || 0;
+        if (!isNaN(value) && value !== 0) {
           monthlyDataByAccount[accountKey][idx] = value;
+          console.log(`📊 ProjectionEngine: Datos reales ${month} para ${accountKey}: ${value}`);
         }
       });
     });
@@ -96,8 +98,11 @@ export class ProjectionEngine {
 
       // Actualizar datos con proyecciones
       let projectionIndex = 0;
-      months.forEach((month, idx) => {
-        if (monthlyDataByAccount[account][idx] === 0 && projectionIndex < adjustedProjections.length) {
+      // CRÍTICO: Solo proyectar julio-diciembre (índices 6-11)
+      const monthsToProject = ['julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+      monthsToProject.forEach((month, projIdx) => {
+        const monthIdx = 6 + projIdx; // julio=6, agosto=7, etc.
+        if (projectionIndex < adjustedProjections.length) {
           // Crear o actualizar datos mensuales
           if (!enhanced.monthly![month]) {
             enhanced.monthly![month] = {
@@ -123,7 +128,7 @@ export class ProjectionEngine {
                 ...enhanced.raw[rawRowIndex],
                 [capitalizedMonth]: adjustedProjections[projectionIndex]
               };
-              console.log(`🚀 ProjectionEngine: Updated raw data for ${accountCode} - ${month}:`, adjustedProjections[projectionIndex]);
+              console.log(`🚀 ProjectionEngine: PROYECTADO ${month} para ${accountCode}: ${adjustedProjections[projectionIndex]} (era 0)`);
             }
           }
 

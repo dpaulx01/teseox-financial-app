@@ -532,27 +532,32 @@ const EditablePygMatrixV2: React.FC = () => {
     try {
       const updatedData: FinancialData = JSON.parse(JSON.stringify(workingData));
       
-      // Actualizar valor en raw data si existe
+      // 1. Actualizar valor en raw data si existe
       if (updatedData.raw) {
         const rawRowIndex = updatedData.raw.findIndex(r => r['COD.'] === row.code);
         if (rawRowIndex >= 0) {
           // Capitalizar mes para raw data (que usa columnas capitalizadas)
           const monthKey = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+          const oldValue = updatedData.raw[rawRowIndex][monthKey];
           updatedData.raw[rawRowIndex] = {
             ...updatedData.raw[rawRowIndex],
             [monthKey]: newValue
           };
+          console.log(`💾 EDICIÓN: ${row.code} ${month} ${oldValue} → ${newValue}`);
         }
       }
 
-      // Recalcular métricas derivadas
-      if (updatedData.monthly[month]) {
-        updatedData.monthly[month] = ProjectionEngine.recalculateMetrics(updatedData.monthly[month]);
-      }
-
+      // 2. CRÍTICO: Reconstruir árbol PyG para recalcular jerarquía
+      console.log('🔄 Reconstruyendo árbol PyG tras edición...');
+      const updatedPygData = await calculatePnl(updatedData, month.toLowerCase(), 'contable');
+      
+      // 3. Actualizar datos en memoria
       setEnhancedData(updatedData);
       
-      // IMPORTANTE: Recalcular utilidades después de actualizar datos
+      // 4. Forzar actualización del árbol PyG
+      setPygTreeData(updatedPygData.treeData);
+      
+      // 5. IMPORTANTE: Recalcular utilidades después de actualizar datos  
       console.log('📊 Recalculando utilidades después de edición...');
       setTimeout(() => {
         calculateUtilities(updatedData, availableMonths);
