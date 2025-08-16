@@ -67,7 +67,20 @@ export class ProjectionEngine {
     // Aplicar algoritmos avanzados de proyección
     const accountsToProject = specificAccounts || Object.keys(monthlyDataByAccount);
     
-    accountsToProject.forEach(account => {
+    // CRÍTICO: Solo proyectar cuentas hoja (detalle), no cuentas padre
+    const leafAccounts = accountsToProject.filter(account => {
+      const accountCode = account.split(' - ')[0];
+      // Es cuenta hoja si no hay otras cuentas que empiecen con su código + "."
+      const isParent = accountsToProject.some(otherAccount => {
+        const otherCode = otherAccount.split(' - ')[0];
+        return otherCode !== accountCode && otherCode.startsWith(accountCode + '.');
+      });
+      return !isParent;
+    });
+    
+    console.log(`🌿 ProjectionEngine: Proyectando solo cuentas hoja: ${leafAccounts.length} de ${accountsToProject.length} cuentas`);
+    
+    leafAccounts.forEach(account => {
       const accountData = monthlyDataByAccount[account];
       if (!accountData || accountData.every(v => v === 0)) return;
 
@@ -146,6 +159,57 @@ export class ProjectionEngine {
         }
       });
     });
+
+    // CRÍTICO: Recalcular cuentas padre sumando sus hijos proyectados
+    if (enhanced.raw) {
+      const monthsToRecalculate = ['julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+      
+      monthsToRecalculate.forEach(month => {
+        const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
+        
+        // Función para recalcular jerárquicamente de abajo hacia arriba
+        function recalculateAccountHierarchy() {
+          let changed = true;
+          while (changed) {
+            changed = false;
+            
+            enhanced.raw!.forEach(row => {
+              const accountCode = row['COD.']?.toString();
+              if (!accountCode) return;
+              
+              // Buscar todos los hijos directos de esta cuenta
+              const children = enhanced.raw!.filter(childRow => {
+                const childCode = childRow['COD.']?.toString();
+                if (!childCode || childCode === accountCode) return false;
+                
+                // Es hijo directo si empieza con parentCode + "." y no tiene más puntos después
+                if (!childCode.startsWith(accountCode + '.')) return false;
+                
+                const suffix = childCode.substring(accountCode.length + 1);
+                return !suffix.includes('.'); // No debe tener más puntos (sería nieto)
+              });
+              
+              if (children.length > 0) {
+                // Sumar valores de hijos directos
+                const childrenSum = children.reduce((sum, child) => {
+                  const childValue = parseFloat(child[capitalizedMonth] || '0') || 0;
+                  return sum + childValue;
+                }, 0);
+                
+                const currentValue = parseFloat(row[capitalizedMonth] || '0') || 0;
+                if (Math.abs(currentValue - childrenSum) > 0.01) { // Solo si hay diferencia significativa
+                  row[capitalizedMonth] = childrenSum;
+                  console.log(`🔄 Recalculado ${month} para ${accountCode}: ${childrenSum} (era ${currentValue})`);
+                  changed = true;
+                }
+              }
+            });
+          }
+        }
+        
+        recalculateAccountHierarchy();
+      });
+    }
 
     // Recalcular métricas derivadas
     Object.keys(enhanced.monthly!).forEach(month => {
