@@ -455,9 +455,11 @@ const EditablePygMatrixV2: React.FC = () => {
       if (updatedData.raw) {
         const rawRowIndex = updatedData.raw.findIndex(r => r['COD.'] === row.code);
         if (rawRowIndex >= 0) {
+          // Capitalizar mes para raw data (que usa columnas capitalizadas)
+          const monthKey = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
           updatedData.raw[rawRowIndex] = {
             ...updatedData.raw[rawRowIndex],
-            [month]: newValue
+            [monthKey]: newValue
           };
         }
       }
@@ -468,6 +470,13 @@ const EditablePygMatrixV2: React.FC = () => {
       }
 
       setEnhancedData(updatedData);
+      
+      // IMPORTANTE: Recalcular utilidades después de actualizar datos
+      console.log('📊 Recalculando utilidades después de edición...');
+      setTimeout(() => {
+        calculateUtilities(updatedData, availableMonths);
+      }, 100);
+      
     } catch (error) {
       console.error('Error saving matrix cell:', error);
       throw error;
@@ -513,6 +522,54 @@ const EditablePygMatrixV2: React.FC = () => {
             <p className="text-text-secondary mt-2">
               Balance Interno - Matriz con UB, UN y EBITDA
             </p>
+          </div>
+          <div className="flex items-center space-x-3">
+            {/* Botón Colapsar/Expandir Todo */}
+            <button
+              onClick={() => {
+                const allCollapsed = Object.keys(expandedNodes).length === 0 || 
+                  Object.values(expandedNodes).every(v => v === false);
+                
+                if (allCollapsed) {
+                  // Expandir todos los nodos padre
+                  const newExpanded: Record<string, boolean> = {};
+                  pygStructure.forEach(row => {
+                    if (row.isParent) {
+                      newExpanded[row.code] = true;
+                    }
+                  });
+                  setExpandedNodes(newExpanded);
+                } else {
+                  // Colapsar todo
+                  setExpandedNodes({});
+                }
+              }}
+              className="px-4 py-2 bg-glass/50 hover:bg-glass/70 border border-primary/30 
+                       rounded-lg text-sm text-primary transition-all flex items-center space-x-2"
+            >
+              {Object.keys(expandedNodes).length === 0 || 
+               Object.values(expandedNodes).every(v => v === false) ? (
+                <>
+                  <ChevronDown className="w-4 h-4" />
+                  <span>Expandir Todo</span>
+                </>
+              ) : (
+                <>
+                  <ChevronRight className="w-4 h-4" />
+                  <span>Colapsar Todo</span>
+                </>
+              )}
+            </button>
+            
+            {/* Indicador de Proyecciones */}
+            {enhancedData && (
+              <div className="px-3 py-1 bg-accent/20 border border-accent/30 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <Zap className="w-4 h-4 text-accent" />
+                  <span className="text-xs text-accent">Proyecciones IA Activas</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -593,16 +650,27 @@ const EditablePygMatrixV2: React.FC = () => {
                       );
                     }
                     
+                    // Detectar si es un mes proyectado (después de junio o con valor 0 en datos originales)
+                    const monthIndex = months.indexOf(month);
+                    const isProjected = monthIndex > 5 || (value === 0 && monthIndex >= 0);
+                    
                     return (
-                      <td key={`${month}-${row.code}`} className="px-2 py-2">
+                      <td key={`${month}-${row.code}`} className="px-2 py-2 relative">
                         <EditableCell
                           initialValue={value}
                           onSave={(newValue) => handleSave(month, row, newValue)}
                           isReadOnly={row.isParent}
                           className={`group-hover:bg-glass/30 ${
                             row.isParent ? 'bg-primary/5' : ''
-                          }`}
+                          } ${isProjected ? 'bg-accent/5 border-accent/20' : ''}`}
                         />
+                        {/* Indicador de proyección IA */}
+                        {isProjected && value !== 0 && (
+                          <div className="absolute top-0 right-0 mt-1 mr-1">
+                            <div className="w-2 h-2 bg-accent rounded-full animate-pulse" 
+                                 title="Valor proyectado por IA" />
+                          </div>
+                        )}
                       </td>
                     );
                   })}
