@@ -113,6 +113,13 @@ const EditablePygMatrixV2: React.FC = () => {
         });
       }
       
+      // CRÍTICO: Asegurar que monthly siempre tenga claves en minúsculas
+      const normalizedMonthly: Record<string, any> = {};
+      Object.entries(dataToEnhance.monthly).forEach(([key, value]) => {
+        normalizedMonthly[key.toLowerCase()] = value;
+      });
+      dataToEnhance.monthly = normalizedMonthly;
+      
       // Debug: Verificar que se generaron proyecciones
       console.log('📊 ProjectionEngine completado:', {
         hasJulio: !!dataToEnhance.raw?.find(r => r['Julio'] !== undefined && r['Julio'] !== 0),
@@ -257,9 +264,17 @@ const EditablePygMatrixV2: React.FC = () => {
     'EBITDA': {}
   });
   
-  // Obtener meses disponibles de forma segura
+  // Obtener meses disponibles de forma segura - SIEMPRE en minúsculas
   const availableMonths = useMemo(() => {
-    return workingData?.monthly ? getSortedMonths(workingData.monthly) : [];
+    if (!workingData?.monthly) return [];
+    
+    // Normalizar todas las claves a minúsculas
+    const normalizedMonthly: Record<string, any> = {};
+    Object.entries(workingData.monthly).forEach(([key, value]) => {
+      normalizedMonthly[key.toLowerCase()] = value;
+    });
+    
+    return getSortedMonths(normalizedMonthly);
   }, [workingData]);
   
   // CALCULAR PyG SOLO DESPUÉS de que ProjectionEngine complete los datos
