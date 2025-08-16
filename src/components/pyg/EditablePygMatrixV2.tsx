@@ -33,7 +33,7 @@ const EditablePygMatrixV2: React.FC = () => {
   const financialData = isSimulationMode && scenarioData ? scenarioData : realFinancialData;
 
   const [enhancedData, setEnhancedData] = useState<FinancialData | null>(null);
-  const [analysisType, setAnalysisType] = useState<AnalysisType>('contable');
+  // Eliminado analysisType - Las 3 utilidades se muestran en las últimas filas
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   
   // DEBUG: Verificar qué datos estamos recibiendo
@@ -177,25 +177,7 @@ const EditablePygMatrixV2: React.FC = () => {
   };
 
 
-  const isExcludedInAnalysis = (row: PygRow): boolean => {
-    if (analysisType === 'contable') return false;
-    
-    // Para análisis operativo (EBIT): excluir intereses e impuestos
-    if (analysisType === 'operativo') {
-      return row.name.toLowerCase().includes('interes') || 
-             row.name.toLowerCase().includes('impuesto');
-    }
-    
-    // Para análisis de caja (EBITDA): excluir depreciación, intereses e impuestos
-    if (analysisType === 'caja') {
-      return row.name.toLowerCase().includes('depreci') || 
-             row.name.toLowerCase().includes('amortiz') ||
-             row.name.toLowerCase().includes('interes') || 
-             row.name.toLowerCase().includes('impuesto');
-    }
-    
-    return false;
-  };
+  // Eliminado isExcludedInAnalysis - La lógica de exclusión se maneja en las filas de totales
 
   // Usar la misma lógica que el PyG principal - desde pnlCalculator
   const [pygTreeData, setPygTreeData] = useState<any[]>([]);
@@ -342,10 +324,10 @@ const EditablePygMatrixV2: React.FC = () => {
           exists: !!workingData.monthly[periodForCalculation]
         });
         
-        // USAR EXACTAMENTE LA MISMA LLAMADA QUE PygContainer.tsx
+        // USAR EXACTAMENTE LA MISMA LLAMADA QUE PygContainer.tsx con período en lowercase
         const result = await calculatePnl(
           workingData,
-          periodForCalculation, // CONVERTIDO como PygContainer
+          rawPeriod, // USAR LOWERCASE como PygContainer
           'contable',
           undefined, // mixedCosts como PygContainer  
           1 // company_id por defecto como PygContainer
@@ -519,49 +501,17 @@ const EditablePygMatrixV2: React.FC = () => {
               <span>Estado de Resultados - Matriz Editable</span>
             </h2>
             <p className="text-text-secondary mt-2">
-              Balance Interno - Análisis {analysisType.charAt(0).toUpperCase() + analysisType.slice(1)}
+              Balance Interno - Matriz con UB, UN y EBITDA
             </p>
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            {/* Selector de tipo de análisis */}
-            <div className="flex items-center space-x-2">
-              <label className="text-sm text-text-secondary">Perspectiva:</label>
-              <select
-                value={analysisType}
-                onChange={(e) => setAnalysisType(e.target.value as AnalysisType)}
-                className="bg-dark-surface border border-border/30 rounded-lg px-3 py-1.5 text-sm text-white"
-              >
-                <option value="contable">P.E. Contable - Estándar</option>
-                <option value="operativo">P.E. Operativo - EBIT</option>
-                <option value="caja">P.E. de Caja - EBITDA</option>
-              </select>
-            </div>
           </div>
         </div>
       </div>
 
-      {/* Descripción del tipo de análisis */}
+      {/* Descripción de la matriz */}
       <div className="glass-card p-4 bg-primary/10 border border-primary/30">
         <div className="text-sm text-primary">
-          {analysisType === 'contable' && (
-            <>
-              <strong>Análisis Contable:</strong> Incluye todos los gastos según principios contables.
-              Muestra la utilidad neta considerando depreciación, intereses e impuestos.
-            </>
-          )}
-          {analysisType === 'operativo' && (
-            <>
-              <strong>Análisis Operativo (EBIT):</strong> Excluye gastos financieros e impuestos.
-              Muestra la capacidad operativa del negocio sin efectos de financiamiento.
-            </>
-          )}
-          {analysisType === 'caja' && (
-            <>
-              <strong>Análisis de Caja (EBITDA):</strong> Excluye gastos no monetarios.
-              Muestra la generación de efectivo operativo antes de inversiones.
-            </>
-          )}
+          <strong>Matriz de Utilidades:</strong> Las últimas 3 filas muestran UB (Utilidad Bruta/Contable), 
+          UN (Utilidad Neta/EBIT) y EBITDA con sus respectivos cálculos y exclusiones.
         </div>
       </div>
 
@@ -580,7 +530,7 @@ const EditablePygMatrixV2: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-border/50">
             {pygStructure.filter(shouldShowRow).map(row => {
-              const isExcluded = isExcludedInAnalysis(row);
+              const isExcluded = false; // Sin exclusiones en filas normales
               
               return (
                 <tr 
@@ -649,6 +599,58 @@ const EditablePygMatrixV2: React.FC = () => {
                 </tr>
               );
             })}
+            
+            {/* Separador */}
+            <tr className="bg-border/20">
+              <td colSpan={14} className="px-4 py-1">
+                <div className="w-full h-px bg-primary/30"></div>
+              </td>
+            </tr>
+            
+            {/* UB - Utilidad Bruta (Contable) */}
+            <tr className="bg-green-500/10 font-bold border-t-2 border-green-500/30">
+              <td className="px-4 py-3 text-green-400">
+                UB
+              </td>
+              <td className="px-4 py-3 text-green-400">
+                Utilidad Bruta (Contable)
+              </td>
+              {months.map(month => (
+                <td key={`ub-${month}`} className="px-2 py-3 text-center text-green-400 font-semibold">
+                  $0.00
+                </td>
+              ))}
+            </tr>
+            
+            {/* UN - Utilidad Neta (EBIT) */}
+            <tr className="bg-blue-500/10 font-bold border-t border-blue-500/30">
+              <td className="px-4 py-3 text-blue-400">
+                UN
+              </td>
+              <td className="px-4 py-3 text-blue-400">
+                Utilidad Neta (EBIT)
+              </td>
+              {months.map(month => (
+                <td key={`un-${month}`} className="px-2 py-3 text-center text-blue-400 font-semibold">
+                  $0.00
+                </td>
+              ))}
+            </tr>
+            
+            {/* EBITDA */}
+            <tr className="bg-yellow-500/10 font-bold border-t border-yellow-500/30">
+              <td className="px-4 py-3 text-yellow-400">
+                EBITDA
+              </td>
+              <td className="px-4 py-3 text-yellow-400">
+                Flujo Operativo (EBITDA)
+              </td>
+              {months.map(month => (
+                <td key={`ebitda-${month}`} className="px-2 py-3 text-center text-yellow-400 font-semibold">
+                  $0.00
+                </td>
+              ))}
+            </tr>
           </tbody>
         </table>
       </div>
