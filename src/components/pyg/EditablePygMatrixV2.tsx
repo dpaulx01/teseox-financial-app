@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFinancialData } from '../../contexts/DataContext';
 import { useScenario } from '../../contexts/ScenarioContext';
 import { EditableCell } from './EditableCell';
@@ -177,10 +177,42 @@ const EditablePygMatrixV2: React.FC = () => {
   };
 
 
-  // Eliminado isExcludedInAnalysis - La lógica de exclusión se maneja en las filas de totales
+  // Función para calcular las 3 utilidades
+  const calculateUtilities = useCallback(async (data: FinancialData, months: string[]) => {
+    const calculations = { ub: {}, un: {}, ebitda: {} };
+    
+    for (const month of months) {
+      try {
+        // Calcular UB (Utilidad Bruta/Contable) - incluye todo
+        const ubResult = await calculatePnl(data, month.toLowerCase(), 'contable', undefined, 1);
+        calculations.ub[month] = ubResult.waterfallData?.netProfit || 0;
+        
+        // Calcular UN (Utilidad Neta/EBIT) - excluye intereses e impuestos
+        const unResult = await calculatePnl(data, month.toLowerCase(), 'operativo', undefined, 1);
+        calculations.un[month] = unResult.waterfallData?.netProfit || 0;
+        
+        // Calcular EBITDA - excluye depreciación, intereses e impuestos
+        const ebitdaResult = await calculatePnl(data, month.toLowerCase(), 'caja', undefined, 1);
+        calculations.ebitda[month] = ebitdaResult.waterfallData?.netProfit || 0;
+        
+      } catch (error) {
+        console.warn(`Error calculando utilidades para ${month}:`, error);
+        calculations.ub[month] = 0;
+        calculations.un[month] = 0;
+        calculations.ebitda[month] = 0;
+      }
+    }
+    
+    setUtilityCalculations(calculations);
+  }, []);
 
   // Usar la misma lógica que el PyG principal - desde pnlCalculator
   const [pygTreeData, setPygTreeData] = useState<any[]>([]);
+  const [utilityCalculations, setUtilityCalculations] = useState<{
+    ub: Record<string, number>;
+    un: Record<string, number>;
+    ebitda: Record<string, number>;
+  }>({ ub: {}, un: {}, ebitda: {} });
   
   // Obtener meses disponibles de forma segura
   const availableMonths = useMemo(() => {
@@ -363,7 +395,12 @@ const EditablePygMatrixV2: React.FC = () => {
     };
     
     calculatePygData();
-  }, [workingData, availableMonths, enhancedData]);
+    
+    // Calcular las 3 utilidades después de los datos principales
+    if (workingData && availableMonths.length > 0) {
+      calculateUtilities(workingData, availableMonths);
+    }
+  }, [workingData, availableMonths, enhancedData, calculateUtilities]);
   
   // Cache para búsquedas en el árbol (evitar logs excesivos)
   const nodeCache = useMemo(() => {
@@ -617,7 +654,7 @@ const EditablePygMatrixV2: React.FC = () => {
               </td>
               {months.map(month => (
                 <td key={`ub-${month}`} className="px-2 py-3 text-center text-green-400 font-semibold">
-                  $0.00
+                  {formatCurrency(utilityCalculations.ub[month] || 0)}
                 </td>
               ))}
             </tr>
@@ -632,7 +669,7 @@ const EditablePygMatrixV2: React.FC = () => {
               </td>
               {months.map(month => (
                 <td key={`un-${month}`} className="px-2 py-3 text-center text-blue-400 font-semibold">
-                  $0.00
+                  {formatCurrency(utilityCalculations.un[month] || 0)}
                 </td>
               ))}
             </tr>
@@ -647,7 +684,7 @@ const EditablePygMatrixV2: React.FC = () => {
               </td>
               {months.map(month => (
                 <td key={`ebitda-${month}`} className="px-2 py-3 text-center text-yellow-400 font-semibold">
-                  $0.00
+                  {formatCurrency(utilityCalculations.ebitda[month] || 0)}
                 </td>
               ))}
             </tr>
