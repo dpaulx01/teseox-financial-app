@@ -1114,7 +1114,7 @@ const DataConfiguration: React.FC = () => {
               </div>
             )}
 
-            {analysisConfig && (
+            {analysisConfig && analysisConfig.breakEvenConfigs && (
               <>
                 {/* Analysis Type Selector */}
                 <div className="glass-card p-6 rounded-xl border border-border">

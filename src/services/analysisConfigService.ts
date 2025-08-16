@@ -80,7 +80,6 @@ class AnalysisConfigService {
       // Usar API RBAC real
       const response = await fetch(`${this.baseUrl}/analysis/config`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
           'Content-Type': 'application/json'
         }
       });
@@ -154,7 +153,6 @@ class AnalysisConfigService {
       // Usar API RBAC real
       const response = await fetch(`${this.baseUrl}/analysis/patterns`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
           'Content-Type': 'application/json'
         }
       });
@@ -397,7 +395,6 @@ class AnalysisConfigService {
       const response = await fetch(`${this.baseUrl}/analysis/patterns/delete`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({

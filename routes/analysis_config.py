@@ -49,6 +49,12 @@ DEFAULT_PATTERNS = {
         {"id": 14, "name": "Prestamo", "value": "prestamo", "type": "contains"},
         {"id": 15, "name": "Crédito", "value": "crédito", "type": "contains"},
         {"id": 16, "name": "Credito", "value": "credito", "type": "contains"}
+    ],
+    "impuestos": [
+        {"id": 17, "name": "Impuesto", "value": "impuesto", "type": "contains"},
+        {"id": 18, "name": "Tributo", "value": "tributo", "type": "contains"},
+        {"id": 19, "name": "Fiscal", "value": "fiscal", "type": "contains"},
+        {"id": 20, "name": "Tax (inglés)", "value": "tax", "type": "contains"}
     ]
 }
 
@@ -102,9 +108,15 @@ async def get_exclusion_patterns():
     try:
         # TODO: Implementar consulta a BD cuando las tablas estén creadas
         # Por ahora devolver datos por defecto
+        # Convertir a formato compatible con frontend
+        converted_patterns = {
+            "depreciacion": [pattern["value"] for pattern in DEFAULT_PATTERNS["depreciacion"]],
+            "intereses": [pattern["value"] for pattern in DEFAULT_PATTERNS["intereses"]],
+            "impuestos": [pattern["value"] for pattern in DEFAULT_PATTERNS["impuestos"]]
+        }
         return {
             "success": True,
-            "data": DEFAULT_PATTERNS
+            "data": converted_patterns
         }
     except Exception as e:
         logger.error(f"Error al obtener patrones: {e}")
@@ -118,8 +130,12 @@ async def get_analysis_config():
             "success": True,
             "data": {
                 "analysis_types": DEFAULT_ANALYSIS_TYPES,
-                "exclusion_patterns": DEFAULT_PATTERNS,
-                "break_even_configs": {
+                "accountPatterns": {
+                    "depreciacion": [pattern["value"] for pattern in DEFAULT_PATTERNS["depreciacion"]],
+                    "intereses": [pattern["value"] for pattern in DEFAULT_PATTERNS["intereses"]],
+                    "impuestos": [pattern["value"] for pattern in DEFAULT_PATTERNS["impuestos"]]
+                },
+                "breakEvenConfigs": {
                     "contable": {
                         "includeDepreciacion": True,
                         "includeIntereses": True,
