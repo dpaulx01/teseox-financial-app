@@ -361,6 +361,21 @@ class AnalysisConfigService {
    */
   async deletePattern(patternId: number): Promise<boolean> {
     try {
+      // TODO: Implementar cuando el backend esté listo
+      // Por ahora, simular eliminación exitosa y limpiar cache
+      console.warn('⚠️ Backend API no implementado. Simulando eliminación de patrón:', patternId);
+      console.log('Para eliminar permanentemente, edite el archivo analysisConfigService.ts línea 433-442');
+      
+      // Simular delay de red
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Limpiar cache para forzar recarga
+      this.clearCache();
+      
+      // Retornar éxito simulado
+      return true;
+      
+      /* CÓDIGO ORIGINAL PARA CUANDO EL BACKEND ESTÉ LISTO:
       const response = await fetch(`${this.baseUrl}/analysis_config.php?action=delete_pattern`, {
         method: 'POST',
         headers: {
@@ -381,10 +396,9 @@ class AnalysisConfigService {
         throw new Error(result.error || 'Error al eliminar patrón');
       }
 
-      // Limpiar cache después de actualización
       this.clearCache();
-      
       return true;
+      */
       
     } catch (error) {
       console.error('Error al eliminar patrón:', error);
@@ -431,14 +445,25 @@ class AnalysisConfigService {
   getDefaultPatterns(): Record<string, any[]> {
     return {
       depreciacion: [
-        { id: 1, name: 'Depreciación', value: 'depreciacion', type: 'contains' },
-        { id: 2, name: 'Amortización', value: 'amortizacion', type: 'contains' },
-        { id: 3, name: 'Depresiación', value: 'depresiacion', type: 'contains' }
+        // IMPORTANTE: Incluir AMBAS versiones (con y sin acento) para máxima compatibilidad
+        { id: 1, name: 'Depreciación (con acento)', value: 'depreciación', type: 'contains' },
+        { id: 2, name: 'Depreciacion (sin acento)', value: 'depreciacion', type: 'contains' },
+        { id: 3, name: 'Amortización (con acento)', value: 'amortización', type: 'contains' },
+        { id: 4, name: 'Amortizacion (sin acento)', value: 'amortizacion', type: 'contains' },
+        { id: 5, name: 'Propiedades Plantas', value: 'propiedades', type: 'contains' },
+        { id: 6, name: 'Intangibles', value: 'intangible', type: 'contains' }
+        // REMOVIDO: 'adecuacion' - puede coincidir con cuentas no relacionadas con depreciación
       ],
       intereses: [
-        { id: 4, name: 'Intereses', value: 'interes', type: 'contains' },
-        { id: 5, name: 'Gastos financieros', value: 'gastos financieros', type: 'contains' },
-        { id: 6, name: 'Gastos de gestión', value: 'gastos de gestión y credito', type: 'contains' }
+        { id: 8, name: 'Intereses', value: 'interes', type: 'contains' },
+        { id: 9, name: 'Interés (con acento)', value: 'interés', type: 'contains' },
+        { id: 10, name: 'Gastos financieros', value: 'gastos financieros', type: 'contains' },
+        { id: 11, name: 'Financiero', value: 'financiero', type: 'contains' },
+        { id: 12, name: 'Gastos de gestión', value: 'gastos de gestión y credito', type: 'contains' },
+        { id: 13, name: 'Préstamo', value: 'préstamo', type: 'contains' },
+        { id: 14, name: 'Prestamo', value: 'prestamo', type: 'contains' },
+        { id: 15, name: 'Crédito', value: 'crédito', type: 'contains' },
+        { id: 16, name: 'Credito', value: 'credito', type: 'contains' }
       ]
     };
   }

@@ -277,8 +277,21 @@ function applyViewAdjustments(treeData: AccountNode[], viewType: PnlViewType, co
     
     // Verificar si debe excluir depreciación/amortización
     if (!config.includeDepreciacion) {
-      if (ACCOUNT_PATTERNS.depreciacion.some(pattern => nameLower.includes(pattern.toLowerCase()))) {
+      // Normalizar texto para mejor coincidencia (remover acentos)
+      const normalizedName = nameLower
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, ""); // Remover acentos
+      
+      const shouldExclude = ACCOUNT_PATTERNS.depreciacion.some(pattern => {
+        const normalizedPattern = pattern.toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+        return normalizedName.includes(normalizedPattern);
+      });
+      
+      if (shouldExclude) {
         node.excluded = true;
+        console.log(`✅ EBITDA (fallback): Excluyendo ${node.code} - ${node.name}`);
       }
     }
     
@@ -430,6 +443,14 @@ function applyViewAdjustmentsWithConfig(treeData: AccountNode[], viewType: PnlVi
   const analysisConfig = config.breakEvenConfigs[viewType];
   const patterns = config.accountPatterns;
   
+  console.log('🔍 CONFIG DEBUG:', {
+    viewType,
+    hasConfig: !!analysisConfig,
+    hasPatterns: !!patterns,
+    includeDepreciacion: analysisConfig?.includeDepreciacion,
+    depreciacionPatterns: patterns?.depreciacion
+  });
+  
   if (!analysisConfig || !patterns) {
     console.warn('Configuración de análisis no encontrada, usando configuración por defecto');
     return applyViewAdjustments(treeData, viewType);
@@ -444,8 +465,37 @@ function applyViewAdjustmentsWithConfig(treeData: AccountNode[], viewType: PnlVi
     
     // Verificar si debe excluir depreciación/amortización
     if (!analysisConfig.includeDepreciacion && patterns.depreciacion) {
-      if (patterns.depreciacion.some((pattern: string) => nameLower.includes(pattern.toLowerCase()))) {
+      // Normalizar texto para mejor coincidencia (remover acentos)
+      const normalizedName = nameLower
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, ""); // Remover acentos
+      
+      // Debug específico para cuentas problemáticas
+      if (node.code === '5.1.4.1' || node.code === '5.1.4.18') {
+        console.log(`🔍 EBITDA Debug - Evaluando ${node.code}: ${node.name}`, {
+          nameLower,
+          normalizedName,
+          patterns: patterns.depreciacion,
+          willExclude: patterns.depreciacion.some((pattern: string) => {
+            const normalizedPattern = pattern.toLowerCase()
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "");
+            return normalizedName.includes(normalizedPattern);
+          })
+        });
+      }
+      
+      // Buscar coincidencias normalizando tanto el patrón como el nombre
+      const shouldExclude = patterns.depreciacion.some((pattern: string) => {
+        const normalizedPattern = pattern.toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+        return normalizedName.includes(normalizedPattern);
+      });
+      
+      if (shouldExclude) {
         node.excluded = true;
+        console.log(`✅ EBITDA: Excluyendo ${node.code} - ${node.name}`);
       }
     }
     

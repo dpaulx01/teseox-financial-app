@@ -53,7 +53,9 @@ export class ProjectionEngine {
       }
 
       months.forEach((month, idx) => {
-        const value = parseFloat(row[month.charAt(0).toUpperCase() + month.slice(1)] as string) || 0;
+        // Intentar ambos formatos: capitalizado y minúscula
+        const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
+        const value = parseFloat(row[capitalizedMonth] as string) || parseFloat(row[month] as string) || 0;
         if (!isNaN(value)) {
           monthlyDataByAccount[accountKey][idx] = value;
         }
@@ -109,6 +111,20 @@ export class ProjectionEngine {
               depreciacion: 0,
               utilidadNeta: 0
             };
+          }
+
+          // CRÍTICO: También actualizar RAW data para que calculatePnl lo encuentre
+          if (enhanced.raw) {
+            const accountCode = account.split(' - ')[0];
+            const rawRowIndex = enhanced.raw.findIndex(r => r['COD.'] === accountCode);
+            if (rawRowIndex >= 0) {
+              const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
+              enhanced.raw[rawRowIndex] = {
+                ...enhanced.raw[rawRowIndex],
+                [capitalizedMonth]: adjustedProjections[projectionIndex]
+              };
+              console.log(`🚀 ProjectionEngine: Updated raw data for ${accountCode} - ${month}:`, adjustedProjections[projectionIndex]);
+            }
           }
 
           // Mapear cuenta a campo apropiado (simplificado)

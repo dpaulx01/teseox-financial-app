@@ -122,15 +122,16 @@ const EditablePygMatrixV2: React.FC = () => {
       }
     },
     { 
-      code: 'UO', 
-      name: '= UTILIDAD OPERATIVA (EBIT)', 
+      code: 'UN', 
+      name: '= UTILIDAD NETA', 
       level: 0, 
       isParent: false, 
       isCalculated: true,
       formula: (data: MonthlyData, month?: string, getValueFn?: (code: string) => number) => {
         if (!getValueFn) return 0;
+        // USAR LA MISMA FÓRMULA QUE pnlCalculator.ts: utilidad = ingresos - costos
         const ingresos = getValueFn('4');
-        const totalCostos = getValueFn('5');
+        const totalCostos = Math.abs(getValueFn('5')); // Usar valor absoluto como en pnlCalculator
         return ingresos - totalCostos;
       }
     },
@@ -222,46 +223,94 @@ const EditablePygMatrixV2: React.FC = () => {
         // USAR LA MISMA LÓGICA QUE PygContainer.tsx
         const availableKeys = Object.keys(workingData.monthly);
         
-        // FUNCIÓN COPIADA EXACTAMENTE DE PygContainer.tsx (línea 94-114)
+        // Debug: Ver qué meses están disponibles y con qué datos
+        console.log('🔍 DEBUG: Available months in workingData:', availableKeys);
+        if (workingData.raw && workingData.raw.length > 0) {
+          const sampleRow = workingData.raw[0];
+          console.log('🔍 DEBUG: Sample raw row columns:', Object.keys(sampleRow));
+          console.log('🔍 DEBUG: Sample values for each month:', 
+            availableKeys.map(month => ({
+              month,
+              sampleValue: sampleRow[month.charAt(0).toUpperCase() + month.slice(1).toLowerCase()]
+            }))
+          );
+        }
+        
+        // FUNCIÓN SIMPLIFICADA COMO PygContainer.tsx - SOLO maneja conversiones necesarias
         const convertPeriodForCalculation = (periodo: string): string => {
           if (!workingData?.monthly) return periodo;
           
-          const monthsMap: Record<string, string> = {
-            '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril',
-            '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto',
-            '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre'
-          };
-          
-          // Si el período está en formato YYYY-MM, convertir al formato que usa financialData
-          if (periodo.includes('-')) {
-            const [year, month] = periodo.split('-');
-            const monthName = monthsMap[month];
-            if (monthName && workingData.monthly[monthName]) {
-              console.log('🔧 PygContainer logic - Converting period:', { from: periodo, to: monthName });
-              return monthName;
-            }
+          // Si ya existe el período tal como está, usarlo directamente
+          if (workingData.monthly[periodo]) {
+            return periodo;
           }
           
-          // NUEVO: Si availableKeys tiene minúsculas pero monthly tiene mayúsculas 
+          // Mapa de conversión para capitalización
           const monthsMapReverse: Record<string, string> = {
             'enero': 'Enero', 'febrero': 'Febrero', 'marzo': 'Marzo', 'abril': 'Abril',
             'mayo': 'Mayo', 'junio': 'Junio', 'julio': 'Julio', 'agosto': 'Agosto',
             'septiembre': 'Septiembre', 'octubre': 'Octubre', 'noviembre': 'Noviembre', 'diciembre': 'Diciembre'
           };
           
-          if (monthsMapReverse[periodo.toLowerCase()]) {
-            const correctFormat = monthsMapReverse[periodo.toLowerCase()];
-            if (workingData.monthly[correctFormat]) {
-              console.log('🔧 Balance Interno - Converting case:', { from: periodo, to: correctFormat });
-              return correctFormat;
+          // Si el período es minúscula, intentar capitalizar
+          const periodLower = periodo.toLowerCase();
+          if (monthsMapReverse[periodLower]) {
+            const capitalized = monthsMapReverse[periodLower];
+            if (workingData.monthly[capitalized]) {
+              console.log('🔧 Balance Interno - Converting case:', { from: periodo, to: capitalized });
+              return capitalized;
             }
           }
           
-          return periodo; // Devolver tal como está si no necesita conversión
+          // Si es capitalizado, intentar minúscula
+          const periodCapitalized = periodo.charAt(0).toUpperCase() + periodo.slice(1).toLowerCase();
+          const periodMinuscule = periodo.toLowerCase();
+          
+          if (workingData.monthly[periodMinuscule]) {
+            console.log('🔧 Balance Interno - Converting to lowercase:', { from: periodo, to: periodMinuscule });
+            return periodMinuscule;
+          }
+          
+          // Devolver tal como está si no necesita conversión
+          return periodo;
         };
         
         // USAR LA MISMA LÓGICA QUE PygContainer.tsx (YA FUNCIONA)
-        const rawPeriod = availableKeys.length > 0 ? availableKeys[0] : null;
+        // Buscar el mes con datos más recientes
+        let rawPeriod = null;
+        
+        // Priorizar junio si tiene datos (según los logs anteriores)
+        if (availableKeys.includes('junio') || availableKeys.includes('Junio')) {
+          rawPeriod = availableKeys.find(k => k.toLowerCase() === 'junio') || 'junio';
+          console.log('✅ Usando junio con datos confirmados:', rawPeriod);
+        } else {
+          // Si no está junio, buscar el último mes con datos reales
+          const sortedKeys = [...availableKeys].sort();
+          for (let i = sortedKeys.length - 1; i >= 0; i--) {
+            const key = sortedKeys[i];
+            const monthData = workingData.monthly[key];
+            
+            // Verificar si tiene datos en raw
+            if (workingData.raw && workingData.raw.length > 0) {
+              const hasData = workingData.raw.some(row => {
+                const monthKey = key.charAt(0).toUpperCase() + key.slice(1).toLowerCase();
+                return row[monthKey] && parseFloat(row[monthKey] as string) !== 0;
+              });
+              
+              if (hasData) {
+                rawPeriod = key;
+                console.log('✅ Encontrado mes con datos:', key);
+                break;
+              }
+            }
+          }
+        }
+        
+        // Si no hay meses con datos, usar junio por defecto
+        if (!rawPeriod) {
+          rawPeriod = 'junio';
+          console.log('⚠️ Usando junio por defecto');
+        }
         
         // Validar que encontramos un período válido  
         if (!rawPeriod) {
@@ -269,8 +318,23 @@ const EditablePygMatrixV2: React.FC = () => {
           return;
         }
         
-        // APLICAR CONVERSIÓN COMO PygContainer.tsx (línea 124)
-        const periodForCalculation = convertPeriodForCalculation(rawPeriod);
+        // CRÍTICO: calculatePnl SIEMPRE espera el mes en formato CAPITALIZADO para buscar en raw data
+        // Necesitamos convertir a formato capitalizado independientemente del formato de monthly
+        const monthsMapToCapitalized: Record<string, string> = {
+          'enero': 'Enero', 'febrero': 'Febrero', 'marzo': 'Marzo', 'abril': 'Abril',
+          'mayo': 'Mayo', 'junio': 'Junio', 'julio': 'Julio', 'agosto': 'Agosto',
+          'septiembre': 'Septiembre', 'octubre': 'Octubre', 'noviembre': 'Noviembre', 'diciembre': 'Diciembre'
+        };
+        
+        const periodForCalculation = monthsMapToCapitalized[rawPeriod.toLowerCase()] || rawPeriod;
+        
+        // DEBUG CRÍTICO: Verificar qué formato va a usar calculatePnl
+        console.log('🔍 CRÍTICO - Verificando formato para calculatePnl:', {
+          rawPeriod,
+          periodForCalculation,
+          rawDataHasCapitalized: workingData.raw?.[0]?.[periodForCalculation],
+          monthlyHasPeriod: !!workingData.monthly?.[rawPeriod] // monthly puede usar lowercase
+        });
         
         console.log('✅ USANDO LÓGICA DE PygContainer:', { 
           raw: rawPeriod, 
@@ -288,19 +352,29 @@ const EditablePygMatrixV2: React.FC = () => {
         );
         
         console.log('🔍 DEBUG: PyG calculation result:', {
+          period: periodForCalculation,
           treeDataLength: result.treeData.length,
           summaryKpis: result.summaryKpis,
           treeDataDetailed: result.treeData.map(node => ({
             code: node.code,
             name: node.name,
             value: node.value,
-            childrenCount: node.children.length
-          }))
+            childrenCount: node.children ? node.children.length : 0
+          })),
+          // Debug específico para los nodos principales
+          node4Value: result.treeData.find(n => n.code === '4')?.value,
+          node5Value: result.treeData.find(n => n.code === '5')?.value
         });
         
         console.log('✅ BALANCE INTERNO: Calling calculatePnl with:', periodForCalculation);
         
-        setPygTreeData(result.treeData);
+        // Asegurarnos de que tenemos datos antes de actualizar
+        if (result.treeData && result.treeData.length > 0) {
+          setPygTreeData(result.treeData);
+          console.log('✅ PyG Tree Data actualizado con', result.treeData.length, 'nodos principales');
+        } else {
+          console.error('❌ No se obtuvieron datos del árbol PyG');
+        }
       } catch (error) {
         console.error('⚠️ Error calculating PyG:', error);
       }
@@ -315,15 +389,29 @@ const EditablePygMatrixV2: React.FC = () => {
     
     const cacheNodes = (nodes: any[]) => {
       nodes.forEach(node => {
-        cache.set(node.code, node);
+        // Asegurarnos de que el código está correctamente formateado
+        const code = node.code ? node.code.toString() : '';
+        if (code) {
+          cache.set(code, node);
+          // También cachear variaciones del código (por si acaso)
+          if (code.includes('.')) {
+            cache.set(code.replace(/\./g, '_'), node); // 4.1 -> 4_1
+          }
+        }
+        
         if (node.children && node.children.length > 0) {
           cacheNodes(node.children);
         }
       });
     };
     
-    if (pygTreeData.length > 0) {
+    if (pygTreeData && pygTreeData.length > 0) {
       cacheNodes(pygTreeData);
+      console.log(`📊 NodeCache populated with ${cache.size} nodes from PyG tree`);
+      
+      // Log algunos ejemplos para debug
+      const sampleCodes = Array.from(cache.keys()).slice(0, 10);
+      console.log('📊 Sample cached codes:', sampleCodes);
     }
     
     return cache;
@@ -331,14 +419,37 @@ const EditablePygMatrixV2: React.FC = () => {
   
   // Obtener valor de cuenta desde los datos calculados del PyG
   const getAccountValueForRow = (code: string, monthData: MonthlyData, month: string): number => {
-    // Buscar en cache primero
+    // Para las métricas calculadas (UB, UO, UN, etc.), usar el cache del árbol PyG
+    if (code.match(/^(UB|UO|UN|EBITDA|MB|MO|MN)$/)) {
+      const node = nodeCache.get(code);
+      if (node) {
+        console.log(`🔍 DEBUG: Found calculated metric ${code}:`, { value: node.value, name: node.name });
+        return node.value || 0;
+      }
+    }
+    
+    // Para cuentas normales, buscar primero en el cache del árbol PyG
     const node = nodeCache.get(code);
     if (node) {
-      console.log(`🔍 DEBUG: Found node ${code}:`, { value: node.value, name: node.name });
+      console.log(`🔍 DEBUG: Found node ${code} in cache:`, { value: node.value, name: node.name });
       return node.value || 0;
     }
     
-    console.log(`🔍 DEBUG: Node ${code} NOT FOUND in cache. Available codes:`, Array.from(nodeCache.keys()));
+    // Si no está en el cache, intentar buscar directamente en los datos raw
+    if (workingData?.raw) {
+      const rawRow = workingData.raw.find(r => r['COD.'] === code);
+      if (rawRow) {
+        // Convertir el nombre del mes al formato correcto
+        const monthKey = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+        const value = parseFloat(rawRow[monthKey] as string) || 0;
+        if (value !== 0) {
+          console.log(`🔍 DEBUG: Found ${code} in raw data:`, { month: monthKey, value });
+          return value;
+        }
+      }
+    }
+    
+    console.log(`🔍 DEBUG: Node ${code} NOT FOUND. Cache size: ${nodeCache.size}, Available codes:`, Array.from(nodeCache.keys()).slice(0, 5));
     return 0;
   };
 
