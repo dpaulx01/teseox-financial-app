@@ -55,8 +55,74 @@ const EditablePygMatrixV2: React.FC = () => {
   useEffect(() => {
     if (financialData && financialData.monthly && !enhancedData) {
       console.log('🧠 Ejecutando ProjectionEngine para completar año 2025...');
-      const completed = ProjectionEngine.completeYear(financialData, 2025);
-      setEnhancedData(completed);
+      
+      // Clonar datos profundamente
+      const dataToEnhance: FinancialData = JSON.parse(JSON.stringify(financialData));
+      
+      // GENERAR PROYECCIONES SIMPLES para meses faltantes (julio-diciembre)
+      if (dataToEnhance.raw && dataToEnhance.raw.length > 0) {
+        const monthsToProject = ['Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        
+        dataToEnhance.raw = dataToEnhance.raw.map(row => {
+          const updatedRow = { ...row };
+          
+          // Calcular promedio de meses existentes para proyección simple
+          const existingMonths = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio'];
+          const existingValues = existingMonths
+            .map(m => parseFloat(row[m] as string) || 0)
+            .filter(v => v !== 0);
+          
+          if (existingValues.length > 0) {
+            // Usar promedio con variación estacional simple
+            const average = existingValues.reduce((a, b) => a + b, 0) / existingValues.length;
+            const lastValue = parseFloat(row['Junio'] as string) || average;
+            
+            // Proyectar con tendencia simple
+            monthsToProject.forEach((month, index) => {
+              // Aplicar una tendencia simple basada en el último valor conocido
+              const seasonalFactor = 1 + (Math.sin((index + 6) * Math.PI / 6) * 0.1); // Variación estacional
+              const trendFactor = 1 + (index * 0.02); // Tendencia ligera al alza
+              updatedRow[month] = lastValue * seasonalFactor * trendFactor;
+            });
+          } else {
+            // Si no hay datos, poner 0
+            monthsToProject.forEach(month => {
+              updatedRow[month] = 0;
+            });
+          }
+          
+          return updatedRow;
+        });
+        
+        // También actualizar monthly para meses proyectados
+        monthsToProject.forEach(month => {
+          const monthLower = month.toLowerCase();
+          if (!dataToEnhance.monthly[monthLower]) {
+            dataToEnhance.monthly[monthLower] = {
+              ingresos: 0,
+              costoVentasTotal: 0,
+              costoMateriaPrima: 0,
+              costoProduccion: 0,
+              utilidadBruta: 0,
+              gastosOperativos: 0,
+              ebitda: 0,
+              depreciacion: 0,
+              utilidadNeta: 0
+            };
+          }
+        });
+      }
+      
+      // Debug: Verificar que se generaron proyecciones
+      console.log('📊 ProjectionEngine completado:', {
+        hasJulio: !!dataToEnhance.raw?.find(r => r['Julio'] !== undefined && r['Julio'] !== 0),
+        hasAgosto: !!dataToEnhance.raw?.find(r => r['Agosto'] !== undefined && r['Agosto'] !== 0),
+        monthlyKeys: dataToEnhance.monthly ? Object.keys(dataToEnhance.monthly) : [],
+        sampleJulioIngresos: dataToEnhance.raw?.find(r => r['COD.'] === '4')?.['Julio'],
+        sampleJulioCostos: dataToEnhance.raw?.find(r => r['COD.'] === '5')?.['Julio']
+      });
+      
+      setEnhancedData(dataToEnhance);
     }
   }, [financialData, enhancedData]);
 
