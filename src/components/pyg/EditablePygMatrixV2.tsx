@@ -146,8 +146,10 @@ const EditablePygMatrixV2: React.FC = () => {
     
     for (const month of months) {
       try {
-        // Convertir mes al formato que espera calculatePnl (capitalizado)
-        const monthForCalculation = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+        // CRÍTICO: calculatePnl espera el mes en MINÚSCULAS porque workingData.monthly usa minúsculas
+        // Los logs muestran: workingData.monthly tiene ['enero', 'febrero', 'marzo', ...]
+        // NO capitalizar aquí!
+        const monthForCalculation = month.toLowerCase();
         
         console.log(`🔍 BALANCE INTERNO - Calculando utilidades para ${month} (usando: ${monthForCalculation})`);
         
