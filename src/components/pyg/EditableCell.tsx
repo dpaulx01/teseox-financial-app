@@ -124,18 +124,12 @@ export const EditableCell: React.FC<EditableCellProps> = ({
         onKeyDown={handleKeyPress}
         className={cellClasses}
         disabled={isSaving}
-        title={`Valor: ${formatValue(value)}${isSaving ? ' (Guardando...)' : ''}`}
+        title={`Valor: ${formatValue(value)}${isSaving ? ' (Guardando...)' : ''} · Enter guarda · Esc cancela`}
       />
-      
+
       {/* Indicador visual de estado */}
       {isSaving && (
         <div className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-      )}
-      
-      {isEditing && !isReadOnly && (
-        <div className="absolute -bottom-6 left-0 text-xs text-text-muted">
-          Enter: Guardar | Esc: Cancelar
-        </div>
       )}
     </div>
   );

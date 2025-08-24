@@ -53,6 +53,7 @@ const EditablePygMatrixV2: React.FC = () => {
   // Datos de trabajo (escenario con proyecciones si existe)
   const workingData = enhancedData || financialData;
   const workingDataRef = useRef<FinancialData | null>(workingData || null);
+  const cellCacheRef = useRef<Map<string, number>>(new Map());
   const pendingEditsRef = useRef<Record<string, number>>({});
   const enhancedDataRef = useRef<FinancialData | null>(enhancedData);
 
@@ -242,6 +243,7 @@ const EditablePygMatrixV2: React.FC = () => {
     flatMedian: { ubAvg: 0, unAvg: 0, ebitdaAvg: 0, ubTotal: 0, unTotal: 0, ebitdaTotal: 0 },
   });
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
+  const [summaryVersion, setSummaryVersion] = useState(0);
 
   const projectForMode = useCallback((base: FinancialData, mode: AlgoKey): FinancialData => {
     if (mode === 'advanced') {
@@ -255,6 +257,7 @@ const EditablePygMatrixV2: React.FC = () => {
 
   useEffect(() => {
     const runSummary = async () => {
+      if (isRecalculating) return; // no bloquear UI durante recálculo
       const base = financialData || workingData;
       if (!base) return;
       setIsSummaryLoading(true);
@@ -296,7 +299,7 @@ const EditablePygMatrixV2: React.FC = () => {
       }
     };
     runSummary();
-  }, [financialData, workingData, projectForMode]);
+  }, [summaryVersion, projectForMode, isRecalculating]);
 
   const queueEdit = useCallback((month: string, row: PygRow, newValue: number) => {
     setPendingEdits(prev => ({ ...prev, [`${row.code}|${month}`]: newValue }));
@@ -447,7 +450,6 @@ const EditablePygMatrixV2: React.FC = () => {
     } as any;
     if (!(window as any).BI) {
       (window as any).BI = api;
-      console.log('🧪 BI Debug API disponible en window.BI { showPending, setPending, apply, probe, sumParent }');
     } else {
       // No spamear el log si ya existe
       (window as any).BI = { ...(window as any).BI, ...api };
@@ -780,6 +782,8 @@ const EditablePygMatrixV2: React.FC = () => {
     if (workingData?.raw && Array.isArray(workingData.raw)) {
       const structure = buildPygStructureFromRaw(workingData.raw);
       setPygStructure(structure);
+      // Limpiar cache de celdas al cambiar RAW
+      try { cellCacheRef.current.clear(); } catch {}
     }
   }, [workingData?.raw, buildPygStructureFromRaw]);
 
@@ -1065,6 +1069,8 @@ const EditablePygMatrixV2: React.FC = () => {
     const monthKey = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
     const rows = workingData.raw;
     const codes = rows.map(r => (r['COD.'] || '').toString());
+    const cacheKey = `${code}|${monthKey}`;
+    if (cellCacheRef.current.has(cacheKey)) return cellCacheRef.current.get(cacheKey)!;
     const rowInStructure = pygStructure.find(r => r.code === code);
 
     // Helper recursivo con memo por código para esta llamada (evita recomputar hijos repetidos)
@@ -1099,7 +1105,9 @@ const EditablePygMatrixV2: React.FC = () => {
       return sum;
     };
 
-    return computeByStructure(code);
+    const val = computeByStructure(code);
+    cellCacheRef.current.set(cacheKey, val);
+    return val;
   };
 
   // Tipo de patrón (para colores)
@@ -1228,7 +1236,17 @@ const EditablePygMatrixV2: React.FC = () => {
           <div className="flex items-center space-x-3">
             {/* Resumen comparativo de algoritmos (jul–dic) */}
             <div className="px-3 py-2 rounded-lg border bg-glass/50 border-border/40 text-xs mr-2">
-              <div className="font-semibold text-text-secondary mb-1">Resumen jul–dic</div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="font-semibold text-text-secondary">Resumen jul–dic</div>
+                <button
+                  onClick={() => setSummaryVersion(v => v + 1)}
+                  className={`text-[11px] px-2 py-[2px] rounded border ${isSummaryLoading ? 'text-text-muted border-border/30' : 'text-text-secondary border-border/40 hover:text-white hover:bg-glass/40'}`}
+                  title="Recalcular resumen (3 algoritmos)"
+                  disabled={isSummaryLoading}
+                >
+                  {isSummaryLoading ? 'Actualizando…' : 'Actualizar'}
+                </button>
+              </div>
               {isSummaryLoading ? (
                 <div className="text-text-muted">Calculando…</div>
               ) : (
