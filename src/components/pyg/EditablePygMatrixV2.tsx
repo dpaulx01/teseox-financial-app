@@ -46,6 +46,7 @@ const EditablePygMatrixV2: React.FC = () => {
   const [showPatternColors, setShowPatternColors] = useState<boolean>(false);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [hoveredCol, setHoveredCol] = useState<string | null>(null);
+  const [openChildrenFor, setOpenChildrenFor] = useState<string | null>(null);
   const [pendingEdits, setPendingEdits] = useState<Record<string, number>>({});
   const [isRecalculating, setIsRecalculating] = useState(false);
   const { errors, addError, removeError } = useErrorHandler();
@@ -820,6 +821,22 @@ const EditablePygMatrixV2: React.FC = () => {
     return parts.slice(0, -1).join('.');
   };
 
+  // Obtener hijos inmediatos (código y nombre) desde la estructura dinámica
+  const getChildrenFor = useCallback((code: string): { code: string; name: string }[] => {
+    try {
+      const node = pygStructure.find(r => r.code === code);
+      if (!node || !node.children || node.children.length === 0) return [];
+      const items = node.children
+        .map(c => {
+          const child = pygStructure.find(r => r.code === c);
+          return child ? { code: child.code, name: child.name } : { code: c, name: c };
+        });
+      return items;
+    } catch {
+      return [];
+    }
+  }, [pygStructure]);
+
 
   
   
@@ -1436,11 +1453,49 @@ const EditablePygMatrixV2: React.FC = () => {
                     {row.code} - {row.name}
                   </span>
                   {row.isParent && (
-                    <span
-                      className="ml-2 text-[11px] px-2 py-[2px] rounded-full bg-glass/40 border border-border/40 text-text-muted"
-                      title="Esta cuenta tiene subcuentas; edita las hojas"
-                    >
-                      🔒 No editable
+                    <span className="relative ml-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setOpenChildrenFor(prev => prev === row.code ? null : row.code); }}
+                        className="text-[11px] px-2 py-[2px] rounded-full bg-glass/40 border border-border/40 text-text-muted hover:text-white"
+                        title="Esta cuenta tiene subcuentas; edita las hojas"
+                      >
+                        🔒 No editable
+                      </button>
+                      {openChildrenFor === row.code && (
+                        <div
+                          className="absolute z-20 mt-2 w-80 p-3 rounded-lg bg-dark-bg border border-border/40 shadow-xl"
+                          onMouseLeave={() => setOpenChildrenFor(null)}
+                        >
+                          <div className="text-[11px] text-text-muted mb-2">Subcuentas inmediatas</div>
+                          <div className="max-h-48 overflow-auto space-y-1 pr-1">
+                            {(() => {
+                              const items = getChildrenFor(row.code);
+                              const max = 12;
+                              return (
+                                <>
+                                  {items.slice(0, max).map(child => (
+                                    <div key={child.code} className="text-xs flex items-center justify-between">
+                                      <span className="text-text-secondary truncate mr-2" title={`${child.code} - ${child.name}`}>{child.code} - {child.name}</span>
+                                      <span className="text-text-muted">→ editar</span>
+                                    </div>
+                                  ))}
+                                  {items.length > max && (
+                                    <div className="text-[11px] text-text-muted">… y {items.length - max} más</div>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+                          <div className="mt-3 text-right">
+                            <button
+                              onClick={() => setOpenChildrenFor(null)}
+                              className="text-[11px] px-2 py-1 rounded border border-border/40 text-text-muted hover:text-white hover:bg-glass/40"
+                            >
+                              Cerrar
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </span>
                   )}
                   {!row.isParent && getDetectedPattern(row.code) && (
