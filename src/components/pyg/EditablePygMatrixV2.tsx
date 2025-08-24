@@ -59,6 +59,29 @@ const EditablePygMatrixV2: React.FC = () => {
   useEffect(() => { pendingEditsRef.current = pendingEdits; }, [pendingEdits]);
   useEffect(() => { enhancedDataRef.current = enhancedData; }, [enhancedData]);
 
+  // Persistir ediciones pendientes en sessionStorage
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('BI_pendingEdits');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          setPendingEdits(parsed);
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (Object.keys(pendingEdits).length > 0) {
+        sessionStorage.setItem('BI_pendingEdits', JSON.stringify(pendingEdits));
+      } else {
+        sessionStorage.removeItem('BI_pendingEdits');
+      }
+    } catch {}
+  }, [pendingEdits]);
+
   // Estado de PyG y utilidades (debe estar antes de calculateUtilities)
   const [pygTreeData, setPygTreeData] = useState<any[]>([]);
   const [utilityCalculations, setUtilityCalculations] = useState<Record<string, Record<string, number>>>(
@@ -457,6 +480,7 @@ const EditablePygMatrixV2: React.FC = () => {
     const ok = window.confirm(`Descartar ${count} cambio(s) pendiente(s)?`);
     if (ok) {
       setPendingEdits({});
+      try { sessionStorage.removeItem('BI_pendingEdits'); } catch {}
       addError('Cambios descartados', 'warning');
     }
   }, [pendingEdits]);
@@ -1191,23 +1215,51 @@ const EditablePygMatrixV2: React.FC = () => {
               {isSummaryLoading ? (
                 <div className="text-text-muted">Calculando…</div>
               ) : (
-                <div className="grid grid-cols-3 gap-3 min-w-[380px]">
-                  {(['advanced','movingAvg','flatMedian'] as const).map((mode) => {
-                    const s = algoSummary[mode];
-                    const isActive = projectionMode === mode;
-                    const label = mode === 'advanced' ? 'Avanzado' : mode === 'movingAvg' ? 'Prom. móvil' : 'Mediana';
+                <>
+                  {(() => {
+                    const modes = ['advanced','movingAvg','flatMedian'] as const;
+                    const best = modes.reduce((acc, m) => {
+                      const val = algoSummary[m]?.ebitdaAvg || 0;
+                      return val > (algoSummary[acc]?.ebitdaAvg || 0) ? m : acc;
+                    }, 'advanced' as 'advanced'|'movingAvg'|'flatMedian');
+                    const bestVal = Math.round(algoSummary[best]?.ebitdaAvg || 0);
+                    const activeVal = Math.round(algoSummary[projectionMode]?.ebitdaAvg || 0);
+                    const delta = bestVal - activeVal;
                     return (
-                      <div key={mode} className={`p-2 rounded border ${isActive ? 'border-accent/50 bg-accent/10' : 'border-border/30'}`}>
-                        <div className={`font-semibold ${isActive ? 'text-accent' : 'text-text-secondary'}`}>{label}</div>
-                        <div className="mt-1">
-                          <div className="flex justify-between"><span className="text-text-muted">UB avg:</span><span className="font-semibold">{formatCurrency(Math.round(s?.ubAvg || 0))}</span></div>
-                          <div className="flex justify-between"><span className="text-text-muted">UN avg:</span><span className="font-semibold">{formatCurrency(Math.round(s?.unAvg || 0))}</span></div>
-                          <div className="flex justify-between"><span className="text-text-muted">EBITDA avg:</span><span className="font-semibold">{formatCurrency(Math.round(s?.ebitdaAvg || 0))}</span></div>
-                        </div>
+                      <div className="grid grid-cols-3 gap-3 min-w-[420px] items-start">
+                        {modes.map((mode) => {
+                          const s = algoSummary[mode];
+                          const isActive = projectionMode === mode;
+                          const isBest = best === mode;
+                          const label = mode === 'advanced' ? 'Avanzado' : mode === 'movingAvg' ? 'Prom. móvil' : 'Mediana';
+                          return (
+                            <div key={mode} className={`p-2 rounded border ${isActive ? 'border-accent/50 bg-accent/10' : 'border-border/30'}`}>
+                              <div className="flex items-center justify-between">
+                                <div className={`font-semibold ${isActive ? 'text-accent' : 'text-text-secondary'}`}>{label}</div>
+                                {isBest && (
+                                  <span className="text-[10px] px-2 py-[2px] rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" title="Mayor EBITDA promedio jul–dic">Mejor</span>
+                                )}
+                              </div>
+                              <div className="mt-1">
+                                <div className="flex justify-between"><span className="text-text-muted">UB avg:</span><span className="font-semibold">{formatCurrency(Math.round(s?.ubAvg || 0))}</span></div>
+                                <div className="flex justify-between"><span className="text-text-muted">UN avg:</span><span className="font-semibold">{formatCurrency(Math.round(s?.unAvg || 0))}</span></div>
+                                <div className="flex justify-between"><span className="text-text-muted">EBITDA avg:</span><span className="font-semibold">{formatCurrency(Math.round(s?.ebitdaAvg || 0))}</span></div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {/* Delta vs activo */}
+                        {delta !== 0 && (
+                          <div className="col-span-3 text-right text-[11px] text-text-muted">
+                            <span className="px-2 py-[2px] rounded bg-glass/40 border border-border/40" title="Diferencia del EBITDA promedio entre el mejor algoritmo y el activo">
+                              {delta > 0 ? `+${formatCurrency(delta)} vs activo` : `${formatCurrency(delta)} vs activo`}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     );
-                  })}
-                </div>
+                  })()}
+                </>
               )}
             </div>
             {/* Selector de algoritmo de proyección */}
@@ -1291,6 +1343,16 @@ const EditablePygMatrixV2: React.FC = () => {
               {isRecalculating ? 'Recalculando…' : `Recalcular (${Object.keys(pendingEdits).length})`}
             </button>
 
+            {/* Botón forzar recálculo */}
+            <button
+              onClick={applyPendingEdits}
+              disabled={isRecalculating}
+              className={`px-3 py-2 rounded-lg text-xs transition-all border ${isRecalculating ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : 'bg-primary/20 text-primary border-primary/30 hover:bg-primary/30'}`}
+              title="Forzar reproyección y recálculo sin aplicar nuevos cambios"
+            >
+              Forzar recálculo
+            </button>
+
             {/* Botón descartar cambios */}
             <button
               onClick={discardPendingEdits}
@@ -1350,39 +1412,47 @@ const EditablePygMatrixV2: React.FC = () => {
                     row.isCalculated ? 'bg-primary/5 font-semibold' : ''
                   } ${isExcluded ? 'opacity-50' : ''}`}
                 >
-                  <td className={`px-4 py-3 border-r border-border/20 ${getPatternClass(row.code)} ${hoveredRow === row.code ? 'bg-primary/10' : ''}`}>
-                    <div 
-                      className="flex items-center"
-                      style={{ paddingLeft: `${row.level * 24}px` }}
+              <td className={`px-4 py-3 border-r border-border/20 ${getPatternClass(row.code)} ${hoveredRow === row.code ? 'bg-primary/10' : ''}`}>
+                <div 
+                  className="flex items-center"
+                  style={{ paddingLeft: `${row.level * 24}px` }}
+                >
+                  {row.isParent && (
+                    <button
+                      onClick={() => toggleNode(row.code)}
+                      className="mr-2 text-text-muted hover:text-white"
                     >
-                      {row.isParent && (
-                        <button
-                          onClick={() => toggleNode(row.code)}
-                          className="mr-2 text-text-muted hover:text-white"
-                        >
-                          {expandedNodes[row.code] === false ? 
-                            <ChevronRight className="w-4 h-4" /> : 
-                            <ChevronDown className="w-4 h-4" />
-                          }
-                        </button>
-                      )}
-                      <span className={`
-                        ${row.level === 0 ? 'font-bold text-white' : ''}
-                        ${row.isCalculated ? 'text-primary font-bold' : ''}
-                        ${isExcluded ? 'line-through' : ''}
-                      `}>
-                        {row.code} - {row.name}
-                      </span>
-                      {!row.isParent && getDetectedPattern(row.code) && (
-                        <span
-                          className="ml-2 px-2 py-0.5 text-[10px] rounded-full bg-glass/40 border border-border/40 text-text-muted"
-                          title={getDetectedPattern(row.code) || 'Sin patrón detectado'}
-                        >
-                          {getDetectedPattern(row.code)!}
-                        </span>
-                      )}
-                    </div>
-                  </td>
+                      {expandedNodes[row.code] === false ? 
+                        <ChevronRight className="w-4 h-4" /> : 
+                        <ChevronDown className="w-4 h-4" />
+                      }
+                    </button>
+                  )}
+                  <span className={`
+                    ${row.level === 0 ? 'font-bold text-white' : ''}
+                    ${row.isCalculated ? 'text-primary font-bold' : ''}
+                    ${isExcluded ? 'line-through' : ''}
+                  `}>
+                    {row.code} - {row.name}
+                  </span>
+                  {row.isParent && (
+                    <span
+                      className="ml-2 text-[11px] px-2 py-[2px] rounded-full bg-glass/40 border border-border/40 text-text-muted"
+                      title="Esta cuenta tiene subcuentas; edita las hojas"
+                    >
+                      🔒 No editable
+                    </span>
+                  )}
+                  {!row.isParent && getDetectedPattern(row.code) && (
+                    <span
+                      className="ml-2 px-2 py-0.5 text-[10px] rounded-full bg-glass/40 border border-border/40 text-text-muted"
+                      title={getDetectedPattern(row.code) || 'Sin patrón detectado'}
+                    >
+                      {getDetectedPattern(row.code)!}
+                    </span>
+                  )}
+                </div>
+              </td>
                   {months.map(month => {
                     const monthData = workingData.monthly[month];
                     const value = row.formula ? 
