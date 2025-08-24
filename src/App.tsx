@@ -133,10 +133,10 @@ const MainAppContent: React.FC = () => {
         return isSimulationMode ? <EditablePygMatrixV2 /> : <PygContainer />;
       case 'balance':
         if (isSimulationMode) {
-          // Usuario está en modo simulación, mostrar Balance Interno
+          // Usuario está en modo simulación, mostrar Balance Interno (matriz editable V2)
           return (
             <BalanceInternoLayout onExit={() => setActiveTab('balance')}>
-              <PygContainer />
+              <EditablePygMatrixV2 />
             </BalanceInternoLayout>
           );
         } else {

@@ -3,18 +3,22 @@ import { useDebounce } from '../../hooks/useDebounce';
 
 interface EditableCellProps {
   initialValue: number;
-  onSave: (newValue: number) => void;
+  onSave?: (newValue: number) => void; // opcional para modo autoSave
+  onEdit?: (newValue: number) => void; // modo diferido: notifica cambio sin guardar
   className?: string;
   isReadOnly?: boolean;
   formatCurrency?: boolean;
+  autoSave?: boolean; // true = guarda con debounce (por defecto), false = difiere y usa onEdit
 }
 
 export const EditableCell: React.FC<EditableCellProps> = ({
   initialValue,
   onSave,
+  onEdit,
   className = '',
   isReadOnly = false,
-  formatCurrency = true
+  formatCurrency = true,
+  autoSave = true
 }) => {
   const [value, setValue] = useState(initialValue);
   const [isEditing, setIsEditing] = useState(false);
@@ -26,23 +30,21 @@ export const EditableCell: React.FC<EditableCellProps> = ({
     setValue(initialValue);
   }, [initialValue]);
 
-  // Guardar cuando el valor debounced cambie
+  // Guardar automáticamente cuando el valor debounced cambie (solo si autoSave y hay onSave)
   useEffect(() => {
-    // Solo guardar si el valor debounced es diferente del inicial y no estamos en la primera carga
-    if (debouncedValue !== initialValue && debouncedValue !== value) {
+    if (isReadOnly || !autoSave || !onSave) return;
+    if (debouncedValue !== initialValue) {
       handleSave(debouncedValue);
     }
-  }, [debouncedValue]);
+  }, [debouncedValue, initialValue, isReadOnly, autoSave, onSave]);
 
   const handleSave = async (newValue: number) => {
-    if (isReadOnly || newValue === initialValue) return;
-    
+    if (isReadOnly || newValue === initialValue || !onSave) return;
     setIsSaving(true);
     try {
       await onSave(newValue);
     } catch (error) {
       console.error('Error saving cell value:', error);
-      // Revertir al valor inicial en caso de error
       setValue(initialValue);
     } finally {
       setIsSaving(false);
@@ -63,10 +65,16 @@ export const EditableCell: React.FC<EditableCellProps> = ({
 
   const handleBlur = () => {
     setIsEditing(false);
+    // En modo diferido, notificar edición sin guardar
+    if (!isReadOnly && !autoSave && onEdit && value !== initialValue) {
+      onEdit(value);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
+      // En modo diferido, confirmar edición; en autoSave, solo blur
+      if (!autoSave && onEdit && value !== initialValue) onEdit(value);
       e.currentTarget.blur();
     }
     if (e.key === 'Escape') {

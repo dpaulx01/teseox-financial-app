@@ -435,6 +435,22 @@ async def save_financial_data(
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/debug-log")
+async def debug_log(
+    payload: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """Recibe logs de depuración del frontend y los imprime en el servidor."""
+    try:
+        from pprint import pformat
+        print("\n========== BI DEBUG LOG ==========")
+        print(datetime.now().isoformat())
+        print(pformat(payload))
+        print("========== END BI DEBUG LOG =========\n")
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.delete("/clear")
 async def clear_financial_data(
     year: int = None,

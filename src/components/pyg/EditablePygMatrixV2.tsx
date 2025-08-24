@@ -3,6 +3,7 @@ import { useFinancialData } from '../../contexts/DataContext';
 import { useScenario } from '../../contexts/ScenarioContext';
 import { EditableCell } from './EditableCell';
 import { FinancialData, MonthlyData } from '../../types';
+import { useMixedCosts } from '../../contexts/MixedCostContext';
 import { Save, RefreshCw, Calculator, AlertTriangle, TrendingUp, Zap, ChevronDown, ChevronRight } from 'lucide-react';
 import { getSortedMonths } from '../../utils/dateUtils';
 import ProjectionEngine from '../../utils/projectionEngine';
@@ -10,6 +11,10 @@ import { formatCurrency } from '../../utils/formatters';
 import { RawDataRow } from '../../types';
 import { parseNumericValue } from '../../utils/formatters';
 import { calculatePnl } from '../../utils/pnlCalculator';
+import { useErrorHandler } from '../../hooks/useErrorHandler';
+import { ToastContainer } from '../ui/Toast';
+import { saveFinancialData } from '../../utils/financialStorage';
+import { useRef } from 'react';
 
 type AnalysisType = 'contable' | 'operativo' | 'caja';
 
@@ -28,6 +33,7 @@ const EditablePygMatrixV2: React.FC = () => {
   // IMPORTANTE: Este componente es para BALANCE INTERNO, debe usar datos del escenario/simulación
   const { scenarioData, isSimulationMode } = useScenario();
   const { data: realFinancialData } = useFinancialData();
+  const { mixedCosts, customClassifications } = useMixedCosts();
   
   // Usar datos del escenario si está en modo simulación, sino usar datos reales
   const financialData = isSimulationMode && scenarioData ? scenarioData : realFinancialData;
@@ -35,6 +41,436 @@ const EditablePygMatrixV2: React.FC = () => {
   const [enhancedData, setEnhancedData] = useState<FinancialData | null>(null);
   // Eliminado analysisType - Las 3 utilidades se muestran en las últimas filas
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  // Selector de algoritmo de proyección
+  const [projectionMode, setProjectionMode] = useState<'advanced' | 'movingAvg' | 'flatMedian'>('advanced');
+  const [showPatternColors, setShowPatternColors] = useState<boolean>(false);
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+  const [hoveredCol, setHoveredCol] = useState<string | null>(null);
+  const [pendingEdits, setPendingEdits] = useState<Record<string, number>>({});
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const { errors, addError, removeError } = useErrorHandler();
+  // Datos de trabajo (escenario con proyecciones si existe)
+  const workingData = enhancedData || financialData;
+  const workingDataRef = useRef<FinancialData | null>(workingData || null);
+  const pendingEditsRef = useRef<Record<string, number>>({});
+  const enhancedDataRef = useRef<FinancialData | null>(enhancedData);
+
+  useEffect(() => { workingDataRef.current = workingData || null; }, [workingData]);
+  useEffect(() => { pendingEditsRef.current = pendingEdits; }, [pendingEdits]);
+  useEffect(() => { enhancedDataRef.current = enhancedData; }, [enhancedData]);
+
+  // Estado de PyG y utilidades (debe estar antes de calculateUtilities)
+  const [pygTreeData, setPygTreeData] = useState<any[]>([]);
+  const [utilityCalculations, setUtilityCalculations] = useState<Record<string, Record<string, number>>>(
+    {
+      'Utilidad Bruta (UB)': {},
+      'Utilidad Neta (UN)': {},
+      'EBITDA': {}
+    }
+  );
+
+  // Cálculo de utilidades (definir antes de usar en dependencias)
+  const calculateUtilities = useCallback(async (data: FinancialData, months: string[]) => {
+    const calculations = {
+      'Utilidad Bruta (UB)': {},
+      'Utilidad Neta (UN)': {},
+      'EBITDA': {}
+    } as Record<string, Record<string, number>>;
+
+    for (const month of months) {
+      try {
+        const monthForCalculation = month.toLowerCase();
+        console.log(`🔍 BALANCE INTERNO - Calculando utilidades para ${month} (usando: ${monthForCalculation})`);
+        const ubResult = await calculatePnl(data, monthForCalculation, 'contable', undefined, 1);
+        calculations['Utilidad Bruta (UB)'][month] = ubResult.summaryKpis?.utilidad || 0;
+
+        const unResult = await calculatePnl(data, monthForCalculation, 'operativo', undefined, 1);
+        calculations['Utilidad Neta (UN)'][month] = unResult.summaryKpis?.utilidad || 0;
+
+        const ebitdaResult = await calculatePnl(data, monthForCalculation, 'caja', undefined, 1);
+        calculations['EBITDA'][month] = ebitdaResult.summaryKpis?.utilidad || 0;
+
+        console.log(`💰 BALANCE INTERNO UTILIDADES ${month}:`, {
+          ub: calculations['Utilidad Bruta (UB)'][month],
+          un: calculations['Utilidad Neta (UN)'][month],
+          ebitda: calculations['EBITDA'][month],
+          inputMonth: monthForCalculation
+        });
+      } catch (error) {
+        console.error(`Error calculando utilidades para ${month}:`, error);
+        calculations['Utilidad Bruta (UB)'][month] = 0;
+        calculations['Utilidad Neta (UN)'][month] = 0;
+        calculations['EBITDA'][month] = 0;
+      }
+    }
+    setUtilityCalculations(calculations);
+  }, []);
+
+  // Helpers de proyección simples para selector de algoritmo (definidos ANTES de usarlos)
+  const projectWithMovingAverage = useCallback((dataToEnhance: FinancialData): FinancialData => {
+    const cloned: FinancialData = JSON.parse(JSON.stringify(dataToEnhance));
+    if (!cloned.raw) return cloned;
+
+    const allPossibleMonths = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+    cloned.raw = cloned.raw.map(row => {
+      const updatedRow = { ...row } as any;
+      // Meses con datos reales
+      const existingMonths = allPossibleMonths.filter(m => {
+        const v = parseFloat((row as any)[m] as string) || 0;
+        return v !== 0 && !isNaN(v);
+      });
+      const existingValues = existingMonths.map(m => parseFloat((row as any)[m] as string) || 0).filter(v => v !== 0);
+      const lastExistingIndex = allPossibleMonths.findIndex(m => existingMonths.includes(m) && existingMonths.indexOf(m) === existingMonths.length - 1);
+      const monthsToProjectDynamic = allPossibleMonths.slice(lastExistingIndex + 1);
+
+      monthsToProjectDynamic.forEach((month, index) => {
+        if (existingValues.length >= 2) {
+          const n = existingValues.length;
+          const x = Array.from({ length: n }, (_, i) => i + 1);
+          const y = existingValues;
+          const sumX = x.reduce((a, b) => a + b, 0);
+          const sumY = y.reduce((a, b) => a + b, 0);
+          const sumXY = x.reduce((s, xv, i) => s + xv * y[i], 0);
+          const sumXX = x.reduce((s, xv) => s + xv * xv, 0);
+          const slope = (n * sumXY - sumX * sumY) / Math.max(1e-9, (n * sumXX - sumX * sumX));
+          const intercept = (sumY - slope * sumX) / n;
+          const nextPeriod = n + 1 + index;
+          let projected = slope * nextPeriod + intercept;
+          // Estacionalidad suave basada en volatilidad
+          const avg = sumY / n;
+          const volatility = avg !== 0 ? Math.sqrt(y.reduce((s, v) => s + Math.pow(v - avg, 2), 0) / n) / Math.abs(avg) : 0;
+          const seasonalFactor = 1 + (Math.sin((index + 6) * Math.PI / 6) * Math.min(volatility, 0.15));
+          // Promedio móvil ponderado
+          const weights = Array.from({ length: n }, (_, i) => (i + 1) / ((n * (n + 1)) / 2));
+          const weightedAvg = y.reduce((s, v, i) => s + v * weights[i], 0);
+          projected = (projected * 0.6) + (weightedAvg * 0.4);
+          projected *= seasonalFactor;
+          const lastVal = y[y.length - 1];
+          const maxChange = Math.abs(lastVal) * 0.25;
+          const change = projected - lastVal;
+          if (Math.abs(change) > maxChange) projected = lastVal + (change > 0 ? maxChange : -maxChange);
+          (updatedRow as any)[month] = Math.round(Math.max(0, projected));
+        } else if (existingValues.length === 1) {
+          const single = existingValues[0];
+          const grow = 1 + (index * 0.02);
+          (updatedRow as any)[month] = Math.round(single * grow);
+        } else {
+          (updatedRow as any)[month] = 0;
+        }
+      });
+      return updatedRow;
+    });
+
+    // Asegurar llaves monthly para todos los meses
+    cloned.monthly = cloned.monthly || {};
+    const allLower = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    allLower.forEach(m => {
+      if (!cloned.monthly![m]) {
+        cloned.monthly![m] = { ingresos: 0, costoVentasTotal: 0, costoMateriaPrima: 0, costoProduccion: 0, utilidadBruta: 0, gastosOperativos: 0, ebitda: 0, depreciacion: 0, utilidadNeta: 0 };
+      }
+    });
+    return cloned;
+  }, []);
+
+  const projectWithFlatMedian = useCallback((dataToEnhance: FinancialData): FinancialData => {
+    const cloned: FinancialData = JSON.parse(JSON.stringify(dataToEnhance));
+    if (!cloned.raw) return cloned;
+    const allPossibleMonths = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const median = (arr: number[]) => {
+      const a = arr.slice().sort((x, y) => x - y); const mid = Math.floor(a.length / 2);
+      return a.length ? (a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2) : 0;
+    };
+    cloned.raw = cloned.raw.map(row => {
+      const updatedRow = { ...row } as any;
+      const existingValues = allPossibleMonths.map(m => parseFloat((row as any)[m] as string) || 0).filter(v => v !== 0);
+      const base = existingValues.length ? median(existingValues.slice(-3)) : 0;
+      // Llenar meses posteriores al último real con la mediana plana
+      const lastExistingIndex = (allPossibleMonths as any).findLastIndex
+        ? (allPossibleMonths as any).findLastIndex((m: string) => ((row as any)[m] && parseFloat((row as any)[m]) !== 0))
+        : (() => {
+            for (let i = allPossibleMonths.length - 1; i >= 0; i--) {
+              const m = allPossibleMonths[i];
+              const v = parseFloat((row as any)[m] as string) || 0;
+              if (v !== 0) return i;
+            }
+            return -1;
+          })();
+      const monthsToProjectDynamic = allPossibleMonths.slice(Math.max(0, lastExistingIndex + 1));
+      monthsToProjectDynamic.forEach(m => { (updatedRow as any)[m] = Math.max(0, Math.round(base)); });
+      return updatedRow;
+    });
+    // Asegurar monthly
+    cloned.monthly = cloned.monthly || {};
+    ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'].forEach(m => {
+      if (!cloned.monthly![m]) {
+        cloned.monthly![m] = { ingresos: 0, costoVentasTotal: 0, costoMateriaPrima: 0, costoProduccion: 0, utilidadBruta: 0, gastosOperativos: 0, ebitda: 0, depreciacion: 0, utilidadNeta: 0 };
+      }
+    });
+    return cloned;
+  }, []);
+
+  // ====== Resumen comparativo de algoritmos (jul–dic) ======
+  type AlgoKey = 'advanced' | 'movingAvg' | 'flatMedian';
+  const [algoSummary, setAlgoSummary] = useState<Record<AlgoKey, { ubAvg: number; unAvg: number; ebitdaAvg: number; ubTotal: number; unTotal: number; ebitdaTotal: number }>>({
+    advanced: { ubAvg: 0, unAvg: 0, ebitdaAvg: 0, ubTotal: 0, unTotal: 0, ebitdaTotal: 0 },
+    movingAvg: { ubAvg: 0, unAvg: 0, ebitdaAvg: 0, ubTotal: 0, unTotal: 0, ebitdaTotal: 0 },
+    flatMedian: { ubAvg: 0, unAvg: 0, ebitdaAvg: 0, ubTotal: 0, unTotal: 0, ebitdaTotal: 0 },
+  });
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
+
+  const projectForMode = useCallback((base: FinancialData, mode: AlgoKey): FinancialData => {
+    if (mode === 'advanced') {
+      return ProjectionEngine.generateAdvancedProjections(JSON.parse(JSON.stringify(base)), 2025, { mixedCosts, customClassifications });
+    }
+    if (mode === 'movingAvg') {
+      return projectWithMovingAverage(base);
+    }
+    return projectWithFlatMedian(base);
+  }, [projectWithMovingAverage, projectWithFlatMedian, mixedCosts, customClassifications]);
+
+  useEffect(() => {
+    const runSummary = async () => {
+      const base = financialData || workingData;
+      if (!base) return;
+      setIsSummaryLoading(true);
+      try {
+        const modes: AlgoKey[] = ['advanced', 'movingAvg', 'flatMedian'];
+        const months: string[] = ['julio','agosto','septiembre','octubre','noviembre','diciembre'];
+        const nextSummary: any = {};
+        for (const m of modes) {
+          const projected = projectForMode(base, m);
+          // Normalizar monthly (por si acaso)
+          const normalizedMonthly: Record<string, any> = {};
+          Object.entries(projected.monthly || {}).forEach(([k, v]) => { normalizedMonthly[k.toLowerCase()] = v as any; });
+          projected.monthly = normalizedMonthly;
+
+          let ubTotal = 0, unTotal = 0, ebitdaTotal = 0, count = 0;
+          for (const mon of months) {
+            try {
+              const ub = await calculatePnl(projected, mon, 'contable', undefined, 1);
+              const un = await calculatePnl(projected, mon, 'operativo', undefined, 1);
+              const ebd = await calculatePnl(projected, mon, 'caja', undefined, 1);
+              ubTotal += ub.summaryKpis?.utilidad || 0;
+              unTotal += un.summaryKpis?.utilidad || 0;
+              ebitdaTotal += ebd.summaryKpis?.utilidad || 0;
+              count += 1;
+            } catch {
+              // ignorar meses no presentes
+            }
+          }
+          nextSummary[m] = {
+            ubTotal, unTotal, ebitdaTotal,
+            ubAvg: count ? ubTotal / count : 0,
+            unAvg: count ? unTotal / count : 0,
+            ebitdaAvg: count ? ebitdaTotal / count : 0,
+          };
+        }
+        setAlgoSummary(nextSummary);
+      } finally {
+        setIsSummaryLoading(false);
+      }
+    };
+    runSummary();
+  }, [financialData, workingData, projectForMode]);
+
+  const queueEdit = useCallback((month: string, row: PygRow, newValue: number) => {
+    setPendingEdits(prev => ({ ...prev, [`${row.code}|${month}`]: newValue }));
+  }, []);
+
+  
+
+  const applyPendingEdits = useCallback(async () => {
+    if (!workingData) return;
+    try {
+      setIsRecalculating(true);
+      const updatedData: FinancialData = JSON.parse(JSON.stringify(workingData));
+      if (updatedData.raw) {
+        console.groupCollapsed('BI Recalc ▶ Aplicando ediciones en RAW');
+        Object.entries(pendingEdits).forEach(([key, val]) => {
+          const [code, month] = key.split('|');
+          const idx = updatedData.raw!.findIndex(r => r['COD.'] === code);
+          if (idx >= 0) {
+            const monthKey = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+            const before = (updatedData.raw![idx] as any)[monthKey];
+            updatedData.raw![idx] = { ...updatedData.raw![idx], [monthKey]: val };
+            console.log(`• ${code} ${monthKey}: ${before} → ${val}`);
+          } else {
+            console.warn(`• Código no encontrado en RAW: ${code}`);
+          }
+        });
+        console.groupEnd();
+      }
+      // Reproyectar meses faltantes según el algoritmo actual
+      let reprojected: FinancialData | null = null;
+      if (projectionMode === 'advanced') {
+        console.log('♻️ Reproyectando (Avanzado) tras aplicar ediciones…');
+        reprojected = ProjectionEngine.generateAdvancedProjections(updatedData, 2025, {
+          mixedCosts,
+          customClassifications,
+        });
+      } else if (projectionMode === 'movingAvg') {
+        console.log('♻️ Reproyectando (Promedio móvil) tras aplicar ediciones…');
+        reprojected = projectWithMovingAverage(updatedData);
+      } else {
+        console.log('♻️ Reproyectando (Mediana) tras aplicar ediciones…');
+        reprojected = projectWithFlatMedian(updatedData);
+      }
+
+      // Normalizar monthly en minúsculas
+      if (reprojected?.monthly) {
+        const normalizedMonthlyInternal: Record<string, any> = {};
+        Object.entries(reprojected.monthly).forEach(([k, v]) => {
+          normalizedMonthlyInternal[k.toLowerCase()] = v as any;
+        });
+        reprojected.monthly = normalizedMonthlyInternal;
+      }
+
+      // Respetar ediciones del usuario: reescribir en raw los valores editados
+      if (reprojected?.raw) {
+        console.groupCollapsed('BI Recalc ▶ Reaplicando ediciones tras proyección');
+        Object.entries(pendingEdits).forEach(([key, val]) => {
+          const [code, month] = key.split('|');
+          const idx = reprojected!.raw!.findIndex(r => r['COD.'] === code);
+          if (idx >= 0) {
+            const monthKey = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+            const before = (reprojected!.raw![idx] as any)[monthKey];
+            reprojected!.raw![idx] = { ...reprojected!.raw![idx], [monthKey]: val } as any;
+            console.log(`• ${code} ${monthKey}: ${before} → ${val}`);
+          } else {
+            console.warn(`• Código no encontrado en RAW reproyectado: ${code}`);
+          }
+        });
+        console.groupEnd();
+      }
+
+      // Actualizar datos en memoria y árbol principal inmediatamente
+      const finalData = reprojected || updatedData;
+      setEnhancedData(finalData);
+      sendDebugSnapshot('after-reproject', finalData);
+      try {
+        const updatedPygData = await calculatePnl(finalData, 'junio', 'contable');
+        setPygTreeData(updatedPygData.treeData);
+      } catch (e) {
+        console.warn('No se pudo recalcular PyG inmediato, se hará por efecto:', e);
+      }
+      // Persistir en base de datos (API RBAC)
+      try {
+        await saveFinancialData(finalData);
+        console.log('💾 Cambios persistidos en base de datos');
+        addError('Cambios aplicados y guardados en base de datos', 'info');
+      } catch (persistErr) {
+        console.warn('⚠️ No se pudo persistir en DB:', persistErr);
+        addError('No se pudo guardar en base de datos', 'error');
+      }
+      setPendingEdits({});
+      // Calcular meses disponibles a partir de los datos finales (evita TDZ)
+      const normalizedMonthly: Record<string, any> = {};
+      Object.entries(finalData.monthly || {}).forEach(([k, v]) => {
+        normalizedMonthly[k.toLowerCase()] = v as any;
+      });
+      const months = getSortedMonths(normalizedMonthly);
+      setTimeout(() => {
+        calculateUtilities(finalData, months);
+      }, 50);
+    } catch (e) {
+      console.error('Error applying pending edits:', e);
+      addError('Error aplicando cambios', 'error');
+    } finally {
+      setIsRecalculating(false);
+    }
+  }, [workingData, pendingEdits, projectionMode, projectWithMovingAverage, projectWithFlatMedian, mixedCosts, customClassifications, calculateUtilities]);
+
+  // ====== Consola de depuración: funciones accesibles desde window ======
+  useEffect(() => {
+    const api = {
+      showPending: () => ({ ...pendingEditsRef.current }),
+      setPending: (code: string, month: string, value: number) => {
+        const key = `${code}|${month.toLowerCase()}`;
+        setPendingEdits(prev => ({ ...prev, [key]: value }));
+        return key;
+      },
+      apply: async () => { await applyPendingEdits(); return 'applied'; },
+      probe: async (code: string, month: string) => {
+        const data = workingDataRef.current || enhancedDataRef.current;
+        const cap = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+        const lower = month.toLowerCase();
+        const rawVal = data?.raw?.find(r => r['COD.'] === code)?.[cap];
+        let ub=0,un=0,ebd=0;
+        try { ub = (await calculatePnl(data!, lower, 'contable', undefined, 1)).summaryKpis.utilidad; } catch {}
+        try { un = (await calculatePnl(data!, lower, 'operativo', undefined, 1)).summaryKpis.utilidad; } catch {}
+        try { ebd = (await calculatePnl(data!, lower, 'caja', undefined, 1)).summaryKpis.utilidad; } catch {}
+        console.log('🔎 BI Probe', { code, month: lower, rawVal, ub, un, ebitda: ebd });
+        return { rawVal, ub, un, ebitda: ebd };
+      },
+      sumParent: (parentCode: string, month: string) => {
+        const data = workingDataRef.current || enhancedDataRef.current;
+        const cap = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+        const rows = data?.raw || [];
+        const codes = rows.map(r => (r['COD.'] || '').toString());
+        const isLeaf = (c: string) => !codes.some(other => other !== c && other.startsWith(c + '.'));
+        const sum = rows.reduce((acc, r) => {
+          const rc = (r['COD.'] || '').toString();
+          if (rc.startsWith(parentCode + '.') && isLeaf(rc)) {
+            const v = parseNumericValue((r as any)[cap] || '0');
+            return acc + (isNaN(v) ? 0 : v);
+          }
+          return acc;
+        }, 0);
+        console.log('∑ Parent', { parentCode, month: cap, sum });
+        return sum;
+      }
+    } as any;
+    if (!(window as any).BI) {
+      (window as any).BI = api;
+      console.log('🧪 BI Debug API disponible en window.BI { showPending, setPending, apply, probe, sumParent }');
+    } else {
+      // No spamear el log si ya existe
+      (window as any).BI = { ...(window as any).BI, ...api };
+    }
+    return () => { if ((window as any).BI === api) { delete (window as any).BI; } };
+  }, [applyPendingEdits]);
+
+  // Enviar snapshot de depuración al backend (si se requiere)
+  const sendDebugSnapshot = useCallback(async (label: string, data: FinancialData) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      const sample = {
+        label,
+        pendingEdits: pendingEditsRef.current,
+        monthlyKeys: Object.keys(data.monthly || {}),
+        sampleRaw0: data.raw?.[0] || null,
+        editedCodes: Object.keys(pendingEditsRef.current).map(k => k.split('|')[0]),
+      };
+      await fetch('http://localhost:8001/api/financial/debug-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(sample)
+      });
+    } catch {}
+  }, []);
+
+  const discardPendingEdits = useCallback(() => {
+    const count = Object.keys(pendingEdits).length;
+    if (count === 0) return;
+    const ok = window.confirm(`Descartar ${count} cambio(s) pendiente(s)?`);
+    if (ok) {
+      setPendingEdits({});
+      addError('Cambios descartados', 'warning');
+    }
+  }, [pendingEdits]);
+
+  // Obtener meses disponibles de forma segura - SIEMPRE en minúsculas
+  const availableMonths = useMemo(() => {
+    if (!workingData?.monthly) return [] as string[];
+    // Normalizar todas las claves a minúsculas
+    const normalizedMonthly: Record<string, any> = {};
+    Object.entries(workingData.monthly).forEach(([key, value]) => {
+      normalizedMonthly[key.toLowerCase()] = value;
+    });
+    return getSortedMonths(normalizedMonthly);
+  }, [workingData]);
   
   // DEBUG: Verificar qué datos estamos recibiendo
   useEffect(() => {
@@ -51,6 +487,7 @@ const EditablePygMatrixV2: React.FC = () => {
     });
   }, [financialData, isSimulationMode, scenarioData]);
 
+  
   // ProjectionEngine: completar año con proyecciones DESPUÉS de procesar datos base
   useEffect(() => {
     if (financialData && financialData.monthly && !enhancedData) {
@@ -59,9 +496,22 @@ const EditablePygMatrixV2: React.FC = () => {
       // Clonar datos profundamente
       const dataToEnhance: FinancialData = JSON.parse(JSON.stringify(financialData));
       
-      // CRÍTICO: Usar ProjectionEngine avanzado en lugar de proyección simple
-      console.log('🚀 Usando ProjectionEngine.generateAdvancedProjections...');
-      const enhancedWithProjections = ProjectionEngine.generateAdvancedProjections(dataToEnhance, 2025);
+      let enhancedWithProjections: FinancialData | null = null;
+
+      // Seleccionar algoritmo según modo
+      if (projectionMode === 'advanced') {
+        console.log('🚀 Usando ProjectionEngine.generateAdvancedProjections...');
+        enhancedWithProjections = ProjectionEngine.generateAdvancedProjections(dataToEnhance, 2025, {
+          mixedCosts,
+          customClassifications,
+        });
+      } else if (projectionMode === 'movingAvg') {
+        console.log('🧮 Usando proyección Promedio Móvil');
+        enhancedWithProjections = projectWithMovingAverage(dataToEnhance);
+      } else {
+        console.log('📏 Usando proyección Mediana Plana');
+        enhancedWithProjections = projectWithFlatMedian(dataToEnhance);
+      }
       
       // FALLBACK: Si falla, usar proyección simple como respaldo  
       if (!enhancedWithProjections || !enhancedWithProjections.raw) {
@@ -73,8 +523,17 @@ const EditablePygMatrixV2: React.FC = () => {
           dataToEnhance.raw = dataToEnhance.raw.map(row => {
             const updatedRow = { ...row };
             
-            // Calcular promedio de meses existentes para proyección simple
-          const existingMonths = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio'];
+            // DINÁMICO: Detectar TODOS los meses disponibles automáticamente
+          const allPossibleMonths = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                                   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+          
+          // Encontrar todos los meses que YA tienen datos
+          const existingMonths = allPossibleMonths.filter(month => {
+            const value = parseFloat(row[month] as string) || 0;
+            return value !== 0 && !isNaN(value);
+          });
+          
+          // Solo usar meses que realmente tienen datos (dinámico)
           const existingValues = existingMonths
             .map(m => parseFloat(row[m] as string) || 0)
             .filter(v => v !== 0);
@@ -84,12 +543,76 @@ const EditablePygMatrixV2: React.FC = () => {
             const average = existingValues.reduce((a, b) => a + b, 0) / existingValues.length;
             const lastValue = parseFloat(row['Junio'] as string) || average;
             
-            // Proyectar con tendencia simple
-            monthsToProject.forEach((month, index) => {
-              // Aplicar una tendencia simple basada en el último valor conocido
-              const seasonalFactor = 1 + (Math.sin((index + 6) * Math.PI / 6) * 0.1); // Variación estacional
-              const trendFactor = 1 + (index * 0.02); // Tendencia ligera al alza
-              updatedRow[month] = lastValue * seasonalFactor * trendFactor;
+            // PROYECCIÓN INTELIGENTE DINÁMICA: Analizar TODOS los meses disponibles
+            // Determinar qué meses faltan por proyectar
+            const lastExistingMonthIndex = allPossibleMonths.findIndex(m => existingMonths.includes(m) && 
+              existingMonths.indexOf(m) === existingMonths.length - 1);
+            
+            const monthsToProjectDynamic = allPossibleMonths.slice(lastExistingMonthIndex + 1);
+            
+            monthsToProjectDynamic.forEach((month, index) => {
+              // Obtener TODOS los valores históricos disponibles (dinámico)
+              const historicalValues = existingValues; // Ya filtrados dinámicamente
+              
+              if (historicalValues.length >= 2) {
+                // ANÁLISIS INTELIGENTE POR CUENTA:
+                
+                // 1. Calcular tendencia real (regresión lineal)
+                const n = historicalValues.length;
+                const xValues = Array.from({length: n}, (_, i) => i + 1);
+                const yValues = historicalValues;
+                
+                const sumX = xValues.reduce((a, b) => a + b, 0);
+                const sumY = yValues.reduce((a, b) => a + b, 0);
+                const sumXY = xValues.reduce((sum, x, i) => sum + x * yValues[i], 0);
+                const sumXX = xValues.reduce((sum, x) => sum + x * x, 0);
+                
+                const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+                const intercept = (sumY - slope * sumX) / n;
+                
+                // 2. Detectar estacionalidad específica de esta cuenta
+                const avgValue = sumY / n;
+                const volatility = Math.sqrt(yValues.reduce((sum, val) => sum + Math.pow(val - avgValue, 2), 0) / n) / avgValue;
+                
+                // 3. Proyección inteligente basada en tendencia real
+                const nextPeriod = n + 1 + index;
+                let projectedValue = slope * nextPeriod + intercept;
+                
+                // 4. Aplicar factor estacional inteligente basado en volatilidad histórica
+                const seasonalFactor = 1 + (Math.sin((index + 6) * Math.PI / 6) * Math.min(volatility, 0.15));
+                
+                // 5. Promedio móvil ponderado DINÁMICO (adaptable a cualquier cantidad de meses)
+                const numMonths = historicalValues.length;
+                const weights = Array.from({length: numMonths}, (_, i) => (i + 1) / ((numMonths * (numMonths + 1)) / 2));
+                const weightedAvg = historicalValues.reduce((sum, val, i) => sum + val * weights[i], 0);
+                
+                // 6. Combinar tendencia + promedio ponderado
+                projectedValue = (projectedValue * 0.6) + (weightedAvg * 0.4);
+                
+                // 7. Aplicar factor estacional
+                projectedValue *= seasonalFactor;
+                
+                // 8. Limitar cambios extremos (máximo 25% vs último valor)
+                const lastValue = historicalValues[historicalValues.length - 1];
+                const maxChange = Math.abs(lastValue) * 0.25;
+                const change = projectedValue - lastValue;
+                
+                if (Math.abs(change) > maxChange) {
+                  projectedValue = lastValue + (change > 0 ? maxChange : -maxChange);
+                }
+                
+                updatedRow[month] = Math.round(Math.max(0, projectedValue));
+                
+              } else if (historicalValues.length === 1) {
+                // Solo un valor histórico: usar con crecimiento mínimo
+                const singleValue = historicalValues[0];
+                const minGrowth = 1 + (index * 0.02); // 2% mensual conservador
+                updatedRow[month] = Math.round(singleValue * minGrowth);
+                
+              } else {
+                // Sin datos históricos
+                updatedRow[month] = 0;
+              }
             });
           } else {
             // Si no hay datos, poner 0
@@ -101,8 +624,17 @@ const EditablePygMatrixV2: React.FC = () => {
           return updatedRow;
         });
         
-        // También actualizar monthly para meses proyectados
-        monthsToProject.forEach(month => {
+        // También actualizar monthly para meses proyectados DINÁMICAMENTE
+        const allMonths = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                          'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        
+        // Detectar automáticamente qué meses ya existen
+        const existingMonthsInData = allMonths.filter(month => 
+          dataToEnhance.monthly && dataToEnhance.monthly[month.toLowerCase()]
+        );
+        
+        // Solo crear meses que no existen
+        allMonths.forEach(month => {
           const monthLower = month.toLowerCase();
           if (!dataToEnhance.monthly[monthLower]) {
             dataToEnhance.monthly[monthLower] = {
@@ -145,58 +677,86 @@ const EditablePygMatrixV2: React.FC = () => {
       
       setEnhancedData(finalData);
     }
-  }, [financialData, enhancedData]);
+  }, [financialData, enhancedData, projectionMode, projectWithMovingAverage, projectWithFlatMedian, mixedCosts, customClassifications]);
 
-  const workingData = enhancedData || financialData;
+  // Estructura jerárquica del PyG - GENERADA DINÁMICAMENTE DESDE RAW (mismo criterio que el módulo PyG)
+  const [pygStructure, setPygStructure] = useState<PygRow[]>([]);
 
-  // Estructura jerárquica del PyG - BASADA EN CSV REAL
-  const pygStructure: PygRow[] = [
-    // INGRESOS - Estructura real del CSV
-    { code: '4', name: 'Ingresos', level: 0, isParent: true, children: ['4.1', '4.2', '4.3'] },
-    { code: '4.1', name: '  Ingresos de Actividades Ordinarias', level: 1, isParent: true, children: ['4.1.1', '4.1.2', '4.1.4'] },
-    { code: '4.1.1', name: '    Venta de Bienes', level: 2, isParent: true, children: ['4.1.1.1', '4.1.1.2'] },
-    { code: '4.1.1.1', name: '      Venta de Producto Terminado', level: 3, isParent: false },
-    { code: '4.1.1.2', name: '      Venta de Mercadería', level: 3, isParent: false },
-    { code: '4.1.2', name: '    Prestación de Servicios', level: 2, isParent: false },
-    { code: '4.1.4', name: '    Rebaja y/o Descuentos sobre Ventas', level: 2, isParent: false },
-    { code: '4.2', name: '  Otros Ingresos de Actividades Ordinarias', level: 1, isParent: true, children: ['4.2.1', '4.2.7'] },
-    { code: '4.2.1', name: '    Servicio Logístico', level: 2, isParent: false },
-    { code: '4.2.7', name: '    Descuentos en Compras', level: 2, isParent: false },
-    { code: '4.3', name: '  Otros Ingresos Financieros', level: 1, isParent: true, children: ['4.3.2'] },
-    { code: '4.3.2', name: '    Intereses Financieros', level: 2, isParent: false },
-    
-    // COSTOS Y GASTOS - Estructura real del CSV
-    { code: '5', name: 'Costos y Gastos', level: 0, isParent: true, children: ['5.1', '5.2'] },
-    { code: '5.1', name: '  Costos de Venta y Producción', level: 1, isParent: true, children: ['5.1.1', '5.1.2', '5.1.3', '5.1.4'] },
-    { code: '5.1.1', name: '    Materiales Utilizados o Productos Vendidos', level: 2, isParent: true, children: ['5.1.1.6', '5.1.1.7', '5.1.1.8'] },
-    { code: '5.1.1.6', name: '      Productos Terminados C', level: 3, isParent: false },
-    { code: '5.1.1.7', name: '      Costo Mercadería', level: 3, isParent: false },
-    { code: '5.1.1.8', name: '      Desperdicios, Mermas, Desecho', level: 3, isParent: false },
-    { code: '5.1.2', name: '    Mano de Obra Directa', level: 2, isParent: true, children: ['5.1.2.1', '5.1.2.2', '5.1.2.3', '5.1.2.4', '5.1.2.5', '5.1.2.6', '5.1.2.7', '5.1.2.8', '5.1.2.11'] },
-    { code: '5.1.2.1', name: '      Sueldos Mano de Obra Directa', level: 3, isParent: false },
-    { code: '5.1.2.2', name: '      Sobretiempos Mano de Obra Directa', level: 3, isParent: false },
-    { code: '5.1.2.3', name: '      Décimo Tercer Sueldo Mano de Obra Directa', level: 3, isParent: false },
-    { code: '5.1.2.4', name: '      Decimo Cuarto Sueldo Mano de Obra Directa', level: 3, isParent: false },
-    { code: '5.1.2.5', name: '      Vacaciones Mano de Obra Directa', level: 3, isParent: false },
-    { code: '5.1.2.6', name: '      Aportes Patronales al I.E.S.S. Mano de Obra Directa', level: 3, isParent: false },
-    { code: '5.1.2.7', name: '      Secap - Iece Mano de Obra Directa', level: 3, isParent: false },
-    { code: '5.1.2.8', name: '      Fondos de Reserva Mano de Obra Directa', level: 3, isParent: false },
-    { code: '5.1.2.11', name: '      Bonificaciones Mano de Obra Directa', level: 3, isParent: false },
-    { code: '5.1.3', name: '    Mano de Obra Indirecta', level: 2, isParent: false },
-    { code: '5.1.4', name: '    Costos Indirectos de Fabricación', level: 2, isParent: true, children: ['5.1.4.1'] }, // Solo muestro algunos para brevedad
-    { code: '5.1.4.1', name: '      Depreciación Propiedades, Plantas y Equipos', level: 3, isParent: false },
-    
-    { code: '5.2', name: '  Gastos', level: 1, isParent: true, children: ['5.2.1', '5.2.2', '5.2.3'] },
-    { code: '5.2.1', name: '    Gastos de Actividades Ordinarias', level: 2, isParent: true, children: ['5.2.1.1', '5.2.1.2', '5.2.1.3'] },
-    { code: '5.2.1.1', name: '      Ventas', level: 3, isParent: false },
-    { code: '5.2.1.2', name: '      Administrativos', level: 3, isParent: false },
-    { code: '5.2.1.3', name: '      Gastos Financieros', level: 3, isParent: false },
-    { code: '5.2.2', name: '    Gastos No Operacionales', level: 2, isParent: false },
-    { code: '5.2.3', name: '    Gastos de Operaciones Descontinuadas', level: 2, isParent: false },
-    
-    // ELIMINADO: Las 3 utilidades se calculan y muestran al final con utilityCalculations
-    // Ya no necesitamos estas filas duplicadas en la estructura principal
-  ];
+  const buildPygStructureFromRaw = useCallback((raw: any[]): PygRow[] => {
+    type Node = { code: string; name: string; children: Set<string> };
+    const nodes = new Map<string, Node>();
+
+    const getParent = (code: string): string | null => {
+      const i = code.lastIndexOf('.');
+      return i > -1 ? code.substring(0, i) : null;
+    };
+    const sortCodes = (a: string, b: string) => {
+      const ap = a.split('.').map(x => parseInt(x) || 0);
+      const bp = b.split('.').map(x => parseInt(x) || 0);
+      for (let i = 0; i < Math.max(ap.length, bp.length); i++) {
+        const av = ap[i] ?? 0; const bv = bp[i] ?? 0;
+        if (av !== bv) return av - bv;
+      }
+      return 0;
+    };
+
+    // Crear nodos por cada código presente en RAW
+    raw.forEach(r => {
+      const code = (r['COD.'] || '').toString();
+      const name = r['CUENTA'] || code;
+      if (!code) return;
+      if (!nodes.has(code)) nodes.set(code, { code, name, children: new Set() });
+      // Asegurar padre
+      let p = getParent(code);
+      if (p) {
+        if (!nodes.has(p)) nodes.set(p, { code: p, name: p, children: new Set() });
+        nodes.get(p)!.children.add(code);
+      }
+    });
+
+    // Incluir raíces 4 y 5 si existen
+    ['4', '5'].forEach(root => {
+      if (!nodes.has(root)) {
+        // Si no existe en RAW, intentamos crear si hay códigos hijos
+        const hasChild = Array.from(nodes.keys()).some(c => c !== root && c.startsWith(root + '.'));
+        if (hasChild) nodes.set(root, { code: root, name: root === '4' ? 'Ingresos' : 'Costos y Gastos', children: new Set() });
+      }
+    });
+
+    // Rellenar relaciones padre→hijos para raíces implícitas
+    Array.from(nodes.keys()).forEach(code => {
+      const p = getParent(code);
+      if (p && nodes.has(p)) nodes.get(p)!.children.add(code);
+    });
+
+    // Convertir a lista plana en pre-orden con nivel
+    const result: PygRow[] = [];
+    const visit = (code: string, level: number) => {
+      const node = nodes.get(code);
+      if (!node) return;
+      const children = Array.from(node.children).sort(sortCodes);
+      result.push({ code, name: node.name, level, isParent: children.length > 0, children });
+      children.forEach(child => visit(child, level + 1));
+    };
+
+    // Empezar por 4 y 5 en orden
+    ['4', '5'].forEach(root => {
+      if (nodes.has(root)) visit(root, 0);
+    });
+    // Agregar órfanos (si los hay)
+    Array.from(nodes.keys()).sort(sortCodes).forEach(code => {
+      if (!result.find(r => r.code === code)) visit(code, 0);
+    });
+
+    return result;
+  }, []);
+
+  useEffect(() => {
+    if (workingData?.raw && Array.isArray(workingData.raw)) {
+      const structure = buildPygStructureFromRaw(workingData.raw);
+      setPygStructure(structure);
+    }
+  }, [workingData?.raw, buildPygStructureFromRaw]);
 
   const toggleNode = (code: string) => {
     setExpandedNodes(prev => ({
@@ -216,6 +776,20 @@ const EditablePygMatrixV2: React.FC = () => {
     return expandedNodes[parentCode] === true;
   };
 
+  // Obtener patrón detectado para una cuenta (si existe)
+  const getDetectedPattern = useCallback((code: string): string | null => {
+    try {
+      const patterns = (window as any).__projectionPatterns || {};
+      const p = patterns[code];
+      if (!p) return null;
+      if (p.type === 'variable') return `variable · ratio≈${(p.ratio || 0).toFixed(3)}`;
+      if (p.type === 'mixed') return `mixto · a≈${Math.round(p.a || 0)} · b≈${(p.b || 0).toFixed(3)} · R²≈${(p.r2 || 0).toFixed(2)}`;
+      if (p.type === 'fixed') return `fijo · mediana base`;
+      if (p.type === 'step') return `escalonado · mediana base`;
+      return null;
+    } catch { return null; }
+  }, []);
+
   const getParentCode = (code: string): string | null => {
     const parts = code.split('.');
     if (parts.length <= 1) return null;
@@ -223,73 +797,9 @@ const EditablePygMatrixV2: React.FC = () => {
   };
 
 
-  // USAR EXACTAMENTE LA MISMA LÓGICA QUE PygContainer.tsx
-  const calculateUtilities = useCallback(async (data: FinancialData, months: string[]) => {
-    const calculations = { 
-      'Utilidad Bruta (UB)': {}, 
-      'Utilidad Neta (UN)': {}, 
-      'EBITDA': {} 
-    };
-    
-    for (const month of months) {
-      try {
-        // CRÍTICO: calculatePnl espera el mes en MINÚSCULAS porque workingData.monthly usa minúsculas
-        // Los logs muestran: workingData.monthly tiene ['enero', 'febrero', 'marzo', ...]
-        // NO capitalizar aquí!
-        const monthForCalculation = month.toLowerCase();
-        
-        console.log(`🔍 BALANCE INTERNO - Calculando utilidades para ${month} (usando: ${monthForCalculation})`);
-        
-        // 1. UB = Utilidad Bruta/Contable (sin exclusiones) - EXACTO como PyG
-        const ubResult = await calculatePnl(data, monthForCalculation, 'contable', undefined, 1);
-        calculations['Utilidad Bruta (UB)'][month] = ubResult.summaryKpis?.utilidad || 0;
-        
-        // 2. UN = Utilidad Neta/EBIT (excluye intereses) - EXACTO como PyG  
-        const unResult = await calculatePnl(data, monthForCalculation, 'operativo', undefined, 1);
-        calculations['Utilidad Neta (UN)'][month] = unResult.summaryKpis?.utilidad || 0;
-        
-        // 3. EBITDA (excluye depreciación e intereses) - EXACTO como PyG
-        const ebitdaResult = await calculatePnl(data, monthForCalculation, 'caja', undefined, 1);
-        calculations['EBITDA'][month] = ebitdaResult.summaryKpis?.utilidad || 0;
-        
-        console.log(`💰 BALANCE INTERNO UTILIDADES ${month}:`, {
-          ub: calculations['Utilidad Bruta (UB)'][month],
-          un: calculations['Utilidad Neta (UN)'][month], 
-          ebitda: calculations['EBITDA'][month],
-          inputMonth: monthForCalculation
-        });
-        
-      } catch (error) {
-        console.error(`Error calculando utilidades para ${month}:`, error);
-        calculations['Utilidad Bruta (UB)'][month] = 0;
-        calculations['Utilidad Neta (UN)'][month] = 0;
-        calculations['EBITDA'][month] = 0;
-      }
-    }
-    
-    setUtilityCalculations(calculations);
-  }, []);
-
-  // PyG Tree Data (matriz principal) + 3 utilidades simples
-  const [pygTreeData, setPygTreeData] = useState<any[]>([]);
-  const [utilityCalculations, setUtilityCalculations] = useState<Record<string, Record<string, number>>>({
-    'Utilidad Bruta (UB)': {},
-    'Utilidad Neta (UN)': {},
-    'EBITDA': {}
-  });
   
-  // Obtener meses disponibles de forma segura - SIEMPRE en minúsculas
-  const availableMonths = useMemo(() => {
-    if (!workingData?.monthly) return [];
-    
-    // Normalizar todas las claves a minúsculas
-    const normalizedMonthly: Record<string, any> = {};
-    Object.entries(workingData.monthly).forEach(([key, value]) => {
-      normalizedMonthly[key.toLowerCase()] = value;
-    });
-    
-    return getSortedMonths(normalizedMonthly);
-  }, [workingData]);
+  
+  // (moved up) availableMonths defined earlier
   
   // CALCULAR PyG SOLO DESPUÉS de que ProjectionEngine complete los datos
   useEffect(() => {
@@ -508,37 +1018,73 @@ const EditablePygMatrixV2: React.FC = () => {
     return cache;
   }, [pygTreeData]);
   
-  // Obtener valor de cuenta desde los datos raw por mes específico
-  const getAccountValueForRow = (code: string, monthData: MonthlyData, month: string): number => {
-    // SIEMPRE buscar en datos raw por mes específico
-    if (workingData?.raw) {
-      const rawRow = workingData.raw.find(r => r['COD.'] === code);
-      if (rawRow) {
-        // ⚠️ CRÍTICO: Convertir mes al formato correcto (capitalizado)
-        const monthKey = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
-        const value = parseFloat(rawRow[monthKey] as string) || 0;
-        
-        // Debug para verificar valores por mes
-        console.log(`💰 BALANCE INTERNO - ${code} en ${monthKey}:`, { 
-          value, 
-          rawValue: rawRow[monthKey],
-          allMonths: {
-            enero: rawRow['Enero'],
-            febrero: rawRow['Febrero'], 
-            marzo: rawRow['Marzo'],
-            abril: rawRow['Abril'],
-            mayo: rawRow['Mayo'],
-            junio: rawRow['Junio']
-          }
-        });
-        
-        return value;
+  // Obtener valor de cuenta: preferir jerarquía visible (estructura) para que los totales coincidan con lo mostrado
+  const getAccountValueForRow = (code: string, _monthData: MonthlyData, month: string): number => {
+    if (!workingData?.raw) return 0;
+    const monthKey = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+    const rows = workingData.raw;
+    const codes = rows.map(r => (r['COD.'] || '').toString());
+    const rowInStructure = pygStructure.find(r => r.code === code);
+
+    // Helper recursivo con memo por código para esta llamada (evita recomputar hijos repetidos)
+    const memo = new Map<string, number>();
+    const computeByStructure = (c: string): number => {
+      if (memo.has(c)) return memo.get(c)!;
+      const struct = pygStructure.find(r => r.code === c);
+      if (struct && struct.children && struct.children.length > 0) {
+        const total = struct.children.reduce((acc, child) => acc + computeByStructure(child), 0);
+        memo.set(c, total);
+        return total;
       }
-    }
-    
-    console.log(`⚠️ BALANCE INTERNO - Código ${code} no encontrado en raw data`);
-    return 0;
+      // Si no hay hijos definidos en estructura, caer a dinámica por RAW
+      const hasChildrenRaw = codes.some(x => x !== c && x.startsWith(c + '.'));
+      if (!hasChildrenRaw) {
+        const rawRow = rows.find(r => (r['COD.'] || '').toString() === c);
+        const v = rawRow ? parseNumericValue((rawRow as any)[monthKey] || '0') : 0;
+        memo.set(c, isNaN(v) ? 0 : v);
+        return isNaN(v) ? 0 : v;
+      }
+      // Si tiene hijos en RAW pero no en estructura, sumar hojas RAW
+      const isLeafRaw = (cx: string) => !codes.some(other => other !== cx && other.startsWith(cx + '.'));
+      const sum = rows.reduce((acc, r) => {
+        const rc = (r['COD.'] || '').toString();
+        if (rc.startsWith(c + '.') && isLeafRaw(rc)) {
+          const val = parseNumericValue((r as any)[monthKey] || '0');
+          return acc + (isNaN(val) ? 0 : val);
+        }
+        return acc;
+      }, 0);
+      memo.set(c, sum);
+      return sum;
+    };
+
+    return computeByStructure(code);
   };
+
+  // Tipo de patrón (para colores)
+  const getPatternType = useCallback((code: string): string | null => {
+    try {
+      const patterns = (window as any).__projectionPatterns || {};
+      return patterns[code]?.type || null;
+    } catch { return null; }
+  }, []);
+
+  const getPatternClass = useCallback((code: string): string => {
+    if (!showPatternColors) return '';
+    const t = getPatternType(code);
+    switch (t) {
+      case 'variable':
+        return 'bg-emerald-500/5';
+      case 'mixed':
+        return 'bg-amber-500/5';
+      case 'fixed':
+        return 'bg-sky-500/5';
+      case 'step':
+        return 'bg-violet-500/5';
+      default:
+        return '';
+    }
+  }, [getPatternType, showPatternColors]);
 
   const handleSave = async (month: string, row: PygRow, newValue: number) => {
     console.log(`💾 handleSave LLAMADO: ${row.code} ${month} = ${newValue} (isParent: ${row.isParent})`);
@@ -639,6 +1185,46 @@ const EditablePygMatrixV2: React.FC = () => {
             </p>
           </div>
           <div className="flex items-center space-x-3">
+            {/* Resumen comparativo de algoritmos (jul–dic) */}
+            <div className="px-3 py-2 rounded-lg border bg-glass/50 border-border/40 text-xs mr-2">
+              <div className="font-semibold text-text-secondary mb-1">Resumen jul–dic</div>
+              {isSummaryLoading ? (
+                <div className="text-text-muted">Calculando…</div>
+              ) : (
+                <div className="grid grid-cols-3 gap-3 min-w-[380px]">
+                  {(['advanced','movingAvg','flatMedian'] as const).map((mode) => {
+                    const s = algoSummary[mode];
+                    const isActive = projectionMode === mode;
+                    const label = mode === 'advanced' ? 'Avanzado' : mode === 'movingAvg' ? 'Prom. móvil' : 'Mediana';
+                    return (
+                      <div key={mode} className={`p-2 rounded border ${isActive ? 'border-accent/50 bg-accent/10' : 'border-border/30'}`}>
+                        <div className={`font-semibold ${isActive ? 'text-accent' : 'text-text-secondary'}`}>{label}</div>
+                        <div className="mt-1">
+                          <div className="flex justify-between"><span className="text-text-muted">UB avg:</span><span className="font-semibold">{formatCurrency(Math.round(s?.ubAvg || 0))}</span></div>
+                          <div className="flex justify-between"><span className="text-text-muted">UN avg:</span><span className="font-semibold">{formatCurrency(Math.round(s?.unAvg || 0))}</span></div>
+                          <div className="flex justify-between"><span className="text-text-muted">EBITDA avg:</span><span className="font-semibold">{formatCurrency(Math.round(s?.ebitdaAvg || 0))}</span></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {/* Selector de algoritmo de proyección */}
+            <div className="flex items-center gap-2 mr-2" title="Algoritmo de proyección para meses faltantes">
+              <button
+                onClick={() => { setProjectionMode('advanced'); setEnhancedData(null); }}
+                className={`px-2 py-1 rounded border text-xs ${projectionMode === 'advanced' ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70'}`}
+              >Avanzado</button>
+              <button
+                onClick={() => { setProjectionMode('movingAvg'); setEnhancedData(null); }}
+                className={`px-2 py-1 rounded border text-xs ${projectionMode === 'movingAvg' ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70'}`}
+              >Prom. móvil</button>
+              <button
+                onClick={() => { setProjectionMode('flatMedian'); setEnhancedData(null); }}
+                className={`px-2 py-1 rounded border text-xs ${projectionMode === 'flatMedian' ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70'}`}
+              >Mediana</button>
+            </div>
             {/* Botón Colapsar/Expandir Todo */}
             <button
               onClick={() => {
@@ -685,9 +1271,41 @@ const EditablePygMatrixV2: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* Toggle para resaltar patrones */}
+            <button
+              onClick={() => setShowPatternColors(v => !v)}
+              className={`px-3 py-2 rounded-lg border text-xs transition-all ${showPatternColors ? 'bg-primary/20 border-primary/40 text-primary' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70'}`}
+              title="Resaltar filas por patrón detectado (variable/mixto/fijo/escalonado)"
+            >
+              {showPatternColors ? 'Ocultar patrones' : 'Resaltar patrones'}
+            </button>
+
+            {/* Botón aplicar cambios */}
+            <button
+              onClick={applyPendingEdits}
+              disabled={Object.keys(pendingEdits).length === 0}
+              className={`px-3 py-2 rounded-lg text-xs transition-all border flex items-center gap-2 ${Object.keys(pendingEdits).length === 0 || isRecalculating ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : 'bg-accent/20 text-accent border-accent/30 hover:bg-accent/30'}`}
+              title="Aplica las ediciones y recalcula toda la matriz"
+            >
+              {isRecalculating ? 'Recalculando…' : `Recalcular (${Object.keys(pendingEdits).length})`}
+            </button>
+
+            {/* Botón descartar cambios */}
+            <button
+              onClick={discardPendingEdits}
+              disabled={Object.keys(pendingEdits).length === 0}
+              className={`px-3 py-2 rounded-lg text-xs transition-all border ${Object.keys(pendingEdits).length === 0 ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : 'bg-danger/10 text-danger border-danger/30 hover:bg-danger/20'}`}
+              title="Descarta todas las ediciones pendientes"
+            >
+              Descartar
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Toasts locales */}
+      <ToastContainer errors={errors} onClose={removeError} />
 
       {/* Descripción de la matriz */}
       <div className="glass-card p-4 bg-primary/10 border border-primary/30">
@@ -699,15 +1317,24 @@ const EditablePygMatrixV2: React.FC = () => {
 
       {/* Matriz editable jerárquica */}
       <div className="glass-card p-4 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-xs text-text-muted uppercase border-b border-border">
+        <table className="w-full text-sm table-fixed">
+          <thead className="text-xs text-text-muted uppercase border-b border-border sticky top-0 bg-dark-bg/80 backdrop-blur z-10">
             <tr>
               <th className="px-4 py-3 text-left font-medium w-80">Cuenta</th>
-              {months.map(month => (
-                <th key={month} className="px-4 py-3 text-right font-medium min-w-32">
-                  {month}
-                </th>
-              ))}
+              {months.map((month, idx) => {
+                const isProjectedCol = idx > 5; // jul-dic
+                return (
+                  <th
+                    key={month}
+                    className={`px-4 py-3 text-right font-medium min-w-32 cursor-pointer ${hoveredCol === month ? 'bg-primary/10' : ''} ${isProjectedCol ? 'bg-accent/10' : ''}`}
+                    onMouseEnter={() => setHoveredCol(month)}
+                    onMouseLeave={() => setHoveredCol(null)}
+                    title={`Columna: ${month}${isProjectedCol ? ' · Proyectado' : ''}`}
+                  >
+                    {month}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
@@ -717,11 +1344,13 @@ const EditablePygMatrixV2: React.FC = () => {
               return (
                 <tr 
                   key={row.code} 
-                  className={`hover:bg-glass/50 transition-colors group ${
+                  onMouseEnter={() => setHoveredRow(row.code)}
+                  onMouseLeave={() => setHoveredRow(null)}
+                  className={`transition-colors group ${
                     row.isCalculated ? 'bg-primary/5 font-semibold' : ''
                   } ${isExcluded ? 'opacity-50' : ''}`}
                 >
-                  <td className="px-4 py-3">
+                  <td className={`px-4 py-3 border-r border-border/20 ${getPatternClass(row.code)} ${hoveredRow === row.code ? 'bg-primary/10' : ''}`}>
                     <div 
                       className="flex items-center"
                       style={{ paddingLeft: `${row.level * 24}px` }}
@@ -744,6 +1373,14 @@ const EditablePygMatrixV2: React.FC = () => {
                       `}>
                         {row.code} - {row.name}
                       </span>
+                      {!row.isParent && getDetectedPattern(row.code) && (
+                        <span
+                          className="ml-2 px-2 py-0.5 text-[10px] rounded-full bg-glass/40 border border-border/40 text-text-muted"
+                          title={getDetectedPattern(row.code) || 'Sin patrón detectado'}
+                        >
+                          {getDetectedPattern(row.code)!}
+                        </span>
+                      )}
                     </div>
                   </td>
                   {months.map(month => {
@@ -751,10 +1388,14 @@ const EditablePygMatrixV2: React.FC = () => {
                     const value = row.formula ? 
                       row.formula(monthData, month, (code) => getAccountValueForRow(code, monthData, month)) : 
                       getAccountValueForRow(row.code, monthData, month);
+                    const isRowHover = hoveredRow === row.code;
+                    const isColHover = hoveredCol === month;
+                    const isIntersect = isRowHover && isColHover;
+                    const isEdited = pendingEdits.hasOwnProperty(`${row.code}|${month}`);
                     
                     if (row.isCalculated || isExcluded) {
                       return (
-                        <td key={`${month}-${row.code}`} className="px-4 py-3 text-right">
+                        <td key={`${month}-${row.code}`} className={`px-4 py-3 text-right border-r border-border/10 ${isColHover ? 'bg-primary/10' : ''}`}>
                           <span className={`
                             ${row.isCalculated ? 'text-primary font-semibold' : ''}
                             ${isExcluded ? 'line-through text-text-muted' : ''}
@@ -770,12 +1411,17 @@ const EditablePygMatrixV2: React.FC = () => {
                     const isProjected = monthIndex > 5 || (value === 0 && monthIndex >= 0);
                     
                     return (
-                      <td key={`${month}-${row.code}`} className="px-2 py-2 relative">
+                      <td
+                        key={`${month}-${row.code}`}
+                        className={`px-2 py-2 relative border-r border-border/10 ${isIntersect ? 'bg-accent/10 ring-1 ring-accent/30' : isColHover || isRowHover ? 'bg-primary/5' : ''} ${isEdited ? 'bg-yellow-500/15' : ''}`}
+                        onMouseEnter={() => { setHoveredRow(row.code); setHoveredCol(month); }}
+                      >
                         <EditableCell
                           initialValue={value}
-                          onSave={(newValue) => handleSave(month, row, newValue)}
+                          onEdit={(newValue) => queueEdit(month, row, newValue)}
+                          autoSave={false}
                           isReadOnly={row.isParent}
-                          className={`group-hover:bg-glass/30 ${
+                          className={`group-hover:bg-glass/30 border border-border/20 rounded ${
                             row.isParent ? 'bg-primary/5' : ''
                           } ${isProjected ? 'bg-accent/5 border-accent/20' : ''}`}
                         />
