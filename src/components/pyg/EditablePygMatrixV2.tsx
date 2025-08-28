@@ -1323,7 +1323,35 @@ const EditablePygMatrixV2: React.FC = () => {
                             return `Totales jul–dic → UB: ${ubT} · UN: ${unT} · EBITDA: ${ebdT}\nPromedios → UB: ${ubA} · UN: ${unA} · EBITDA: ${ebdA}${isActive ? '\n(Algoritmo activo)' : ''}${isBest ? '\n(Mejor por EBITDA promedio)' : ''}`;
                           })();
                           return (
-                            <div key={mode} className={`p-2 rounded border ${isActive ? 'border-accent/50 bg-accent/10' : 'border-border/30'}`} title={tip} aria-label={`Tarjeta ${label}`}>
+                            <div
+                              key={mode}
+                              className={`p-2 rounded border transition ${
+                                isActive
+                                  ? 'border-accent/50 bg-accent/10'
+                                  : isRecalculating
+                                  ? 'border-border/30 opacity-70 cursor-not-allowed'
+                                  : 'border-border/30 hover:bg-glass/60 cursor-pointer'
+                              }`}
+                              title={`${tip}${!isActive && !isRecalculating ? '\nClick para activar este algoritmo' : ''}`}
+                              aria-label={`Tarjeta ${label}`}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => {
+                                if (isRecalculating || isActive) return;
+                                setProjectionMode(mode);
+                                setEnhancedData(null);
+                                try { addError(`Algoritmo activo: ${label}`, 'info'); } catch {}
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  if (isRecalculating || isActive) return;
+                                  setProjectionMode(mode);
+                                  setEnhancedData(null);
+                                  try { addError(`Algoritmo activo: ${label}`, 'info'); } catch {}
+                                }
+                              }}
+                            >
                               <div className="flex items-center justify-between">
                                 <div className={`font-semibold ${isActive ? 'text-accent' : 'text-text-secondary'}`}>{label}</div>
                                 {isBest && (() => {
