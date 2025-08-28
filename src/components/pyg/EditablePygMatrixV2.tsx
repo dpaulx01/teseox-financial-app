@@ -244,6 +244,8 @@ const EditablePygMatrixV2: React.FC = () => {
   });
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [summaryVersion, setSummaryVersion] = useState(0);
+  // Estado de guardado para mostrar en el footer
+  const [lastSave, setLastSave] = useState<{ status: 'idle' | 'ok' | 'error'; at?: number }>({ status: 'idle' });
 
   const projectForMode = useCallback((base: FinancialData, mode: AlgoKey): FinancialData => {
     if (mode === 'advanced') {
@@ -388,9 +390,11 @@ const EditablePygMatrixV2: React.FC = () => {
         await saveFinancialData(finalData);
         console.log('💾 Cambios persistidos en base de datos');
         addError('Cambios aplicados y guardados en base de datos', 'info');
+        setLastSave({ status: 'ok', at: Date.now() });
       } catch (persistErr) {
         console.warn('⚠️ No se pudo persistir en DB:', persistErr);
         addError('No se pudo guardar en base de datos', 'error');
+        setLastSave({ status: 'error', at: Date.now() });
       }
       setPendingEdits({});
       // Calcular meses disponibles a partir de los datos finales (evita TDZ)
@@ -1632,28 +1636,55 @@ const EditablePygMatrixV2: React.FC = () => {
         )}
       </div>
 
-      {/* Footer explicativo */}
+      {/* Footer inteligente */}
       <div className="glass-card p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div className="text-center border-r border-border/30">
-            <h4 className="font-semibold text-primary mb-2">Jerarquía de Cuentas</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+          {/* Estado de la matriz */}
+          <div className="text-center border-r border-border/30 lg:border-r">
+            <h4 className="font-semibold text-primary mb-1">Estado</h4>
             <p className="text-text-muted text-xs">
-              Las cuentas siguen la estructura contable estándar.
-              Clic en ▶ para expandir/contraer subcuentas.
+              {isRecalculating ? 'Recalculando…' : 'Listo'} · Meses: {months.length} · Pendientes: {Object.keys(pendingEdits).length}
             </p>
           </div>
-          <div className="text-center border-r border-border/30">
-            <h4 className="font-semibold text-primary mb-2">Edición Inteligente</h4>
+
+          {/* Proyección resumida */}
+          <div className="text-center border-r border-border/30 lg:border-r hidden md:block">
+            <h4 className="font-semibold text-primary mb-1">Proyección (jul–dic)</h4>
             <p className="text-text-muted text-xs">
-              Solo las cuentas hoja son editables.
-              Los totales se recalculan automáticamente.
+              {(() => {
+                const label = projectionMode === 'advanced' ? 'Avanzado' : projectionMode === 'movingAvg' ? 'Prom. móvil' : 'Mediana';
+                const modes = ['advanced','movingAvg','flatMedian'] as const;
+                const best = modes.reduce((acc, m) => {
+                  const val = algoSummary[m]?.ebitdaAvg || 0;
+                  return val > (algoSummary[acc]?.ebitdaAvg || 0) ? m : acc;
+                }, 'advanced' as 'advanced'|'movingAvg'|'flatMedian');
+                const bestVal = Math.round(algoSummary[best]?.ebitdaAvg || 0);
+                const activeVal = Math.round(algoSummary[projectionMode]?.ebitdaAvg || 0);
+                const delta = bestVal - activeVal;
+                return `Algoritmo: ${label}${delta ? ` · Δ vs mejor: ${delta > 0 ? '+' : ''}${formatCurrency(delta)}` : ''}`;
+              })()}
             </p>
           </div>
+
+          {/* Edición y patrones */}
+          <div className="text-center border-r border-border/30 lg:border-r">
+            <h4 className="font-semibold text-primary mb-1">Edición</h4>
+            <p className="text-text-muted text-xs">
+              Hojas editables; nodos padres <span title="Esta cuenta tiene subcuentas; edita las hojas">🔒</span>. Patrones: {showPatternColors ? 'visibles' : 'ocultos'}.
+            </p>
+          </div>
+
+          {/* Guardado */}
           <div className="text-center">
-            <h4 className="font-semibold text-primary mb-2">Métricas de Utilidad</h4>
+            <h4 className="font-semibold text-primary mb-1">Guardado</h4>
             <p className="text-text-muted text-xs">
-              Las últimas 3 filas muestran UB, UN y EBITDA y se recalculan tras aplicar ediciones y proyecciones.
-              No se alternan perspectivas en esta matriz.
+              {lastSave.status === 'ok' && lastSave.at ? (
+                <>Último guardado: {new Date(lastSave.at).toLocaleTimeString()}</>
+              ) : lastSave.status === 'error' && lastSave.at ? (
+                <>Error al guardar: {new Date(lastSave.at).toLocaleTimeString()}</>
+              ) : (
+                <>Sin guardados recientes</>
+              )}
             </p>
           </div>
         </div>
