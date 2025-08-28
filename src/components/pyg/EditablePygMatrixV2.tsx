@@ -1650,10 +1650,10 @@ const EditablePygMatrixV2: React.FC = () => {
             </p>
           </div>
           <div className="text-center">
-            <h4 className="font-semibold text-primary mb-2">Análisis Múltiple</h4>
+            <h4 className="font-semibold text-primary mb-2">Métricas de Utilidad</h4>
             <p className="text-text-muted text-xs">
-              Cambia entre perspectivas para ver diferentes métricas.
-              Los valores excluidos aparecen tachados.
+              Las últimas 3 filas muestran UB, UN y EBITDA y se recalculan tras aplicar ediciones y proyecciones.
+              No se alternan perspectivas en esta matriz.
             </p>
           </div>
         </div>
