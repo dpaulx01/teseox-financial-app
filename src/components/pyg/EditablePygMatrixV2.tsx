@@ -272,7 +272,8 @@ const EditablePygMatrixV2: React.FC = () => {
   useEffect(() => {
     const runSummary = async () => {
       if (isRecalculating) return; // no bloquear UI durante recálculo
-      const base = financialData || workingData;
+      // Usar datos con proyección si están disponibles para consistencia visual
+      const base = enhancedData || financialData || workingData;
       if (!base) return;
       setIsSummaryLoading(true);
       try {
@@ -313,7 +314,7 @@ const EditablePygMatrixV2: React.FC = () => {
       }
     };
     runSummary();
-  }, [summaryVersion, projectForMode, isRecalculating]);
+  }, [summaryVersion, projectForMode, isRecalculating, financialData, enhancedData]);
 
   const queueEdit = useCallback((month: string, row: PygRow, newValue: number) => {
     setPendingEdits(prev => ({ ...prev, [`${row.code}|${month}`]: newValue }));
@@ -1291,14 +1292,6 @@ const EditablePygMatrixV2: React.FC = () => {
             <div className="px-3 py-2 rounded-lg border bg-glass/50 border-border/40 text-xs mr-2 hidden xl:block">
               <div className="flex items-center justify-between mb-1">
                 <div className="font-semibold text-text-secondary">Resumen jul–dic</div>
-                <button
-                  onClick={() => setSummaryVersion(v => v + 1)}
-                  className={`text-[11px] px-2 py-[2px] rounded border ${isSummaryLoading || isRecalculating ? 'text-text-muted border-border/30 cursor-not-allowed' : 'text-text-secondary border-border/40 hover:text-white hover:bg-glass/40'}`}
-                  title="Recalcular resumen (3 algoritmos)"
-                  disabled={isSummaryLoading || isRecalculating}
-                >
-                  {isSummaryLoading ? 'Actualizando…' : 'Actualizar'}
-                </button>
               </div>
               {isSummaryLoading ? (
                 <div className="text-text-muted">Calculando…</div>
@@ -1347,6 +1340,12 @@ const EditablePygMatrixV2: React.FC = () => {
                       </div>
                     );
                   })()}
+                  <div className="mt-2 text-right text-[11px] text-text-muted">
+                    {(() => {
+                      const label = projectionMode === 'advanced' ? 'Avanzado' : projectionMode === 'movingAvg' ? 'Prom. móvil' : 'Mediana';
+                      return `Fuente: proyecciones actuales (${label})`;
+                    })()}
+                  </div>
                 </>
               )}
             </div>
