@@ -44,6 +44,7 @@ const EditablePygMatrixV2: React.FC = () => {
   // Selector de algoritmo de proyección
   const [projectionMode, setProjectionMode] = useState<'advanced' | 'movingAvg' | 'flatMedian'>('advanced');
   const [showPatternColors, setShowPatternColors] = useState<boolean>(false);
+  const [userToggledPatterns, setUserToggledPatterns] = useState<boolean>(false);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [hoveredCol, setHoveredCol] = useState<string | null>(null);
   const [openChildrenFor, setOpenChildrenFor] = useState<string | null>(null);
@@ -60,6 +61,17 @@ const EditablePygMatrixV2: React.FC = () => {
   useEffect(() => { workingDataRef.current = workingData || null; }, [workingData]);
   useEffect(() => { pendingEditsRef.current = pendingEdits; }, [pendingEdits]);
   useEffect(() => { enhancedDataRef.current = enhancedData; }, [enhancedData]);
+
+  // Persistencia de preferencia de patrones
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('BI_showPatterns');
+      if (stored !== null) setShowPatternColors(stored === '1');
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem('BI_showPatterns', showPatternColors ? '1' : '0'); } catch {}
+  }, [showPatternColors]);
 
   // Persistir ediciones pendientes en sessionStorage
   useEffect(() => {
@@ -709,8 +721,15 @@ const EditablePygMatrixV2: React.FC = () => {
       });
       
       setEnhancedData(finalData);
+      // Si hay patrones detectados y el usuario no ha decidido aún, activar resaltado por defecto en modo avanzado
+      try {
+        const patterns = (window as any).__projectionPatterns || {};
+        if (projectionMode === 'advanced' && !userToggledPatterns && Object.keys(patterns).length > 0) {
+          setShowPatternColors(true);
+        }
+      } catch {}
     }
-  }, [financialData, enhancedData, projectionMode, projectWithMovingAverage, projectWithFlatMedian, mixedCosts, customClassifications]);
+  }, [financialData, enhancedData, projectionMode, projectWithMovingAverage, projectWithFlatMedian, mixedCosts, customClassifications, userToggledPatterns]);
 
   // Estructura jerárquica del PyG - GENERADA DINÁMICAMENTE DESDE RAW (mismo criterio que el módulo PyG)
   const [pygStructure, setPygStructure] = useState<PygRow[]>([]);
@@ -1398,12 +1417,12 @@ const EditablePygMatrixV2: React.FC = () => {
 
             {/* Toggle para resaltar patrones */}
             <button
-              onClick={() => setShowPatternColors(v => !v)}
+              onClick={() => { setShowPatternColors(v => !v); setUserToggledPatterns(true); }}
               disabled={isRecalculating}
               className={`px-3 py-2 rounded-lg border text-xs transition-all ${isRecalculating ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : (showPatternColors ? 'bg-primary/20 border-primary/40 text-primary' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70')}`}
               title="Resaltar filas por patrón detectado (variable/mixto/fijo/escalonado)"
             >
-              {showPatternColors ? 'Ocultar patrones' : 'Resaltar patrones'}
+              {showPatternColors ? 'Patrones: ON' : 'Patrones: OFF'}
             </button>
 
             {/* Botón forzar recálculo eliminado: recálculo estándar es suficiente */}
