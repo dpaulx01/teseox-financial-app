@@ -1225,7 +1225,7 @@ const EditablePygMatrixV2: React.FC = () => {
     <div className="space-y-6" aria-busy={isRecalculating}>
       {/* Header con tipo de análisis */}
       <div className="glass-card p-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-2xl font-display text-primary flex items-center space-x-3">
               <Calculator className="w-8 h-8" />
@@ -1235,9 +1235,37 @@ const EditablePygMatrixV2: React.FC = () => {
               Balance Interno - Matriz con UB, UN y EBITDA
             </p>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Botones principales al inicio para mejor visibilidad */}
+            <button
+              onClick={applyPendingEdits}
+              disabled={isRecalculating || Object.keys(pendingEdits).length === 0}
+              className={`px-3 py-2 rounded-lg text-xs transition-all border flex items-center gap-2 ${Object.keys(pendingEdits).length === 0 || isRecalculating ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : 'bg-accent/20 text-accent border-accent/30 hover:bg-accent/30'}`}
+              title="Aplica las ediciones y recalcula toda la matriz"
+            >
+              {isRecalculating ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Recalculando…</span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  <span>{`Recalcular (${Object.keys(pendingEdits).length})`}</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={discardPendingEdits}
+              disabled={isRecalculating || Object.keys(pendingEdits).length === 0}
+              className={`px-3 py-2 rounded-lg text-xs transition-all border ${isRecalculating || Object.keys(pendingEdits).length === 0 ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : 'bg-danger/10 text-danger border-danger/30 hover:bg-danger/20'}`}
+              title="Descarta todas las ediciones pendientes"
+            >
+              Descartar
+            </button>
             {/* Resumen comparativo de algoritmos (jul–dic) */}
-            <div className="px-3 py-2 rounded-lg border bg-glass/50 border-border/40 text-xs mr-2">
+            <div className="px-3 py-2 rounded-lg border bg-glass/50 border-border/40 text-xs mr-2 hidden xl:block">
               <div className="flex items-center justify-between mb-1">
                 <div className="font-semibold text-text-secondary">Resumen jul–dic</div>
                 <button
@@ -1374,37 +1402,7 @@ const EditablePygMatrixV2: React.FC = () => {
               {showPatternColors ? 'Ocultar patrones' : 'Resaltar patrones'}
             </button>
 
-            {/* Botón aplicar cambios */}
-            <button
-              onClick={applyPendingEdits}
-              disabled={isRecalculating || Object.keys(pendingEdits).length === 0}
-              className={`px-3 py-2 rounded-lg text-xs transition-all border flex items-center gap-2 ${Object.keys(pendingEdits).length === 0 || isRecalculating ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : 'bg-accent/20 text-accent border-accent/30 hover:bg-accent/30'}`}
-              title="Aplica las ediciones y recalcula toda la matriz"
-            >
-              {isRecalculating ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Recalculando…</span>
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4" />
-                  <span>{`Recalcular (${Object.keys(pendingEdits).length})`}</span>
-                </>
-              )}
-            </button>
-
             {/* Botón forzar recálculo eliminado: recálculo estándar es suficiente */}
-
-            {/* Botón descartar cambios */}
-            <button
-              onClick={discardPendingEdits}
-              disabled={isRecalculating || Object.keys(pendingEdits).length === 0}
-              className={`px-3 py-2 rounded-lg text-xs transition-all border ${isRecalculating || Object.keys(pendingEdits).length === 0 ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : 'bg-danger/10 text-danger border-danger/30 hover:bg-danger/20'}`}
-              title="Descarta todas las ediciones pendientes"
-            >
-              Descartar
-            </button>
           </div>
         </div>
       </div>
