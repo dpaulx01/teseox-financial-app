@@ -1317,9 +1317,20 @@ const EditablePygMatrixV2: React.FC = () => {
                             <div key={mode} className={`p-2 rounded border ${isActive ? 'border-accent/50 bg-accent/10' : 'border-border/30'}`}>
                               <div className="flex items-center justify-between">
                                 <div className={`font-semibold ${isActive ? 'text-accent' : 'text-text-secondary'}`}>{label}</div>
-                                {isBest && (
-                                  <span className="text-[10px] px-2 py-[2px] rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" title="Mayor EBITDA promedio jul–dic">Mejor</span>
-                                )}
+                                {isBest && (() => {
+                                  const eAdv = formatCurrency(Math.round(algoSummary['advanced']?.ebitdaAvg || 0));
+                                  const eMov = formatCurrency(Math.round(algoSummary['movingAvg']?.ebitdaAvg || 0));
+                                  const eMed = formatCurrency(Math.round(algoSummary['flatMedian']?.ebitdaAvg || 0));
+                                  const tooltipText = `Seleccionado por mayor EBITDA promedio jul–dic.\nAvanzado: ${eAdv} · Prom. móvil: ${eMov} · Mediana: ${eMed}`;
+                                  return (
+                                    <span
+                                      className="text-[10px] px-2 py-[2px] rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                                      title={tooltipText}
+                                    >
+                                      Mejor
+                                    </span>
+                                  );
+                                })()}
                               </div>
                               <div className="mt-1">
                                 <div className="flex justify-between"><span className="text-text-muted">UB avg:</span><span className="font-semibold">{formatCurrency(Math.round(s?.ubAvg || 0))}</span></div>
