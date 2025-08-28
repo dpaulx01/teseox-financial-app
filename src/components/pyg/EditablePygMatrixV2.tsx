@@ -1313,8 +1313,17 @@ const EditablePygMatrixV2: React.FC = () => {
                           const isActive = projectionMode === mode;
                           const isBest = best === mode;
                           const label = mode === 'advanced' ? 'Avanzado' : mode === 'movingAvg' ? 'Prom. móvil' : 'Mediana';
+                          const tip = (() => {
+                            const ubT = formatCurrency(Math.round(s?.ubTotal || 0));
+                            const unT = formatCurrency(Math.round(s?.unTotal || 0));
+                            const ebdT = formatCurrency(Math.round(s?.ebitdaTotal || 0));
+                            const ubA = formatCurrency(Math.round(s?.ubAvg || 0));
+                            const unA = formatCurrency(Math.round(s?.unAvg || 0));
+                            const ebdA = formatCurrency(Math.round(s?.ebitdaAvg || 0));
+                            return `Totales jul–dic → UB: ${ubT} · UN: ${unT} · EBITDA: ${ebdT}\nPromedios → UB: ${ubA} · UN: ${unA} · EBITDA: ${ebdA}${isActive ? '\n(Algoritmo activo)' : ''}${isBest ? '\n(Mejor por EBITDA promedio)' : ''}`;
+                          })();
                           return (
-                            <div key={mode} className={`p-2 rounded border ${isActive ? 'border-accent/50 bg-accent/10' : 'border-border/30'}`}>
+                            <div key={mode} className={`p-2 rounded border ${isActive ? 'border-accent/50 bg-accent/10' : 'border-border/30'}`} title={tip} aria-label={`Tarjeta ${label}`}>
                               <div className="flex items-center justify-between">
                                 <div className={`font-semibold ${isActive ? 'text-accent' : 'text-text-secondary'}`}>{label}</div>
                                 {isBest && (() => {
