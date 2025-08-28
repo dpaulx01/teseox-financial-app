@@ -17,7 +17,9 @@ class FinancialAPIService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+    // Vite expone variables con prefijo VITE_
+    // Usamos VITE_API_BASE_URL para configurar la URL base del backend
+    this.baseURL = (import.meta as any)?.env?.VITE_API_BASE_URL || 'http://localhost:8001';
     
     this.api = axios.create({
       baseURL: this.baseURL,

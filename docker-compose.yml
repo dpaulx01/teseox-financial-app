@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MySQL Database for RBAC version
   mysql-rbac:
@@ -14,8 +12,7 @@ services:
       - "3307:3306"  # Puerto diferente para no conflicto
     volumes:
       - mysql-rbac-data:/var/lib/mysql
-      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/01_init.sql
-      - ./docker/mysql/rbac_schema.sql:/docker-entrypoint-initdb.d/02_rbac.sql
+      - ./docker/mysql:/docker-entrypoint-initdb.d
     networks:
       - artyco-rbac-network
     healthcheck:
@@ -38,8 +35,6 @@ services:
       - PYTHONUNBUFFERED=1
     ports:
       - "8001:8000"  # Puerto diferente
-    volumes:
-      - ./:/app
     depends_on:
       mysql-rbac:
         condition: service_healthy
@@ -54,18 +49,10 @@ services:
       dockerfile: Dockerfile.vite
     container_name: artyco-frontend-rbac
     environment:
-      - REACT_APP_API_URL=http://localhost:8001
+      - VITE_API_BASE_URL=http://localhost:8001
       - PORT=3001
     ports:
       - "3001:3001"  # Puerto diferente
-    volumes:
-      - ./src:/app/src
-      - ./public:/app/public
-      - ./package.json:/app/package.json
-      - ./index.html:/app/index.html
-      - ./tailwind.config.js:/app/tailwind.config.js
-      - ./postcss.config.js:/app/postcss.config.js
-      - ./vite.config.js:/app/vite.config.js
     depends_on:
       - api-rbac
     networks:

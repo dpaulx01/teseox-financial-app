@@ -310,6 +310,8 @@ const EditablePygMatrixV2: React.FC = () => {
   const applyPendingEdits = useCallback(async () => {
     if (!workingData) return;
     try {
+      // Feedback inicial
+      addError(`Aplicando ${Object.keys(pendingEdits).length} cambio(s)…`, 'info');
       setIsRecalculating(true);
       const updatedData: FinancialData = JSON.parse(JSON.stringify(workingData));
       if (updatedData.raw) {
@@ -1220,7 +1222,7 @@ const EditablePygMatrixV2: React.FC = () => {
   const months = availableMonths;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={isRecalculating}>
       {/* Header con tipo de análisis */}
       <div className="glass-card p-6">
         <div className="flex items-center justify-between">
@@ -1240,9 +1242,9 @@ const EditablePygMatrixV2: React.FC = () => {
                 <div className="font-semibold text-text-secondary">Resumen jul–dic</div>
                 <button
                   onClick={() => setSummaryVersion(v => v + 1)}
-                  className={`text-[11px] px-2 py-[2px] rounded border ${isSummaryLoading ? 'text-text-muted border-border/30' : 'text-text-secondary border-border/40 hover:text-white hover:bg-glass/40'}`}
+                  className={`text-[11px] px-2 py-[2px] rounded border ${isSummaryLoading || isRecalculating ? 'text-text-muted border-border/30 cursor-not-allowed' : 'text-text-secondary border-border/40 hover:text-white hover:bg-glass/40'}`}
                   title="Recalcular resumen (3 algoritmos)"
-                  disabled={isSummaryLoading}
+                  disabled={isSummaryLoading || isRecalculating}
                 >
                   {isSummaryLoading ? 'Actualizando…' : 'Actualizar'}
                 </button>
@@ -1301,15 +1303,18 @@ const EditablePygMatrixV2: React.FC = () => {
             <div className="flex items-center gap-2 mr-2" title="Algoritmo de proyección para meses faltantes">
               <button
                 onClick={() => { setProjectionMode('advanced'); setEnhancedData(null); }}
-                className={`px-2 py-1 rounded border text-xs ${projectionMode === 'advanced' ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70'}`}
+                disabled={isRecalculating}
+                className={`px-2 py-1 rounded border text-xs ${isRecalculating ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : (projectionMode === 'advanced' ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70')}`}
               >Avanzado</button>
               <button
                 onClick={() => { setProjectionMode('movingAvg'); setEnhancedData(null); }}
-                className={`px-2 py-1 rounded border text-xs ${projectionMode === 'movingAvg' ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70'}`}
+                disabled={isRecalculating}
+                className={`px-2 py-1 rounded border text-xs ${isRecalculating ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : (projectionMode === 'movingAvg' ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70')}`}
               >Prom. móvil</button>
               <button
                 onClick={() => { setProjectionMode('flatMedian'); setEnhancedData(null); }}
-                className={`px-2 py-1 rounded border text-xs ${projectionMode === 'flatMedian' ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70'}`}
+                disabled={isRecalculating}
+                className={`px-2 py-1 rounded border text-xs ${isRecalculating ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : (projectionMode === 'flatMedian' ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70')}`}
               >Mediana</button>
             </div>
             {/* Botón Colapsar/Expandir Todo */}
@@ -1332,8 +1337,8 @@ const EditablePygMatrixV2: React.FC = () => {
                   setExpandedNodes({});
                 }
               }}
-              className="px-4 py-2 bg-glass/50 hover:bg-glass/70 border border-primary/30 
-                       rounded-lg text-sm text-primary transition-all flex items-center space-x-2"
+              disabled={isRecalculating}
+              className={`px-4 py-2 border rounded-lg text-sm transition-all flex items-center space-x-2 ${isRecalculating ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : 'bg-glass/50 hover:bg-glass/70 border-primary/30 text-primary'}`}
             >
               {Object.keys(expandedNodes).length === 0 || 
                Object.values(expandedNodes).every(v => v === false) ? (
@@ -1362,7 +1367,8 @@ const EditablePygMatrixV2: React.FC = () => {
             {/* Toggle para resaltar patrones */}
             <button
               onClick={() => setShowPatternColors(v => !v)}
-              className={`px-3 py-2 rounded-lg border text-xs transition-all ${showPatternColors ? 'bg-primary/20 border-primary/40 text-primary' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70'}`}
+              disabled={isRecalculating}
+              className={`px-3 py-2 rounded-lg border text-xs transition-all ${isRecalculating ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : (showPatternColors ? 'bg-primary/20 border-primary/40 text-primary' : 'bg-glass/50 border-border/40 text-text-secondary hover:bg-glass/70')}`}
               title="Resaltar filas por patrón detectado (variable/mixto/fijo/escalonado)"
             >
               {showPatternColors ? 'Ocultar patrones' : 'Resaltar patrones'}
@@ -1371,28 +1377,30 @@ const EditablePygMatrixV2: React.FC = () => {
             {/* Botón aplicar cambios */}
             <button
               onClick={applyPendingEdits}
-              disabled={Object.keys(pendingEdits).length === 0}
+              disabled={isRecalculating || Object.keys(pendingEdits).length === 0}
               className={`px-3 py-2 rounded-lg text-xs transition-all border flex items-center gap-2 ${Object.keys(pendingEdits).length === 0 || isRecalculating ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : 'bg-accent/20 text-accent border-accent/30 hover:bg-accent/30'}`}
               title="Aplica las ediciones y recalcula toda la matriz"
             >
-              {isRecalculating ? 'Recalculando…' : `Recalcular (${Object.keys(pendingEdits).length})`}
+              {isRecalculating ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Recalculando…</span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  <span>{`Recalcular (${Object.keys(pendingEdits).length})`}</span>
+                </>
+              )}
             </button>
 
-            {/* Botón forzar recálculo */}
-            <button
-              onClick={applyPendingEdits}
-              disabled={isRecalculating}
-              className={`px-3 py-2 rounded-lg text-xs transition-all border ${isRecalculating ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : 'bg-primary/20 text-primary border-primary/30 hover:bg-primary/30'}`}
-              title="Forzar reproyección y recálculo sin aplicar nuevos cambios"
-            >
-              Forzar recálculo
-            </button>
+            {/* Botón forzar recálculo eliminado: recálculo estándar es suficiente */}
 
             {/* Botón descartar cambios */}
             <button
               onClick={discardPendingEdits}
-              disabled={Object.keys(pendingEdits).length === 0}
-              className={`px-3 py-2 rounded-lg text-xs transition-all border ${Object.keys(pendingEdits).length === 0 ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : 'bg-danger/10 text-danger border-danger/30 hover:bg-danger/20'}`}
+              disabled={isRecalculating || Object.keys(pendingEdits).length === 0}
+              className={`px-3 py-2 rounded-lg text-xs transition-all border ${isRecalculating || Object.keys(pendingEdits).length === 0 ? 'bg-glass/30 text-text-muted border-border/30 cursor-not-allowed' : 'bg-danger/10 text-danger border-danger/30 hover:bg-danger/20'}`}
               title="Descarta todas las ediciones pendientes"
             >
               Descartar
@@ -1413,7 +1421,7 @@ const EditablePygMatrixV2: React.FC = () => {
       </div>
 
       {/* Matriz editable jerárquica */}
-      <div className="glass-card p-4 overflow-x-auto">
+      <div className={`glass-card p-4 relative ${isRecalculating ? 'overflow-hidden' : 'overflow-x-auto'}`} role="region" aria-label="Matriz editable PyG">
         <table className="w-full text-sm table-fixed">
           <thead className="text-xs text-text-muted uppercase border-b border-border sticky top-0 bg-dark-bg/80 backdrop-blur z-10">
             <tr>
@@ -1613,6 +1621,17 @@ const EditablePygMatrixV2: React.FC = () => {
             })}
           </tbody>
         </table>
+        {isRecalculating && (
+          <div className="absolute inset-0 bg-dark-bg/50 backdrop-blur-sm flex items-center justify-center z-20">
+            <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border/40 bg-glass/60">
+              <RefreshCw className="w-5 h-5 animate-spin text-accent" />
+              <div className="flex flex-col">
+                <span className="text-sm text-text-secondary">Recalculando matriz…</span>
+                <span className="text-xs text-text-muted">Esto puede tardar algunos segundos</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer explicativo */}

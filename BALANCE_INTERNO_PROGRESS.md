@@ -1,19 +1,20 @@
-# 📊 Balance Interno - Registro de Avances (ACTUALIZADO 2025-08-18)
+# 📊 Balance Interno - Registro de Avances (ACTUALIZADO 2025-08-24)
 
-## 🆕 Resumen Rápido (2025-08-18)
-- Proyecciones corregidas y realistas: ingresos y costos ajustados por jerarquía y patrones.
-- Clasificación automática de costos por cuenta hoja: variable, fijo, mixto y escalonado.
-- Normalización padre→hijos (5.1 y 5.2): los totales de las cuentas padre guían a las hijas.
-- Mezcla de ingresos por subcuenta 4.* (mix) combinada con tendencia individual; suma mensual igualada al objetivo.
-- Interfaz mejorada: columnas proyectadas resaltadas, hover por fila/columna, badges de patrón, toggle de colores.
-- Edición diferida: cambios en amarillo con botón “Recalcular (N)” y “Descartar”.
-- Persistencia en base de datos (API RBAC/MySQL), sin usar localStorage.
+## 🆕 Resumen Rápido (2025-08-24)
+- Estructura jerárquica dinámica desde RAW (paridad con módulo PyG). Solo hojas reales son editables.
+- Totales de padres calculados según lo visible (suma de hijos mostrados) → coherencia visual/numérica.
+- Tooltip en nodos no editables: “🔒 No editable” con lista de subcuentas inmediatas para guiar dónde editar.
+- Selector de algoritmo + Resumen jul–dic: identifica “Mejor” por EBITDA promedio y delta vs algoritmo activo.
+- Edición diferida con “Recalcular (N)” + persistencia de lote en sessionStorage.
+- Debug API opcional (window.BI) para diagnósticos y endpoint /api/financial/debug-log.
+- Performance: cache de celdas por render, menos logs, resumen bajo demanda.
 
 ## ✅ Estado Actual
 - Matriz PyG editable (V2) operativa con:
-  - Proyección IA coherente con datos ene–jun, sin sesgos por ceros.
-  - Lógica granular por cuenta y por mes, con recalculo de utilidades UB/UN/EBITDA.
-  - Flujo de edición diferida para mejor rendimiento y control.
+  - Jerarquía completa autogenerada desde RAW (misma que PyG).
+  - Proyección avanzada coherente + selector de algoritmo.
+  - Recalculo de utilidades UB/UN/EBITDA tras aplicar ediciones.
+  - Flujo de edición diferida con persistencia y descartes.
 
 ## 🔧 Cambios Clave (última iteración)
 
@@ -42,34 +43,35 @@
   - `window.__projectionPatterns[code]`: patrón detectado y parámetros (ratio o a/b/R²).
 
 ### 2) UX de Matriz (src/components/pyg/EditablePygMatrixV2.tsx)
-- Columnas proyectadas (jul–dic) sombreadas en header y celdas.
-- Hover por fila/columna + enfoque suave en la intersección.
-- Toggle “Resaltar patrones” (variable/mixto/fijo/escalonado) con colores suaves por fila.
-- Badges con tooltip del patrón al lado de cada cuenta hoja (muestra ratio o a/b/R²). Oculto si no hay patrón.
+- Jerarquía dinámica desde RAW: expandir/contraer todo trae todas las cuentas (como PyG).
+- Solo hojas son editables; nodos con hijas muestran “🔒 No editable” con panel de subcuentas.
+- Columnas proyectadas (jul–dic) sombreadas; badges de patrón (variable/mixto/fijo/escalonado).
 - Edición diferida:
-  - Las celdas editadas se marcan en amarillo (pendientes).
-  - Botón “Recalcular (N)” aplica todas las ediciones a la vez (recalcula y guarda en DB).
-  - Botón “Descartar” con confirmación para limpiar todas las ediciones pendientes.
-- Persistencia en DB: al recalcular se invoca `saveFinancialData(updatedData)` (API RBAC → MySQL).
+  - Celdas editadas en amarillo (pendientes), “Recalcular (N)” aplica en lote y persiste.
+  - “Descartar” limpia lote; lote se guarda temporalmente en sessionStorage.
+- Resumen jul–dic: “Mejor” algoritmo por EBITDA promedio + delta vs activo; botón “Actualizar”.
+- Persistencia en DB: `saveFinancialData(updatedData)` (API RBAC → MySQL).
 
-### 3) Robustez y orden de inicialización
+### 3) Robustez, rendimiento y orden de inicialización
 - Evitada la TDZ (temporal dead zone) de variables en el componente:
   - `workingData` y `availableMonths` se inicializan antes de su uso en callbacks/efectos.
   - `applyPendingEdits` ya no depende de `availableMonths` ni de callbacks no inicializados.
-- Logs internos amplios para verificar flujo y datos en tiempo real.
+- Cache por celda (code|month) para acelerar sumatorias; limpieza de cache al cambiar RAW.
+- Resumen se recalcula bajo demanda y se omite durante recálculo.
+- Logs internos ajustados para evitar ruido.
 
 ## 🧭 Flujo de Datos
 ```
-DataContext/ScenarioContext → ProjectionEngine → raw/monthly (normalizados) → calculatePnl → Matriz V2 → UB/UN/EBITDA
+DataContext/ScenarioContext → ProjectionEngine → raw/monthly (normalizados)
+→ buildPygStructureFromRaw → calculatePnl → Matriz V2 → UB/UN/EBITDA
 ```
 - Guardado: “Recalcular (N)” → `saveFinancialData(updatedData)` → API RBAC/MySQL.
 
 ## 🧪 Cómo Validar Rápido
-- Abrir Balance Interno (modo simulación) y revisar jul–dic.
-- Consola navegador:
-  - “🧪 Projection Debug julio” → ver ingresos y costos por categoría.
-  - `__projectionDebug['julio']` y `__projectionPatterns` para inspección detallada.
-- Editar varias celdas hoja → ver amarillo → “Recalcular (N)” → ver recálculo y log “💾 Cambios persistidos en base de datos”.
+- Expandir Todo: verificar que salen todas las cuentas (como PyG).
+- Nodos con hijas: deben mostrar “🔒 No editable”; clic abre lista de subcuentas.
+- Editar una hoja en julio → blur/Enter → “Recalcular (N)” → padres y UB/UN/EBITDA cambian.
+- Cambiar algoritmo (Avanzado/Prom. móvil/Mediana) → “Resumen jul–dic” con “Mejor” y delta.
 
 ## 🐛 Errores Críticos Corregidos (recientes)
 - Doble conteo de ingresos (sumar padres+hojas) → Ahora solo hojas 4.*; objetivo agregado con clamp ±15%.
@@ -80,15 +82,14 @@ DataContext/ScenarioContext → ProjectionEngine → raw/monthly (normalizados) 
 
 ## 📋 Pendientes y Próximos Pasos
 - UI/Feedback:
-  - Toasts de éxito/error en “Recalcular (N)”.
-  - Spinner/deshabilitado en botón durante persistencia.
-  - (Opcional) Persistir `pendingEdits` temporalmente si se navega y vuelve.
+  - Toasts más visibles y spinner en “Recalcular (N)”.
+  - Click en subcuenta del tooltip: autoexpand y scroll a esa fila (en curso si lo deseas).
 - Algoritmo:
   - Estacionalidad ligera por cuenta con pocos datos (quintiles ene–jun).
-  - Reporte/tooltip “modo auditoría” con fórmula/patrón por celda proyectada.
+  - Auditoría por celda proyectada (detalle de fórmula/patrón).
 - QA/Tests:
-  - Tests unitarios del clasificador y normalización padre→hijos.
-  - Verificación de performance con matrices grandes (memoization selectiva y virtualización si hiciera falta).
+  - Unit tests para clasificador y normalización padre→hijos.
+  - Stress test con matrices grandes; evaluar virtualización.
 
 ---
 
