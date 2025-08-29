@@ -16,7 +16,8 @@ import {
 import { KPIWidgetSettings, WidgetConfig } from '../../types/dashboard';
 import { useFinancialData } from '../../contexts/DataContext';
 import { useMixedCosts } from '../../contexts/MixedCostContext';
-import { calculatePnl } from '../../utils/pnlCalculator';
+import { usePnlResult } from '../../hooks/usePnlResult';
+import { getSortedMonths } from '../../utils/dateUtils';
 import { formatCurrency } from '../../utils/formatters';
 import WidgetContainer from './WidgetContainer';
 import { CustomKPI } from './CustomKPIManager';
@@ -31,68 +32,65 @@ const KPIWidget: React.FC<KPIWidgetProps> = ({ widget }) => {
   const settings = widget.settings as KPIWidgetSettings;
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Calculate PyG result
-  const pnlResult = useMemo(() => {
-    if (!data) return null;
-    
-    try {
-      return calculatePnl(data, 'Anual', 'contable', mixedCosts);
-    } catch (error) {
-      // console.error('Error calculating P&L for KPI widget:', error);
-      return null;
-    }
-  }, [data, mixedCosts]);
+  // Obtener PyG (async) con hook reutilizable
+  const { result: pnlResult, loading } = usePnlResult(data, 'Anual', 'contable', mixedCosts);
 
   // Calculate KPI value based on current data
   const kpiData = useMemo(() => {
     if (!data || !pnlResult) return null;
 
+    const monthly = data.monthly || {};
+    const months = getSortedMonths(monthly);
+    const last = months[months.length - 1];
+    const prev = months[months.length - 2];
+
+    const pick = (key: 'ingresos'|'costoVentasTotal'|'utilidadNeta'|'ebitda') => (m?: string) => (m && monthly[m]?.[key]) || 0;
+    const safePct = (num: number, den: number) => den !== 0 ? (num / Math.abs(den)) * 100 : 0;
+
     let value = 0;
     let previousValue = 0;
 
-    // Calculate current value based on metric type
     switch (settings.metric) {
       case 'ingresos':
-        value = pnlResult.summaryKpis.ingresos;
-        previousValue = value * 0.92; // Mock 8% growth
+        value = last ? pick('ingresos')(last) : pnlResult.summaryKpis.ingresos;
+        previousValue = prev ? pick('ingresos')(prev) : value * 0.95;
         break;
       case 'costos':
-        value = Math.abs(pnlResult.summaryKpis.costos);
-        previousValue = value * 1.05; // Mock 5% cost increase
+        value = last ? Math.abs(pick('costoVentasTotal')(last)) : Math.abs(pnlResult.summaryKpis.costos);
+        previousValue = prev ? Math.abs(pick('costoVentasTotal')(prev)) : value * 1.02;
         break;
       case 'utilidad':
-        value = pnlResult.summaryKpis.utilidad;
-        previousValue = value * 0.88; // Mock 12% growth
+        value = last ? pick('utilidadNeta')(last) : pnlResult.summaryKpis.utilidad;
+        previousValue = prev ? pick('utilidadNeta')(prev) : value * 0.95;
         break;
-      case 'margen_neto':
-        value = pnlResult.summaryKpis.ingresos !== 0 
-          ? (pnlResult.summaryKpis.utilidad / pnlResult.summaryKpis.ingresos) * 100
-          : 0;
-        previousValue = value * 0.95; // Mock improvement
-        break;
-      case 'margen_bruto':
-        const margenBruto = pnlResult.summaryKpis.ingresos !== 0
-          ? ((pnlResult.summaryKpis.ingresos - Math.abs(pnlResult.summaryKpis.costos)) / pnlResult.summaryKpis.ingresos) * 100
-          : 0;
-        value = margenBruto;
-        previousValue = value * 0.98; // Mock slight improvement
-        break;
+      case 'margen_neto': {
+        const v = last ? pick('utilidadNeta')(last) : pnlResult.summaryKpis.utilidad;
+        const rev = last ? pick('ingresos')(last) : pnlResult.summaryKpis.ingresos;
+        value = safePct(v, rev);
+        const vp = prev ? pick('utilidadNeta')(prev) : v * 0.95;
+        const revp = prev ? pick('ingresos')(prev) : rev;
+        previousValue = safePct(vp, revp);
+        break; }
+      case 'margen_bruto': {
+        const rev = last ? pick('ingresos')(last) : pnlResult.summaryKpis.ingresos;
+        const cogs = last ? pick('costoVentasTotal')(last) : Math.abs(pnlResult.summaryKpis.costos);
+        value = rev > 0 ? ((rev - cogs) / rev) * 100 : 0;
+        const prevRev = prev ? pick('ingresos')(prev) : rev;
+        const prevCogs = prev ? pick('costoVentasTotal')(prev) : cogs;
+        previousValue = prevRev > 0 ? ((prevRev - prevCogs) / prevRev) * 100 : value;
+        break; }
       case 'ebitda':
-        // Approximate EBITDA calculation
-        value = pnlResult.summaryKpis.utilidad + (Math.abs(pnlResult.summaryKpis.costos) * 0.15); // Add back estimated D&A
-        previousValue = value * 0.85; // Mock significant improvement
+        value = last ? pick('ebitda')(last) : pnlResult.summaryKpis.utilidad; // prefer monthly ebitda
+        previousValue = prev ? pick('ebitda')(prev) : value * 0.9;
         break;
       default:
-        value = 0;
-        previousValue = 0;
+        value = 0; previousValue = 0;
     }
-    
-    // Calculate trend
+
     const changeAmount = value - previousValue;
     const changePercent = previousValue !== 0 ? (changeAmount / Math.abs(previousValue)) * 100 : 0;
     const trend = changePercent > 2 ? 'up' : changePercent < -2 ? 'down' : 'stable';
 
-    // Format value based on format type
     const formatted = settings.format === 'currency' ? formatCurrency(value) :
                  settings.format === 'percentage' ? `${value.toFixed(1)}%` :
                  value.toLocaleString();
@@ -105,7 +103,7 @@ const KPIWidget: React.FC<KPIWidgetProps> = ({ widget }) => {
       target: settings.target,
       targetProgress: settings.target ? (value / settings.target) * 100 : undefined
     };
-  }, [data, settings]);
+  }, [data, pnlResult, settings]);
 
   const getIcon = () => {
     switch (settings.metric) {
@@ -137,7 +135,7 @@ const KPIWidget: React.FC<KPIWidgetProps> = ({ widget }) => {
     }
   };
 
-  if (!kpiData) {
+  if (loading || !kpiData) {
     return (
       <WidgetContainer widget={widget}>
         <div className="flex items-center justify-center h-full">

@@ -13,7 +13,7 @@ import {
 import { WidgetConfig } from '../../types/dashboard';
 import { useFinancialData } from '../../contexts/DataContext';
 import { useMixedCosts } from '../../contexts/MixedCostContext';
-import { calculatePnl } from '../../utils/pnlCalculator';
+import { usePnlResult } from '../../hooks/usePnlResult';
 import { formatCurrency } from '../../utils/formatters';
 import WidgetContainer from './WidgetContainer';
 
@@ -44,17 +44,8 @@ const PredictiveWidget: React.FC<PredictiveWidgetProps> = ({ widget }) => {
   const settings = widget.settings as PredictiveWidgetSettings;
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Calculate current P&L data
-  const pnlResult = useMemo(() => {
-    if (!data) return null;
-    
-    try {
-      return calculatePnl(data, 'Anual', 'contable', mixedCosts);
-    } catch (error) {
-      // console.error('Error calculating P&L for predictive widget:', error);
-      return null;
-    }
-  }, [data, mixedCosts]);
+  // Obtener PyG (async)
+  const { result: pnlResult, loading } = usePnlResult(data, 'Anual', 'contable', mixedCosts);
 
   // Generate predictive metrics
   const predictiveMetrics: PredictionMetric[] = useMemo(() => {
@@ -166,7 +157,7 @@ const PredictiveWidget: React.FC<PredictiveWidgetProps> = ({ widget }) => {
     }
   };
 
-  if (!data || !pnlResult) {
+  if (!data || loading || !pnlResult) {
     return (
       <WidgetContainer widget={widget} onSettingsClick={() => setIsSettingsOpen(true)}>
         <div className="flex items-center justify-center h-full">

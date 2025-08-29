@@ -4,7 +4,8 @@ import { TableWidgetSettings, WidgetConfig } from '../../types/dashboard';
 import { AccountNode } from '../../utils/pnlCalculator';
 import { useFinancialData } from '../../contexts/DataContext';
 import { useMixedCosts } from '../../contexts/MixedCostContext';
-import { calculatePnl, calculateVerticalAnalysis, calculateHorizontalAnalysis } from '../../utils/pnlCalculator';
+import { calculateVerticalAnalysis, calculateHorizontalAnalysis } from '../../utils/pnlCalculator';
+import { usePnlResult } from '../../hooks/usePnlResult';
 import WidgetContainer from './WidgetContainer';
 import EnhancedAccountTreeTable from '../tables/EnhancedAccountTreeTable';
 
@@ -20,28 +21,17 @@ const TableWidget: React.FC<TableWidgetProps> = ({ widget }) => {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['ROOT', '4', '6']));
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Calculate PyG data for the table
+  // Obtener PyG (async)
+  const { result: basePnl, loading } = usePnlResult(data, 'Anual', 'contable', mixedCosts);
   const pnlResult = React.useMemo(() => {
-    if (!data) return null;
-    
-    try {
-      let result = calculatePnl(data, 'Anual', 'contable', mixedCosts);
-      
-      if (settings.showVertical) {
-        result = calculateVerticalAnalysis(result);
-      }
-      
-      if (settings.showHorizontal) {
-        // For horizontal analysis, we'd need comparison data
-        // For now, we'll skip this or use mock comparison data
-      }
-      
-      return result;
-    } catch (error) {
-      // console.error('Error calculating P&L for table widget:', error);
-      return null;
+    if (!basePnl) return null;
+    let res = { ...basePnl };
+    if (settings.showVertical) {
+      res = calculateVerticalAnalysis(res);
     }
-  }, [data, mixedCosts, settings.showVertical, settings.showHorizontal]);
+    // Horizontal requeriría previousPnl: dejar como futuro
+    return res;
+  }, [basePnl, settings.showVertical]);
 
   const handleNodeExpansion = (nodeCode: string, isExpanded: boolean) => {
     setExpandedNodes(prev => {
@@ -59,7 +49,7 @@ const TableWidget: React.FC<TableWidgetProps> = ({ widget }) => {
     setIsSettingsOpen(true);
   };
 
-  if (!data || !pnlResult) {
+  if (!data || loading || !pnlResult) {
     return (
       <WidgetContainer widget={widget} onSettingsClick={handleSettingsOpen}>
         <div className="flex items-center justify-center h-full">
