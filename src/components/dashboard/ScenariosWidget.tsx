@@ -19,6 +19,7 @@ import { useMixedCosts } from '../../contexts/MixedCostContext';
 import { usePnlResult } from '../../hooks/usePnlResult';
 import { formatCurrency } from '../../utils/formatters';
 import WidgetContainer from './WidgetContainer';
+import { Skeleton } from '../ui/Skeleton';
 
 interface ScenariosWidgetProps {
   widget: WidgetConfig;
@@ -129,8 +130,13 @@ const ScenariosWidget: React.FC<ScenariosWidgetProps> = ({ widget }) => {
   if (!data || loading || !pnlResult) {
     return (
       <WidgetContainer widget={widget} onSettingsClick={() => setIsSettingsOpen(true)}>
-        <div className="flex items-center justify-center h-full">
-          <div className="animate-pulse text-gray-400">Cargando escenarios...</div>
+        <div className="p-4 h-full w-full">
+          <Skeleton className="h-6 w-44 mb-4" />
+          <div className="grid grid-cols-3 gap-3">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
         </div>
       </WidgetContainer>
     );

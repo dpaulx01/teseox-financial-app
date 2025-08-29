@@ -7,6 +7,7 @@ import { useMixedCosts } from '../../contexts/MixedCostContext';
 import { calculateVerticalAnalysis, calculateHorizontalAnalysis } from '../../utils/pnlCalculator';
 import { usePnlResult } from '../../hooks/usePnlResult';
 import WidgetContainer from './WidgetContainer';
+import { Skeleton, SkeletonText } from '../ui/Skeleton';
 import EnhancedAccountTreeTable from '../tables/EnhancedAccountTreeTable';
 
 interface TableWidgetProps {
@@ -52,8 +53,11 @@ const TableWidget: React.FC<TableWidgetProps> = ({ widget }) => {
   if (!data || loading || !pnlResult) {
     return (
       <WidgetContainer widget={widget} onSettingsClick={handleSettingsOpen}>
-        <div className="flex items-center justify-center h-full">
-          <div className="animate-pulse text-gray-400">Cargando datos financieros...</div>
+        <div className="p-4 h-full w-full">
+          <Skeleton className="h-6 w-48 mb-4" />
+          <Skeleton className="h-4 w-full mb-2" />
+          <Skeleton className="h-4 w-full mb-2" />
+          <Skeleton className="h-4 w-3/4" />
         </div>
       </WidgetContainer>
     );

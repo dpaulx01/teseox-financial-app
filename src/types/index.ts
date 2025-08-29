@@ -56,6 +56,8 @@ export interface KpiCardProps {
   unit?: string;
   icon: React.ComponentType<{ className?: string }>;
   color: string;
+  tooltip?: string;
+  onViewDetails?: () => void;
 }
 
 export interface NavigationProps {

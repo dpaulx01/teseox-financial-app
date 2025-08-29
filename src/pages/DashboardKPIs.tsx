@@ -3,6 +3,7 @@ import { DollarSign, TrendingUp, TrendingDown, PieChart as PieIcon } from 'lucid
 import { useFinancialData } from '../contexts/DataContext';
 import { useMixedCosts } from '../contexts/MixedCostContext';
 import KpiCard from '../components/ui/KpiCard';
+import { getSortedMonths } from '../utils/dateUtils';
 import { formatCurrency } from '../utils/formatters';
 import MonthlyEvolutionChart from '../components/charts/MonthlyEvolutionChart';
 // Removidos imports no utilizados - solo usa datos base de la API
@@ -61,18 +62,27 @@ const DashboardKPIs: React.FC = () => {
     })), [monthly]
   );
 
+  // Tooltip helper con último mes vs anterior
+  const months = useMemo(() => getSortedMonths(monthly), [monthly]);
+  const last = months[months.length - 1];
+  const prev = months[months.length - 2];
+  const lastVal = (k: keyof typeof monthly[string]) => (last ? (monthly as any)[last]?.[k] || 0 : 0);
+  const prevVal = (k: keyof typeof monthly[string]) => (prev ? (monthly as any)[prev]?.[k] || 0 : 0);
+
   const heroKPIs = [
     { 
       title: 'Ingresos Anuales', 
       value: formatCurrency(yearly.ingresos), 
       icon: DollarSign, 
-      color: 'accent' 
+      color: 'accent',
+      tooltip: last && prev ? `Últimos meses: ${prev} → ${last}\n${formatCurrency(prevVal('ingresos'))} → ${formatCurrency(lastVal('ingresos'))}` : undefined
     },
     { 
       title: 'EBITDA Anual', 
       value: formatCurrency(yearly.ebitda), 
       icon: TrendingUp, 
-      color: 'blue' 
+      color: 'blue',
+      tooltip: last && prev ? `Últimos meses: ${prev} → ${last}\n${formatCurrency(prevVal('ebitda'))} → ${formatCurrency(lastVal('ebitda'))}` : undefined
     },
     { 
       title: adjustedData ? 'Margen Contribución' : 'Margen EBITDA', 
@@ -81,13 +91,15 @@ const DashboardKPIs: React.FC = () => {
         : (kpis.find(k => k.name === 'Margen EBITDA')?.value.toFixed(2) || '0.00'), 
       unit: '%', 
       icon: PieIcon, 
-      color: 'blue' 
+      color: 'blue',
+      tooltip: adjustedData ? `MC% = UB / Ingresos (base anual)` : (last && prev ? `Últimos meses: ${prev} → ${last}` : undefined)
     },
     { 
       title: 'Utilidad Neta Anual', 
       value: formatCurrency(adjustedData ? adjustedData.utilidadNetaAjustada : yearly.utilidadNeta), 
       icon: (adjustedData ? adjustedData.utilidadNetaAjustada : yearly.utilidadNeta) >= 0 ? TrendingUp : TrendingDown, 
-      color: (adjustedData ? adjustedData.utilidadNetaAjustada : yearly.utilidadNeta) >= 0 ? 'accent' : 'danger' 
+      color: (adjustedData ? adjustedData.utilidadNetaAjustada : yearly.utilidadNeta) >= 0 ? 'accent' : 'danger',
+      tooltip: last && prev ? `Últimos meses: ${prev} → ${last}\n${formatCurrency(prevVal('utilidadNeta'))} → ${formatCurrency(lastVal('utilidadNeta'))}` : undefined
     },
   ];
 

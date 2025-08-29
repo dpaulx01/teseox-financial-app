@@ -20,6 +20,7 @@ import { usePnlResult } from '../../hooks/usePnlResult';
 import { getSortedMonths } from '../../utils/dateUtils';
 import { formatCurrency } from '../../utils/formatters';
 import WidgetContainer from './WidgetContainer';
+import { Skeleton, SkeletonText } from '../ui/Skeleton';
 import { CustomKPI } from './CustomKPIManager';
 
 interface KPIWidgetProps {
@@ -138,8 +139,12 @@ const KPIWidget: React.FC<KPIWidgetProps> = ({ widget }) => {
   if (loading || !kpiData) {
     return (
       <WidgetContainer widget={widget}>
-        <div className="flex items-center justify-center h-full">
-          <div className="animate-pulse text-gray-400">Cargando...</div>
+        <div className="flex items-center justify-center h-full p-4 w-full">
+          <div className="w-full">
+            <Skeleton className="h-6 w-24 mb-4" />
+            <Skeleton className="h-10 w-40 mb-2" />
+            <SkeletonText lines={2} />
+          </div>
         </div>
       </WidgetContainer>
     );
@@ -170,6 +175,7 @@ const KPIWidget: React.FC<KPIWidgetProps> = ({ widget }) => {
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.2 }}
+            title={`Cálculo basado en últimos períodos disponibles`}
           >
             <AnimatedCounter
               value={kpiData.value}

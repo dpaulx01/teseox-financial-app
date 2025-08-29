@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FinancialData } from '../types';
-import { MixedCost } from '../types/dashboard';
+import { FinancialData, MixedCost } from '../types';
 import { calculatePnl, PnlResult, PnlViewType } from '../utils/pnlCalculator';
 
 export function usePnlResult(
@@ -34,4 +33,3 @@ export function usePnlResult(
 
   return { result, loading, error };
 }
-

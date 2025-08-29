@@ -16,6 +16,7 @@ import { useMixedCosts } from '../../contexts/MixedCostContext';
 import { usePnlResult } from '../../hooks/usePnlResult';
 import { formatCurrency } from '../../utils/formatters';
 import WidgetContainer from './WidgetContainer';
+import { Skeleton, SkeletonText } from '../ui/Skeleton';
 
 interface PredictiveWidgetSettings {
   view: 'trends' | 'scenarios' | 'forecast';
@@ -160,8 +161,13 @@ const PredictiveWidget: React.FC<PredictiveWidgetProps> = ({ widget }) => {
   if (!data || loading || !pnlResult) {
     return (
       <WidgetContainer widget={widget} onSettingsClick={() => setIsSettingsOpen(true)}>
-        <div className="flex items-center justify-center h-full">
-          <div className="animate-pulse text-gray-400">Cargando análisis predictivo...</div>
+        <div className="p-4 h-full w-full">
+          <Skeleton className="h-6 w-56 mb-4" />
+          <div className="grid grid-cols-3 gap-3">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
         </div>
       </WidgetContainer>
     );

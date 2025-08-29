@@ -49,6 +49,7 @@ export const MonthlyEvolutionChart: React.FC<MonthlyEvolutionChartProps> = ({
   className = '' 
 }) => {
   const chartRef = useRef<ChartJS<'line'>>(null);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [activeChart, setActiveChart] = useState<'financial' | 'margins'>('financial');
   const [analysisMode, setAnalysisMode] = useState<'traditional' | 'intelligent'>('intelligent');
   
@@ -63,6 +64,16 @@ export const MonthlyEvolutionChart: React.FC<MonthlyEvolutionChartProps> = ({
       setActiveChart('financial');
     }
   }, [hasValidMarginData, activeChart]);
+
+  useEffect(() => {
+    try {
+      const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setPrefersReducedMotion(mq.matches);
+      const onChange = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+      mq.addEventListener?.('change', onChange);
+      return () => mq.removeEventListener?.('change', onChange);
+    } catch {}
+  }, []);
 
   // ANÁLISIS INTELIGENTE ADAPTATATIVO
   // Reemplaza el algoritmo simple por un sistema que selecciona automáticamente
@@ -345,8 +356,8 @@ export const MonthlyEvolutionChart: React.FC<MonthlyEvolutionChartProps> = ({
         }
       }
     },
-    animation: {
-      duration: 2000,
+    animation: prefersReducedMotion ? false : {
+      duration: 1000,
       easing: 'easeInOutQuart',
     },
     interaction: {
@@ -415,18 +426,15 @@ export const MonthlyEvolutionChart: React.FC<MonthlyEvolutionChartProps> = ({
       {/* Animated background */}
       <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-primary/5 animate-hologram" />
       
-      {/* Scan line effect */}
-      <motion.div 
-        className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/10 to-transparent"
-        initial={{ x: '-100%' }}
-        animate={{ x: '100%' }}
-        transition={{ 
-          duration: 4, 
-          repeat: Infinity, 
-          repeatDelay: 3,
-          ease: "linear" 
-        }}
-      />
+      {/* Scan line effect (disable if reduced motion) */}
+      {!prefersReducedMotion && (
+        <motion.div 
+          className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/10 to-transparent"
+          initial={{ x: '-100%' }}
+          animate={{ x: '100%' }}
+          transition={{ duration: 4, repeat: Infinity, repeatDelay: 3, ease: 'linear' }}
+        />
+      )}
       
       <div className="relative z-10">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 space-y-4 lg:space-y-0">

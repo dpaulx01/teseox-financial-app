@@ -2,7 +2,7 @@ import React from 'react';
 import { KpiCardProps } from '../../types';
 import { motion } from 'framer-motion';
 
-const KpiCard: React.FC<KpiCardProps> = ({ title, value, unit, icon: Icon, color }) => {
+const KpiCard: React.FC<KpiCardProps> = ({ title, value, unit, icon: Icon, color, tooltip, onViewDetails }) => {
   // Map the incoming color prop to Tailwind classes from your theme
   const colorClasses = {
     primary: 'text-primary shadow-glow-primary border-primary/30',
@@ -37,12 +37,19 @@ const KpiCard: React.FC<KpiCardProps> = ({ title, value, unit, icon: Icon, color
           </div>
         </div>
         
-        <div className={`text-3xl font-mono font-bold ${selectedColor} transition-all duration-300 flex items-baseline`}>
+        <div className={`text-3xl font-mono font-bold ${selectedColor} transition-all duration-300 flex items-baseline`} title={tooltip}>
           <span>{value}</span>
           {unit && (
             <span className="text-xl font-mono text-text-muted ml-2">{unit}</span>
           )}
         </div>
+        {onViewDetails && (
+          <div className="mt-3 text-right">
+            <button onClick={onViewDetails} className="text-[11px] px-2 py-1 rounded border border-border/40 text-text-muted hover:text-white hover:bg-glass/40">
+              Ver detalle
+            </button>
+          </div>
+        )}
       </div>
     </motion.div>
   );
