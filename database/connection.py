@@ -41,7 +41,7 @@ def init_db():
     Initialize database tables
     """
     # Import all models here to ensure they are registered
-    from models import user, role, permission  # noqa
+    from models import user, role, permission, production  # noqa: F401
     
     # Create all tables
     Base.metadata.create_all(bind=engine)

@@ -1,5 +1,6 @@
 import Papa from 'papaparse';
 import { useState, useCallback } from 'react';
+// Flujo unificado: no procesamos ni guardamos localmente
 import { Upload, FileText, Loader, AlertCircle } from 'lucide-react';
 import { useYear } from '../../contexts/YearContext';
 
@@ -9,6 +10,7 @@ export default function CSVUploaderYearAware() {
   const [isLoading, setIsLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string>('');
+  const [success, setSuccess] = useState<string>('');
 
   const yearExists = availableYears?.some(y => y.year === uploadYear);
 
@@ -47,17 +49,25 @@ export default function CSVUploaderYearAware() {
         body: formData
       });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(`Error ${res.status}: ${t}`);
+        try {
+          const err = await res.json();
+          throw new Error(err?.detail || err?.error || `Error ${res.status}`);
+        } catch {
+          const txt = await res.text();
+          throw new Error(txt || `Error ${res.status}`);
+        }
       }
 
       // Refrescar años y seleccionar el recién subido
       await refreshYears();
       setSelectedYear(uploadYear);
-      alert('CSV procesado y guardado correctamente');
+      setSuccess(`✅ CSV de ${uploadYear} cargado y guardado correctamente`);
+      setTimeout(() => setSuccess(''), 3000);
+      // No alert modal; dejamos feedback visual en el flujo
       setFile(null); // Limpiar archivo tras éxito
     } catch (e: any) {
       setError(e?.message || 'Error al subir');
+      setSuccess('');
     } finally {
       setIsLoading(false);
     }
@@ -104,6 +114,11 @@ export default function CSVUploaderYearAware() {
       {error && (
         <div className="mt-4 p-3 bg-danger/10 border border-danger/30 rounded text-danger flex items-center gap-2">
           <AlertCircle className="w-4 h-4" /> <span className="text-sm">{error}</span>
+        </div>
+      )}
+      {success && (
+        <div className="mt-4 p-3 bg-accent/10 border border-accent/30 rounded text-accent">
+          <span className="text-sm">{success}</span>
         </div>
       )}
     </div>

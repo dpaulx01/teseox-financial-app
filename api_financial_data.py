@@ -171,19 +171,39 @@ async def upload_csv(
             
             # Procesar datos financieros agregados (EXACTO como PHP original)
             db.execute(text("""
-                INSERT INTO financial_data (company_id, year, month, ingresos, costo_ventas_total, 
-                                           gastos_admin_total, gastos_ventas_total, utilidad_bruta, ebitda, utilidad_neta)
+                INSERT INTO financial_data (
+                    company_id,
+                    period_year,
+                    period_month,
+                    period_quarter,
+                    data_type,
+                    year,
+                    month,
+                    ingresos,
+                    costo_ventas,
+                    gastos_administrativos,
+                    gastos_ventas,
+                    utilidad_bruta,
+                    ebitda,
+                    utilidad_neta
+                )
                 SELECT 
-                    :company_id, :year, period_month,
-                    SUM(CASE WHEN account_code = '4' THEN amount ELSE 0 END) as ingresos,
-                    SUM(CASE WHEN account_code = '5.1' THEN amount ELSE 0 END) as costo_ventas_total,
-                    SUM(CASE WHEN account_code = '5.3' THEN amount ELSE 0 END) as gastos_admin_total,
-                    SUM(CASE WHEN account_code = '5.2' THEN amount ELSE 0 END) as gastos_ventas_total,
-                    SUM(CASE WHEN account_code = '4' THEN amount ELSE 0 END) - 
-                        SUM(CASE WHEN account_code = '5.1' THEN amount ELSE 0 END) as utilidad_bruta,
-                    SUM(CASE WHEN account_code = '4' THEN amount ELSE 0 END) - 
+                    :company_id,
+                    :year,
+                    period_month,
+                    CEIL(period_month / 3),
+                    'monthly',
+                    :year,
+                    period_month,
+                    SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END) as ingresos,
+                    SUM(CASE WHEN account_code LIKE '5.1%' THEN amount ELSE 0 END) as costo_ventas,
+                    SUM(CASE WHEN account_code LIKE '5.3%' THEN amount ELSE 0 END) as gastos_administrativos,
+                    SUM(CASE WHEN account_code LIKE '5.2%' THEN amount ELSE 0 END) as gastos_ventas,
+                    SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END) - 
+                        SUM(CASE WHEN account_code LIKE '5.1%' THEN amount ELSE 0 END) as utilidad_bruta,
+                    SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END) - 
                         SUM(CASE WHEN account_code LIKE '5%' THEN amount ELSE 0 END) as ebitda,
-                    SUM(CASE WHEN account_code = '4' THEN amount ELSE 0 END) - 
+                    SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END) - 
                         SUM(CASE WHEN account_code LIKE '5%' THEN amount ELSE 0 END) as utilidad_neta
                 FROM raw_account_data
                 WHERE company_id = :company_id2 AND period_year = :year2
@@ -239,19 +259,41 @@ async def get_financial_data(
         
         result = db.execute(text(query), params)
         data = []
-        
+
         for row in result:
+            # SQLAlchemy Row puede exponer datos como atributos o vía ._mapping
+            mapping = row._mapping if hasattr(row, "_mapping") else row.__dict__
+
+            def pick(*candidates, default=None):
+                for key in candidates:
+                    if key and key in mapping and mapping[key] is not None:
+                        return mapping[key]
+                return default
+
+            ingresos_val = pick("ingresos", default=0) or 0
+            costo_total = pick("costo_ventas_total", "costo_ventas", default=0) or 0
+            gastos_admin = pick(
+                "gastos_admin_total",
+                "gastos_administrativos",
+                default=0,
+            ) or 0
+            gastos_ventas = pick(
+                "gastos_ventas_total",
+                "gastos_ventas",
+                default=0,
+            ) or 0
+
             data.append({
-                "id": row.id if hasattr(row, 'id') else None,
-                "year": row.year,
-                "month": row.month,
-                "ingresos": float(row.ingresos) if row.ingresos else 0,
-                "costo_ventas_total": float(row.costo_ventas_total) if row.costo_ventas_total else 0,
-                "gastos_admin_total": float(row.gastos_admin_total) if row.gastos_admin_total else 0,
-                "gastos_ventas_total": float(row.gastos_ventas_total) if row.gastos_ventas_total else 0,
-                "utilidad_bruta": float(row.utilidad_bruta) if row.utilidad_bruta else 0,
-                "ebitda": float(row.ebitda) if row.ebitda else 0,
-                "utilidad_neta": float(row.utilidad_neta) if row.utilidad_neta else 0
+                "id": pick("id"),
+                "year": pick("year", "period_year"),
+                "month": pick("month", "period_month"),
+                "ingresos": float(ingresos_val),
+                "costo_ventas_total": float(costo_total),
+                "gastos_admin_total": float(gastos_admin),
+                "gastos_ventas_total": float(gastos_ventas),
+                "utilidad_bruta": float(pick("utilidad_bruta", default=0) or 0),
+                "ebitda": float(pick("ebitda", default=0) or 0),
+                "utilidad_neta": float(pick("utilidad_neta", default=0) or 0)
             })
         
         response = {
@@ -271,30 +313,36 @@ async def get_financial_data(
             raw_query += " ORDER BY account_code, period_month"
             
             raw_result = db.execute(text(raw_query), raw_params)
-            
+
             # Formatear datos raw para el pnlCalculator (FORMATO EXACTO)
             raw_data = []
             account_months = {}
-            
+
             # Primero agrupamos por cuenta
             for row in raw_result:
-                account_key = f"{row.account_code}|{row.account_name}"
+                mapping = row._mapping if hasattr(row, "_mapping") else row.__dict__
+                account_code = mapping.get("account_code")
+                account_name = mapping.get("account_name")
+                period_month = mapping.get("period_month")
+                amount = mapping.get("amount", 0)
+
+                account_key = f"{account_code}|{account_name}"
                 if account_key not in account_months:
                     account_months[account_key] = {
-                        'COD.': row.account_code,
-                        'CUENTA': row.account_name,
+                        'COD.': account_code,
+                        'CUENTA': account_name,
                     }
-                
+
                 # CRÍTICO: Agregar mes con nombre EXACTO como espera pnlCalculator
                 month_names = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
                               'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-                
-                if 1 <= row.period_month <= 12:
-                    month_name = month_names[row.period_month]
+
+                if isinstance(period_month, int) and 1 <= period_month <= 12:
+                    month_name = month_names[period_month]
                     # CRÍTICO: Convertir valor a NÚMERO (no string europeo)
-                    numeric_value = float(row.amount) if row.amount else 0.0
+                    numeric_value = float(amount) if amount else 0.0
                     account_months[account_key][month_name] = numeric_value
-            
+
             # Convertir a lista y ordenar por código de cuenta
             raw_data = sorted(list(account_months.values()), key=lambda x: x.get('COD.', ''))
             response["raw_data"] = raw_data

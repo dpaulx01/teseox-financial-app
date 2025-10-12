@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useYear, YearInfo } from '../../contexts/YearContext';
+import CSVUploaderYearAware from '../upload/CSVUploaderYearAware';
 
 interface YearSelectorProps {
   onYearSelect?: (year: number) => void;
@@ -101,14 +102,14 @@ export const YearSelector: React.FC<YearSelectorProps> = ({
           </h3>
           
           {availableYears.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="text-gray-400 text-4xl mb-4">📂</div>
-              <p className="text-gray-400 font-mono">
-                No hay datos financieros cargados
-              </p>
-              <p className="text-gray-500 text-sm mt-2">
-                Sube un archivo CSV para comenzar
-              </p>
+            <div className="space-y-4">
+              <div className="text-center py-4">
+                <div className="text-gray-400 text-4xl mb-2">📂</div>
+                <p className="text-gray-300 font-mono">No hay datos financieros cargados</p>
+                <p className="text-gray-500 text-sm">Sube un archivo CSV para comenzar</p>
+              </div>
+              {/* Uploader por año inline para desbloquear el flujo */}
+              <CSVUploaderYearAware />
             </div>
           ) : (
             availableYears.map((yearInfo) => (
@@ -157,57 +158,39 @@ export const YearSelector: React.FC<YearSelectorProps> = ({
         </div>
 
         {/* Botones de acción */}
-        <div className="flex items-center justify-between">
-          {/* Botón subir nuevo año */}
-          {showUpload && (
+        {availableYears.length > 0 && (
+          <div className="flex items-center justify-between">
+            {/* Botón subir nuevo año */}
+            {showUpload && (
+              <button
+                onClick={() => setShowUploadForm(!showUploadForm)}
+                className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors font-mono border border-gray-600 hover:border-gray-500"
+              >
+                + Subir Nuevo Año
+              </button>
+            )}
+            
+            {/* Botón continuar */}
             <button
-              onClick={() => setShowUploadForm(!showUploadForm)}
-              className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors font-mono border border-gray-600 hover:border-gray-500"
+              onClick={handleContinue}
+              disabled={!selectedYear}
+              className={`
+                px-8 py-3 rounded-lg transition-colors font-mono font-bold
+                ${selectedYear
+                  ? 'bg-cyan-600 hover:bg-cyan-700 text-white shadow-lg shadow-cyan-600/25'
+                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                }
+              `}
             >
-              + Subir Nuevo Año
+              {selectedYear ? `Continuar con ${selectedYear} →` : 'Seleccione un año'}
             </button>
-          )}
-          
-          {/* Botón continuar */}
-          <button
-            onClick={handleContinue}
-            disabled={!selectedYear}
-            className={`
-              px-8 py-3 rounded-lg transition-colors font-mono font-bold
-              ${selectedYear
-                ? 'bg-cyan-600 hover:bg-cyan-700 text-white shadow-lg shadow-cyan-600/25'
-                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-              }
-            `}
-          >
-            {selectedYear ? `Continuar con ${selectedYear} →` : 'Seleccione un año'}
-          </button>
-        </div>
+          </div>
+        )}
 
-        {/* Formulario de upload (opcional) */}
-        {showUploadForm && (
-          <div className="mt-6 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
-            <h4 className="text-cyan-400 font-mono text-sm mb-3">
-              SUBIR DATOS DE NUEVO AÑO
-            </h4>
-            <div className="space-y-3">
-              <input
-                type="file"
-                accept=".csv"
-                className="block w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-mono file:bg-cyan-600 file:text-white hover:file:bg-cyan-700"
-              />
-              <div className="flex space-x-2">
-                <button className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded font-mono text-sm">
-                  Subir CSV
-                </button>
-                <button
-                  onClick={() => setShowUploadForm(false)}
-                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-gray-300 rounded font-mono text-sm"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
+        {/* Uploader embebido cuando se despliega */}
+        {showUploadForm && availableYears.length > 0 && (
+          <div className="mt-6">
+            <CSVUploaderYearAware />
           </div>
         )}
 

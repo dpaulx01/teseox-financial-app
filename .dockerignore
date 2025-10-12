@@ -13,6 +13,7 @@ build
 .vscode
 .idea
 *.log
+.venv
 .DS_Store
 uploads/
 logs/

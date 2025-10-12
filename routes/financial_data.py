@@ -95,8 +95,27 @@ async def upload_csv(
             # Limpiar datos existentes (como PHP original)
             db.execute(text("DELETE FROM raw_account_data WHERE company_id = :company_id AND period_year = :year"), 
                       {"company_id": company_id, "year": year})
-            db.execute(text("DELETE FROM financial_data WHERE company_id = :company_id AND year = :year"), 
-                      {"company_id": company_id, "year": year})
+            # Detectar nombres de columnas en financial_data para limpiar por año
+            fin_cols = set()
+            try:
+                cols_res = db.execute(text("SHOW COLUMNS FROM financial_data"))
+                for r in cols_res:
+                    cname = r[0] if len(r) > 0 else None
+                    if not cname:
+                        # fallback
+                        try:
+                            cname = r._mapping.get('Field')
+                        except Exception:
+                            pass
+                    if cname:
+                        fin_cols.add(cname)
+            except Exception:
+                fin_cols = set()
+
+            ycol = 'year' if 'year' in fin_cols else ('period_year' if 'period_year' in fin_cols else None)
+            if ycol:
+                db.execute(text(f"DELETE FROM financial_data WHERE company_id = :company_id AND {ycol} = :year"), 
+                          {"company_id": company_id, "year": year})
             
             # Insertar nuevos datos
             total_revenue = 0
@@ -164,31 +183,82 @@ async def upload_csv(
                     })
                     
                     # Sumar ingresos (cuenta 4) como PHP original
-                    if account_code == '4':
+                    if account_code.startswith('4'):
                         total_revenue += amount
             
             total_accounts = len(account_codes)
             
-            # Procesar datos financieros agregados (EXACTO como PHP original)
-            db.execute(text("""
-                INSERT INTO financial_data (company_id, year, month, ingresos, costo_ventas_total, 
-                                           gastos_admin_total, gastos_ventas_total, utilidad_bruta, ebitda, utilidad_neta)
+            # Procesar datos financieros agregados: columnas dinámicas según esquema
+            def add_column(target_col: str, expr: str):
+                insert_columns.append(target_col)
+                select_expressions.append(f"{expr} AS {target_col}")
+
+            insert_columns = []
+            select_expressions = []
+
+            # Columnas de identificación
+            insert_columns.append("company_id")
+            select_expressions.append(":company_id AS company_id")
+
+            if "period_year" in fin_cols:
+                add_column("period_year", ":year")
+            if "year" in fin_cols:
+                add_column("year", ":year")
+
+            if "period_month" in fin_cols:
+                add_column("period_month", "period_month")
+            if "month" in fin_cols:
+                add_column("month", "period_month")
+
+            if "period_quarter" in fin_cols:
+                add_column("period_quarter", "CEIL(period_month / 3)")
+
+            if "data_type" in fin_cols:
+                add_column("data_type", "'monthly'")
+
+            # Columnas numéricas clave (utilizamos alias existentes)
+            add_column("ingresos", "SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END)")
+
+            if "costo_ventas_total" in fin_cols:
+                add_column("costo_ventas_total", "SUM(CASE WHEN account_code LIKE '5.1%' THEN amount ELSE 0 END)")
+            elif "costo_ventas" in fin_cols:
+                add_column("costo_ventas", "SUM(CASE WHEN account_code LIKE '5.1%' THEN amount ELSE 0 END)")
+
+            if "gastos_admin_total" in fin_cols:
+                add_column("gastos_admin_total", "SUM(CASE WHEN account_code LIKE '5.3%' THEN amount ELSE 0 END)")
+            elif "gastos_administrativos" in fin_cols:
+                add_column("gastos_administrativos", "SUM(CASE WHEN account_code LIKE '5.3%' THEN amount ELSE 0 END)")
+
+            if "gastos_ventas_total" in fin_cols:
+                add_column("gastos_ventas_total", "SUM(CASE WHEN account_code LIKE '5.2%' THEN amount ELSE 0 END)")
+            elif "gastos_ventas" in fin_cols:
+                add_column("gastos_ventas", "SUM(CASE WHEN account_code LIKE '5.2%' THEN amount ELSE 0 END)")
+
+            add_column(
+                "utilidad_bruta",
+                "SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END) - "
+                "SUM(CASE WHEN account_code LIKE '5.1%' THEN amount ELSE 0 END)",
+            )
+            add_column(
+                "ebitda",
+                "SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END) - "
+                "SUM(CASE WHEN account_code LIKE '5%' THEN amount ELSE 0 END)",
+            )
+            add_column(
+                "utilidad_neta",
+                "SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END) - "
+                "SUM(CASE WHEN account_code LIKE '5%' THEN amount ELSE 0 END)",
+            )
+
+            insert_sql = f"""
+                INSERT INTO financial_data ({', '.join(insert_columns)})
                 SELECT 
-                    :company_id, :year, period_month,
-                    SUM(CASE WHEN account_code = '4' THEN amount ELSE 0 END) as ingresos,
-                    SUM(CASE WHEN account_code = '5.1' THEN amount ELSE 0 END) as costo_ventas_total,
-                    SUM(CASE WHEN account_code = '5.3' THEN amount ELSE 0 END) as gastos_admin_total,
-                    SUM(CASE WHEN account_code = '5.2' THEN amount ELSE 0 END) as gastos_ventas_total,
-                    SUM(CASE WHEN account_code = '4' THEN amount ELSE 0 END) - 
-                        SUM(CASE WHEN account_code = '5.1' THEN amount ELSE 0 END) as utilidad_bruta,
-                    SUM(CASE WHEN account_code = '4' THEN amount ELSE 0 END) - 
-                        SUM(CASE WHEN account_code LIKE '5%' THEN amount ELSE 0 END) as ebitda,
-                    SUM(CASE WHEN account_code = '4' THEN amount ELSE 0 END) - 
-                        SUM(CASE WHEN account_code LIKE '5%' THEN amount ELSE 0 END) as utilidad_neta
+                    {', '.join(select_expressions)}
                 FROM raw_account_data
                 WHERE company_id = :company_id2 AND period_year = :year2
                 GROUP BY period_month
-            """), {
+            """
+            db.execute(text(insert_sql), {
                 "company_id": company_id,
                 "year": year,
                 "company_id2": company_id,
@@ -214,6 +284,26 @@ async def upload_csv(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.post("/save")
+async def save_financial_data(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Guardar cambios de datos financieros (placeholder no destructivo).
+    
+    Nota: En esta versión, no sobrescribimos tablas consolidadas. Se deja como punto
+    de extensión para persistir escenarios o snapshots si es necesario.
+    """
+    try:
+        # Por ahora solo registrar un snapshot mínimo en logs.
+        # En una iteración futura, podríamos persistir en una tabla de snapshots
+        # o actualizar un escenario activo.
+        print("[save_financial_data] Usuario:", current_user.id, "Payload keys:", list(data.keys()))
+        return {"success": True, "message": "Financial data accepted (no-op)"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/data")
 async def get_financial_data(
     year: int = None,
@@ -226,87 +316,147 @@ async def get_financial_data(
     """
     try:
         company_id = 1
-        
-        # 1. Obtener datos agregados
-        query = "SELECT * FROM financial_data WHERE company_id = :company_id"
+
+        def getval(row, key, default=None):
+            try:
+                if hasattr(row, "_mapping"):
+                    return row._mapping.get(key, default)
+                # Fallback a atributo
+                return getattr(row, key, default)
+            except Exception:
+                return default
+
+        # Descubrir columnas existentes para tolerar esquemas antiguos/nuevos
+        present_cols = set()
+        try:
+            cols_result = db.execute(text("SHOW COLUMNS FROM financial_data"))
+            for r in cols_result:
+                # SHOW COLUMNS devuelve 'Field' como primera columna
+                try:
+                    colname = r[0]
+                except Exception:
+                    colname = getval(r, 'Field')
+                if colname:
+                    present_cols.add(colname)
+        except Exception as _:
+            # Si la tabla no existe, devolver respuesta vacía más abajo
+            present_cols = set()
+
+        col_costo = 'costo_ventas_total' if 'costo_ventas_total' in present_cols else ('costo_ventas' if 'costo_ventas' in present_cols else None)
+        col_gadm = 'gastos_admin_total' if 'gastos_admin_total' in present_cols else ('gastos_administrativos' if 'gastos_administrativos' in present_cols else None)
+        col_gvta = 'gastos_ventas_total' if 'gastos_ventas_total' in present_cols else ('gastos_ventas' if 'gastos_ventas' in present_cols else None)
+
+        # 1. Obtener datos agregados con columnas detectadas
+        def sel(col: str, alias: str | None = None, default: str = "0") -> str:
+            if col in present_cols:
+                return f"{col}{(' AS ' + alias) if alias else ''}"
+            return f"{default}{(' AS ' + alias) if alias else ''}"
+
+        # Mapear year/month según existan como year/period_year, month/period_month
+        ysrc = 'year' if 'year' in present_cols else ('period_year' if 'period_year' in present_cols else None)
+        msrc = 'month' if 'month' in present_cols else ('period_month' if 'period_month' in present_cols else None)
+
+        select_cols = [
+            sel('id', 'id', 'NULL'),
+            (f"{ysrc} AS year" if ysrc else "NULL AS year"),
+            (f"{msrc} AS month" if msrc else "NULL AS month"),
+            sel('ingresos', 'ingresos', '0'),
+        ]
+        if col_costo:
+            select_cols.append(f"{col_costo} AS costo_ventas_total")
+        else:
+            select_cols.append("0 AS costo_ventas_total")
+        if col_gadm:
+            select_cols.append(f"{col_gadm} AS gastos_admin_total")
+        else:
+            select_cols.append("0 AS gastos_admin_total")
+        if col_gvta:
+            select_cols.append(f"{col_gvta} AS gastos_ventas_total")
+        else:
+            select_cols.append("0 AS gastos_ventas_total")
+        # Estas deberían existir, pero si no existen, poner 0
+        select_cols.append(sel('utilidad_bruta', 'utilidad_bruta', '0'))
+        select_cols.append(sel('ebitda', 'ebitda', '0'))
+        select_cols.append(sel('utilidad_neta', 'utilidad_neta', '0'))
+
+        query = f"SELECT {', '.join(select_cols)} FROM financial_data WHERE company_id = :company_id"
         params = {"company_id": company_id}
-        
-        if year:
-            query += " AND year = :year"
+
+        if year and ysrc:
+            query += f" AND {ysrc} = :year"
             params["year"] = year
-        
-        query += " ORDER BY year DESC, month ASC"
-        
-        result = db.execute(text(query), params)
+
+        order_year = ysrc or 'year'
+        order_month = msrc or 'month'
+        query += f" ORDER BY {order_year} DESC, {order_month} ASC"
+
         data = []
-        
-        for row in result:
-            data.append({
-                "id": row.id if hasattr(row, 'id') else None,
-                "year": row.year,
-                "month": row.month,
-                "ingresos": float(row.ingresos) if row.ingresos else 0,
-                "costo_ventas_total": float(row.costo_ventas_total) if row.costo_ventas_total else 0,
-                "gastos_admin_total": float(row.gastos_admin_total) if row.gastos_admin_total else 0,
-                "gastos_ventas_total": float(row.gastos_ventas_total) if row.gastos_ventas_total else 0,
-                "utilidad_bruta": float(row.utilidad_bruta) if row.utilidad_bruta else 0,
-                "ebitda": float(row.ebitda) if row.ebitda else 0,
-                "utilidad_neta": float(row.utilidad_neta) if row.utilidad_neta else 0
-            })
-        
+        try:
+            result = db.execute(text(query), params)
+            for row in result:
+                ingresos = getval(row, 'ingresos', 0) or 0
+                data.append({
+                    "id": getval(row, 'id'),
+                    "year": getval(row, 'year'),
+                    "month": getval(row, 'month'),
+                    "ingresos": float(ingresos),
+                    "costo_ventas_total": float(getval(row, 'costo_ventas_total', 0) or 0),
+                    "gastos_admin_total": float(getval(row, 'gastos_admin_total', 0) or 0),
+                    "gastos_ventas_total": float(getval(row, 'gastos_ventas_total', 0) or 0),
+                    "utilidad_bruta": float(getval(row, 'utilidad_bruta', 0) or 0),
+                    "ebitda": float(getval(row, 'ebitda', 0) or 0),
+                    "utilidad_neta": float(getval(row, 'utilidad_neta', 0) or 0)
+                })
+        except Exception as _:
+            # Si no existe la tabla o columnas, data queda vacío
+            data = []
+
         response = {
             "success": True,
             "data": data
         }
-        
+
         # 2. Incluir datos raw si se solicitan (CRUCIAL para P&G)
         if include_raw:
-            raw_query = "SELECT * FROM raw_account_data WHERE company_id = :company_id"
-            raw_params = {"company_id": company_id}
-            
-            if year:
-                raw_query += " AND period_year = :year"
-                raw_params["year"] = year
-            
-            raw_query += " ORDER BY account_code, period_month"
-            
-            raw_result = db.execute(text(raw_query), raw_params)
-            
-            # Formatear datos raw para el pnlCalculator (FORMATO EXACTO)
-            raw_data = []
-            account_months = {}
-            
-            # Primero agrupamos por cuenta
-            for row in raw_result:
-                account_key = f"{row.account_code}|{row.account_name}"
-                if account_key not in account_months:
-                    account_months[account_key] = {
-                        'COD.': row.account_code,
-                        'CUENTA': row.account_name,
-                    }
-                
-                # CRÍTICO: Agregar mes con nombre EXACTO como espera pnlCalculator
+            try:
+                raw_query = "SELECT account_code, account_name, period_month, amount FROM raw_account_data WHERE company_id = :company_id"
+                raw_params = {"company_id": company_id}
+
+                if year:
+                    raw_query += " AND period_year = :year"
+                    raw_params["year"] = year
+
+                raw_query += " ORDER BY account_code, period_month"
+
+                raw_result = db.execute(text(raw_query), raw_params)
+
+                account_months: dict = {}
                 month_names = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-                              'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-                
-                if 1 <= row.period_month <= 12:
-                    month_name = month_names[row.period_month]
-                    # CRÍTICO: Convertir valor a NÚMERO (no string europeo)
-                    numeric_value = float(row.amount) if row.amount else 0.0
-                    account_months[account_key][month_name] = numeric_value
-            
-            # Convertir a lista y ordenar por código de cuenta
-            raw_data = sorted(list(account_months.values()), key=lambda x: x.get('COD.', ''))
-            response["raw_data"] = raw_data
-            
-            # DEBUG: Log first raw item to verify format
-            if raw_data:
-                print(f"🔍 DEBUG: First raw item format: {raw_data[0]}")
-                print(f"🔍 DEBUG: Month keys available: {[k for k in raw_data[0].keys() if k not in ['COD.', 'CUENTA']]}")
-        
+                               'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+
+                for row in raw_result:
+                    code = getval(row, 'account_code')
+                    name = getval(row, 'account_name')
+                    month = getval(row, 'period_month')
+                    amount = getval(row, 'amount', 0) or 0
+                    if not code:
+                        continue
+                    key = f"{code}|{name}"
+                    if key not in account_months:
+                        account_months[key] = {'COD.': code, 'CUENTA': name}
+                    if isinstance(month, int) and 1 <= month <= 12:
+                        account_months[key][month_names[month]] = float(amount)
+
+                raw_data = sorted(list(account_months.values()), key=lambda x: x.get('COD.', ''))
+                response["raw_data"] = raw_data
+            except Exception as _:
+                response["raw_data"] = []
+
         return response
-        
+
     except Exception as e:
+        # Imprimir error detallado en logs del servidor para depuración
+        print("❌ get_financial_data error:", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/production")
@@ -543,7 +693,7 @@ async def get_available_years(
                 COUNT(DISTINCT account_code) as unique_accounts,
                 MIN(period_month) as min_month,
                 MAX(period_month) as max_month,
-                SUM(CASE WHEN account_code = '4' THEN amount ELSE 0 END) as total_revenue
+                SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END) as total_revenue
             FROM raw_account_data 
             WHERE company_id = :company_id 
             GROUP BY period_year 

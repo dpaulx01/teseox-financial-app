@@ -6,6 +6,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 build/
 develop-eggs/
@@ -42,6 +43,7 @@ yarn-error.log*
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~

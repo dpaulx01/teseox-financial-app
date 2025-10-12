@@ -20,12 +20,17 @@ pymysql>=1.1.0  # MySQL connector
 # ================================
 PyJWT>=2.8.0  # JWT token handling
 passlib[bcrypt]>=1.7.4  # Password hashing
+openpyxl>=3.1.0
+xlrd>=2.0.1
+pandas>=2.2.0
+bcrypt>=4.1.2,<5.0  # Ensure compiled bcrypt backend is available for passlib
 
 # ================================
 # UTILITIES
 # ================================
 python-dotenv>=1.0.0  # Environment variable management
 python-multipart>=0.0.6  # File upload support
+pdfplumber>=0.10.4  # PDF parsing for producción module
 
 # ================================
 # ASYNC SUPPORT

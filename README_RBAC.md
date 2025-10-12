@@ -14,6 +14,7 @@ Esta es una versión clonada del proyecto Artyco Financial App con implementaci�
   - Frontend: 3001 (original: 3000)
   - MySQL: 3307 (original: 3306)
   - phpMyAdmin: 8081 (original: 8080)
+- **Status Producción**: Nuevo módulo operativo con carga masiva de cotizaciones PDF o Excel, matriz editable y gestión de cobros.
 
 ## 📋 Requisitos previos
 
@@ -36,6 +37,10 @@ Esta es una versión clonada del proyecto Artyco Financial App con implementaci�
    ```bash
    docker-compose up --build
    ```
+   > Si ya tienes la pila levantada y solo deseas aplicar las últimas actualizaciones del backend (parser PDF), ejecuta:
+   > ```bash
+   > docker compose up -d --build api-rbac
+   > ```
 
 4. **Verificar que todo esté funcionando**:
    - API: http://localhost:8001/docs
@@ -75,6 +80,15 @@ Esta es una versión clonada del proyecto Artyco Financial App con implementaci�
 - risk_analysis: read, execute
 - transactions: read, analyze
 - brain_system: query
+
+## 🆕 Módulo Status Producción
+
+- **Carga inteligente de cotizaciones**: arrastra tus PDF o la plantilla Excel (`.xls`/`.xlsx`) a la interfaz, se extraen número de cotización, cliente, ODC, líneas de producto y valores.
+- **Matriz interactiva**: edita fechas de entrega, estatus operativos, notas de producción, facturación y condiciones de cobro por ítem.
+- **Gestión de cobros integrada**: registra anticipos y saldos, visualiza totales abonados y saldo pendiente por cotización.
+- **Progreso visual**: barra dinámica basada en fecha de ingreso y fecha de entrega estimada.
+
+> Encontrarás el módulo dentro del frontend en la pestaña **Status Producción** de la barra lateral.
 
 ### Viewer
 - Todos los recursos: solo read

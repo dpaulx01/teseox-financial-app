@@ -11,6 +11,13 @@ import {
   RiskAnalysis,
   TransactionAnalysis 
 } from '../types/financial';
+import {
+  ProductionStatusResponse,
+  ProductionUpdatePayload,
+  ProductionUploadResponse,
+  ProductionItem,
+  ProductionDeleteResponse,
+} from '../types/production';
 
 class FinancialAPIService {
   private api: AxiosInstance;
@@ -29,10 +36,17 @@ class FinancialAPIService {
       },
     });
 
-    // Request interceptor for debugging
+    // Request interceptor for auth & debugging
     this.api.interceptors.request.use(
       (config) => {
         console.log(`🚀 API Request: ${config.method?.toUpperCase()} ${config.url}`);
+        if (typeof window !== 'undefined') {
+          const token = localStorage.getItem('access_token');
+          if (token) {
+            config.headers = config.headers ?? {};
+            config.headers.Authorization = `Bearer ${token}`;
+          }
+        }
         return config;
       },
       (error) => {
@@ -237,6 +251,41 @@ class FinancialAPIService {
     });
 
     return response.data;
+  }
+
+  // ===============================
+  // STATUS PRODUCCIÓN
+  // ===============================
+
+  async uploadProductionQuotes(files: File[]): Promise<ProductionUploadResponse> {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+
+    const response = await this.api.post('/api/production/quotes', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    return response.data as ProductionUploadResponse;
+  }
+
+  async getProductionItems(): Promise<ProductionStatusResponse> {
+    const response = await this.api.get('/api/production/items');
+    return response.data as ProductionStatusResponse;
+  }
+
+  async updateProductionItem(
+    itemId: number,
+    payload: ProductionUpdatePayload,
+  ): Promise<ProductionItem> {
+    const response = await this.api.put(`/api/production/items/${itemId}`, payload);
+    return response.data.item as ProductionItem;
+  }
+
+  async deleteProductionQuote(quoteId: number): Promise<ProductionDeleteResponse> {
+    const response = await this.api.delete(`/api/production/quotes/${quoteId}`);
+    return response.data as ProductionDeleteResponse;
   }
 
   // Mock data generator for development

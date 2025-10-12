@@ -9,10 +9,9 @@ import { ScenarioProvider, useScenario } from './contexts/ScenarioContext';
 import { YearProvider, useYear } from './contexts/YearContext';
 import { useErrorHandler } from './hooks/useErrorHandler';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { processFinancialData } from './utils/financialDataProcessor';
-import { loadFinancialData, saveFinancialData } from './utils/financialStorage';
+import { loadFinancialData } from './utils/financialStorage';
 import Navigation from './components/layout/Navigation';
-import DataUploader from './components/upload/DataUploader';
+// Unificar flujo: usar Configuración para subida CSV por año
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import { ToastContainer } from './components/ui/Toast';
 import AnimatedBackground from './components/ui/AnimatedBackground';
@@ -21,6 +20,7 @@ import PnlAnalysis from './pages/PnlAnalysis';
 import BreakEvenAnalysis from './pages/BreakEvenAnalysis';
 import DataConfiguration from './pages/DataConfiguration';
 import OperationalAnalysis from './pages/OperationalAnalysis';
+import StatusProduccion from './pages/StatusProduccion';
 import PygContainer from './components/pyg/PygContainer';
 import Login from './pages/Login';
 import UserManagement from './pages/UserManagement';
@@ -35,8 +35,7 @@ import YearSelector from './components/year/YearSelector';
 import GlobalYearBar from './components/year/GlobalYearBar';
 import { useYearParamSync } from './hooks/useYearParamSync';
 
-// Importar script de migración para que esté disponible globalmente
-import './utils/migrateToMySQL';
+// Flujo unificado: sin migraciones locales automáticas
 
 // Componente interno que usa ScenarioContext
 const MainAppContent: React.FC = () => {
@@ -87,17 +86,7 @@ const MainAppContent: React.FC = () => {
     loadData();
   }, [selectedYear]); // DEPENDENCIA ÚNICA para evitar bucles
 
-  const handleDataLoaded = useCallback(async (data: FinancialData) => {
-    try {
-      setFinancialData(data);
-      setSavedData(data); // Persist to localStorage
-      await saveFinancialData(data); // Guardar en sistema híbrido
-      addError('Datos cargados y guardados exitosamente', 'info');
-    } catch (error) {
-      // console.error('Error guardando datos:', error);
-      addError('Error al cargar los datos financieros', 'error');
-    }
-  }, [addError, setSavedData]);
+  // Flujo unificado: la carga se hace desde Configuración vía CSVUploaderYearAware
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
@@ -111,17 +100,20 @@ const MainAppContent: React.FC = () => {
       return <DataConfiguration />;
     }
     
-    // Análisis operativo puede funcionar sin datos financieros si hay datos de producción
+    // Status Producción y Análisis operativo pueden funcionar sin datos financieros
+    if (activeTab === 'status') {
+      return <StatusProduccion />;
+    }
+
     if (activeTab === 'operational') {
       return <OperationalAnalysis onNavigateToConfig={() => setActiveTab('config')} />;
     }
 
-    if (!financialData) {
-      return (
-        <div className="flex items-center justify-center h-full">
-          <DataUploader onDataLoaded={handleDataLoaded} />
-        </div>
-      );
+    const requiresFinancialData = !['status', 'operational', 'config'].includes(activeTab);
+
+    if (requiresFinancialData && !financialData) {
+      // Sin datos: dirigir al flujo de Configuración (CSVUploaderYearAware)
+      return <DataConfiguration />;
     }
 
     switch (activeTab) {

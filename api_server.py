@@ -26,6 +26,24 @@ from auth.dependencies import require_permission, get_current_user, get_optional
 from routes.auth import router as auth_router
 from routes.users import router as users_router
 from routes.admin import router as admin_router
+# Financial and analysis routes (ensure frontend endpoints exist)
+try:
+    from routes.financial_data import router as financial_router
+except Exception as e:
+    financial_router = None
+    print(f"⚠️ routes.financial_data not available: {e}")
+
+try:
+    from routes.analysis_config import router as analysis_router
+except Exception as e:
+    analysis_router = None
+    print(f"⚠️ routes.analysis_config not available: {e}")
+
+try:
+    from routes.financial_scenarios import router as scenarios_router
+except Exception as e:
+    scenarios_router = None
+    print(f"⚠️ routes.financial_scenarios not available: {e}")
 
 # Brain System
 from brain import Brain, BrainConfig
@@ -136,6 +154,14 @@ async def startup_event():
 app.include_router(auth_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
+
+# Include financial routes so frontend can call /api/financial/* on this server
+if scenarios_router:
+    app.include_router(scenarios_router, tags=["Financial Scenarios"])
+if financial_router:
+    app.include_router(financial_router, tags=["Financial Data"])
+if analysis_router:
+    app.include_router(analysis_router, tags=["Analysis Config"])
 
 # ================================
 # ENDPOINTS DE ANÁLISIS FINANCIERO (PROTEGIDOS)

@@ -65,9 +65,7 @@ export interface NavigationProps {
   setActiveTab: (tab: string) => void;
 }
 
-export interface DataUploaderProps {
-  onDataLoaded: (data: FinancialData) => void;
-}
+// DataUploader legacy removido del flujo unificado
 
 // === NUEVAS INTERFACES PARA PRODUCCIÓN ===
 

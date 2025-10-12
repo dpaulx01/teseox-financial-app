@@ -49,18 +49,13 @@ import {
   getAvailableYears
 } from '../utils/productionStorage';
 import YearSelector from '../components/production/YearSelector';
-import { 
-  saveFinancialData, 
-  loadFinancialData, 
-  clearFinancialData,
-  getFinancialDataInfo 
-} from '../utils/financialStorageNew';
+// Flujo unificado: la carga y lectura financiera se hace vía API MySQL
 import { 
   suggestConfigValues, 
   validateSuggestions 
 } from '../utils/configSuggestions';
-import DataUploader from '../components/upload/DataUploader';
-import CSVUploader from '../components/upload/CSVUploader';
+// Flujo unificado: CSV por año con API
+// (Uploader legacy retirado de esta vista)
 import CSVUploaderYearAware from '../components/upload/CSVUploaderYearAware';
 import { useYear } from '../contexts/YearContext';
 import { formatCurrency } from '../utils/formatters';
@@ -169,15 +164,7 @@ const DataConfiguration: React.FC = () => {
   // Lista de meses disponibles
   const availableMonths = financialData ? Object.keys(financialData.monthly) : [];
   
-  const handleFinancialDataLoaded = useCallback((data: any) => {
-    // Los datos se manejan en App.tsx a través del DataUploader
-    // Solo guardamos y mostramos mensaje de éxito
-    saveFinancialData(data);
-    setSuccess('✅ Datos financieros cargados y guardados correctamente');
-    setTimeout(() => setSuccess(''), 3000);
-    // Recargar la página para que App.tsx cargue los nuevos datos
-    window.location.reload();
-  }, []);
+  // Flujo unificado: no se usa DataUploader local ni guardado cliente
   
   // Nueva función para sugerir valores
   const handleSuggestConfig = () => {

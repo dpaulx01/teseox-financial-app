@@ -3,7 +3,6 @@ import { useFinancialData } from './contexts/DataContext';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useErrorHandler } from './hooks/useErrorHandler';
 import Navigation from './components/layout/Navigation';
-import DataUploader from './components/upload/DataUploader';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import { ToastContainer } from './components/ui/Toast';
 import AnimatedBackground from './components/ui/AnimatedBackground';
@@ -12,27 +11,30 @@ import PnlAnalysis from './pages/PnlAnalysis';
 import BreakEvenAnalysis from './pages/BreakEvenAnalysis';
 import DataConfiguration from './pages/DataConfiguration';
 import OperationalAnalysis from './pages/OperationalAnalysis';
+import StatusProduccion from './pages/StatusProduccion';
 
 const AppContent: React.FC = () => {
   const { financialData } = useFinancialData();
   const [activeTab, setActiveTab] = useLocalStorage<string>('artyco-active-tab', 'kpi');
   const { errors, addError, removeError } = useErrorHandler();
 
+  const tabsRequiringFinancialData = new Set(['kpi', 'pnl', 'pyg', 'balance', 'breakeven', 'operational']);
+
   const renderContent = () => {
     if (activeTab === 'config') {
       return <DataConfiguration />;
     }
 
-    if (activeTab === 'operational') {
-      return <OperationalAnalysis />;
+    if (activeTab === 'status') {
+      return <StatusProduccion />;
     }
 
-    if (!financialData) {
-      return (
-        <div className="flex items-center justify-center h-full">
-          <DataUploader />
-        </div>
-      );
+    if (!financialData && tabsRequiringFinancialData.has(activeTab)) {
+      return <DataConfiguration />;
+    }
+
+    if (activeTab === 'operational') {
+      return <OperationalAnalysis />;
     }
 
     switch (activeTab) {
