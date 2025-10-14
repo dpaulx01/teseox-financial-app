@@ -17,6 +17,10 @@ import {
   ProductionUploadResponse,
   ProductionItem,
   ProductionDeleteResponse,
+  DashboardKpisResponse,
+  DailyProductionPlanEntry,
+  DailyProductionPlanResponse,
+  DailyScheduleResponse,
 } from '../types/production';
 
 class FinancialAPIService {
@@ -257,6 +261,11 @@ class FinancialAPIService {
   // STATUS PRODUCCIÓN
   // ===============================
 
+  async getDashboardKpis(): Promise<DashboardKpisResponse> {
+    const response = await this.api.get('/api/production/dashboard/kpis');
+    return response.data as DashboardKpisResponse;
+  }
+
   async uploadProductionQuotes(files: File[]): Promise<ProductionUploadResponse> {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
@@ -270,8 +279,18 @@ class FinancialAPIService {
     return response.data as ProductionUploadResponse;
   }
 
-  async getProductionItems(): Promise<ProductionStatusResponse> {
-    const response = await this.api.get('/api/production/items');
+  async getAllProductionItems(): Promise<ProductionStatusResponse> {
+    const response = await this.api.get('/api/production/items/all');
+    return response.data as ProductionStatusResponse;
+  }
+
+  async getActiveProductionItems(): Promise<ProductionStatusResponse> {
+    const response = await this.api.get('/api/production/items/active');
+    return response.data as ProductionStatusResponse;
+  }
+
+  async getArchivedProductionItems(): Promise<ProductionStatusResponse> {
+    const response = await this.api.get('/api/production/items/archive');
     return response.data as ProductionStatusResponse;
   }
 
@@ -286,6 +305,24 @@ class FinancialAPIService {
   async deleteProductionQuote(quoteId: number): Promise<ProductionDeleteResponse> {
     const response = await this.api.delete(`/api/production/quotes/${quoteId}`);
     return response.data as ProductionDeleteResponse;
+  }
+
+  async getProductionDailyPlan(itemId: number): Promise<DailyProductionPlanResponse> {
+    const response = await this.api.get(`/api/production/items/${itemId}/daily-plan`);
+    return response.data as DailyProductionPlanResponse;
+  }
+
+  async saveProductionDailyPlan(
+    itemId: number,
+    plan: DailyProductionPlanEntry[],
+  ): Promise<DailyProductionPlanResponse> {
+    const response = await this.api.put(`/api/production/items/${itemId}/daily-plan`, { plan });
+    return response.data as DailyProductionPlanResponse;
+  }
+
+  async getProductionSchedule(): Promise<DailyScheduleResponse> {
+    const response = await this.api.get('/api/production/dashboard/schedule');
+    return response.data as DailyScheduleResponse;
   }
 
   // Mock data generator for development

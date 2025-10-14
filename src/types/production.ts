@@ -28,6 +28,7 @@ export interface ProductionItem {
   pagos: ProductionPayment[];
   totalAbonado: number;
   saldoPendiente: number | null;
+  esServicio?: boolean;
 }
 
 export interface ProductionUploadResult {
@@ -65,4 +66,138 @@ export interface ProductionUpdatePayload {
   fechaVencimiento: string | null;
   valorTotal: number | null;
   pagos: ProductionPaymentPayload[];
+}
+
+export interface DailyProductionPlanEntry {
+  fecha: string;
+  metros: number;
+  unidades: number;
+  notas?: string | null;
+}
+
+export interface DailyProductionPlanResponse {
+  item_id: number;
+  plan: DailyProductionPlanEntry[];
+}
+
+export interface DailyScheduleItem {
+  item_id: number;
+  numero_cotizacion?: string | null;
+  cliente?: string | null;
+  descripcion: string;
+  metros: number;
+  unidades: number;
+  estatus?: string | null;
+  manual: boolean;
+}
+
+export interface DailyScheduleDay {
+  fecha: string;
+  metros: number;
+  unidades: number;
+  capacidad?: number | null;
+  manual: boolean;
+  items: DailyScheduleItem[];
+}
+
+export interface DailyScheduleResponse {
+  days: DailyScheduleDay[];
+}
+
+// Types for Production Dashboard
+export interface KpiCard {
+  label: string;
+  value: string;
+  color?: string;
+}
+
+export interface DistributionChartItem {
+  name: string;
+  value: number;
+}
+
+export interface UpcomingDeliveryItem {
+  id: number;
+  numero_cotizacion?: string | null;
+  descripcion: string;
+  cliente?: string | null;
+  fecha_entrega: string;
+  dias_restantes: number;
+  estatus?: string | null;
+}
+
+export interface StatusBreakdownItem {
+  status: string;
+  count: number;
+  total_value: number;
+  percent: number;
+  total_units: number;
+  total_metros: number;
+}
+
+export type RiskAlertType = 'overdue' | 'due_soon' | 'missing_date' | 'missing_status';
+export type RiskSeverity = 'high' | 'medium' | 'low';
+
+export interface RiskAlertItem {
+  id: number;
+  numero_cotizacion?: string | null;
+  descripcion: string;
+  cliente?: string | null;
+  fecha_entrega?: string | null;
+  dias: number;
+  tipo: RiskAlertType;
+  severidad: RiskSeverity;
+  estatus?: string | null;
+}
+
+export interface WorkloadSnapshot {
+  ingresos_hoy_unidades: number;
+  ingresos_hoy_metros: number;
+  ingresos_semana_unidades: number;
+  ingresos_semana_metros: number;
+  entregas_semana_unidades: number;
+  entregas_semana_metros: number;
+  promedio_plazo_dias?: number | null;
+  promedio_retraso_dias?: number | null;
+}
+
+export interface FinancialSummary {
+  total_en_produccion: number;
+  valor_atrasado: number;
+  valor_listo_para_retiro: number;
+  saldo_por_cobrar: number;
+}
+
+export interface DataGapSummary {
+  sin_fecha_entrega: number;
+  sin_estatus: number;
+  sin_cliente: number;
+  sin_cantidad: number;
+}
+
+export interface TopClientItem {
+  name: string;
+  item_count: number;
+  total_value: number;
+  total_units: number;
+  total_metros: number;
+}
+
+export interface DailyWorkloadItem {
+  fecha: string;
+  metros: number;
+  unidades: number;
+}
+
+export interface DashboardKpisResponse {
+  kpi_cards: KpiCard[];
+  production_load_chart: DistributionChartItem[];
+  status_breakdown: StatusBreakdownItem[];
+  risk_alerts: RiskAlertItem[];
+  workload_snapshot: WorkloadSnapshot;
+  financial_summary: FinancialSummary;
+  top_clients: TopClientItem[];
+  upcoming_deliveries: UpcomingDeliveryItem[];
+  data_gaps: DataGapSummary;
+  daily_workload: DailyWorkloadItem[];
 }

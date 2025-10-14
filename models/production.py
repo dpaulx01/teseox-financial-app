@@ -18,6 +18,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 
@@ -81,9 +82,37 @@ class ProductionProduct(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     cotizacion: Mapped[ProductionQuote] = relationship("ProductionQuote", back_populates="productos")
+    plan_diario: Mapped[List["ProductionDailyPlan"]] = relationship(
+        "ProductionDailyPlan",
+        back_populates="producto",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"<ProductionProduct descripcion={self.descripcion[:20]!r}>"
+
+
+class ProductionDailyPlan(Base):
+    __tablename__ = "plan_diario_produccion"
+    __table_args__ = (
+        UniqueConstraint("producto_id", "fecha", name="uq_plan_diario_producto_fecha"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    producto_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("productos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    fecha: Mapped[date] = mapped_column(Date, nullable=False)
+    metros: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
+    unidades: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
+    notas: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    producto: Mapped[ProductionProduct] = relationship("ProductionProduct", back_populates="plan_diario")
+
+    def __repr__(self) -> str:
+        return f"<ProductionDailyPlan producto_id={self.producto_id} fecha={self.fecha}>"
 
 
 class ProductionPayment(Base):

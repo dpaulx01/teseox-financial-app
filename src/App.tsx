@@ -20,7 +20,7 @@ import PnlAnalysis from './pages/PnlAnalysis';
 import BreakEvenAnalysis from './pages/BreakEvenAnalysis';
 import DataConfiguration from './pages/DataConfiguration';
 import OperationalAnalysis from './pages/OperationalAnalysis';
-import StatusProduccion from './pages/StatusProduccion';
+import ProductionDashboard from './pages/ProductionDashboard';
 import PygContainer from './components/pyg/PygContainer';
 import Login from './pages/Login';
 import UserManagement from './pages/UserManagement';
@@ -102,7 +102,7 @@ const MainAppContent: React.FC = () => {
     
     // Status Producción y Análisis operativo pueden funcionar sin datos financieros
     if (activeTab === 'status') {
-      return <StatusProduccion />;
+      return <ProductionDashboard />;
     }
 
     if (activeTab === 'operational') {

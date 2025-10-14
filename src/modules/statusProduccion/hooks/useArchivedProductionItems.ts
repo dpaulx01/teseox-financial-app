@@ -22,7 +22,7 @@ function normalizeFiles(input: File[] | FileList): File[] {
   return Array.from(input);
 }
 
-export function useActiveProductionItems() {
+export function useArchivedProductionItems() {
   const [items, setItems] = useState<ProductionItem[]>([]);
   const [statusOptions, setStatusOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -33,7 +33,7 @@ export function useActiveProductionItems() {
   const fetchItems = useCallback(async () => {
     try {
       setLoading(true);
-      const response: ProductionStatusResponse = await financialAPI.getActiveProductionItems();
+      const response: ProductionStatusResponse = await financialAPI.getArchivedProductionItems();
       setItems(response.items);
       setStatusOptions(response.statusOptions ?? []);
       setError(null);

@@ -9,26 +9,34 @@ from __future__ import annotations
 import io
 import re
 import unicodedata
-from datetime import datetime, date
+from collections import defaultdict
+from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import pdfplumber
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field, validator
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
 
 try:
     import pandas as pd
 except ImportError:  # pragma: no cover - optional dependency
     pd = None
 
+try:  # pragma: no cover - optional dependency
+    import holidays  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    holidays = None
+
 from auth.dependencies import get_current_user
 from config import Config
 from database.connection import get_db
 from models import User
 from models.production import (
+    ProductionDailyPlan,
     ProductionPayment,
     ProductionProduct,
     ProductionQuote,
@@ -36,7 +44,615 @@ from models.production import (
 )
 
 
+# ---------------------------------------------------------------------------
+# Pydantic Models for Dashboard
+# ---------------------------------------------------------------------------
+
+class KpiCard(BaseModel):
+    label: str
+    value: str
+    color: Optional[str] = None
+
+class DistributionChartItem(BaseModel):
+    name: str
+    value: float
+
+class UpcomingDeliveryItem(BaseModel):
+    id: int
+    numero_cotizacion: Optional[str] = None
+    descripcion: str
+    cliente: Optional[str] = None
+    fecha_entrega: date
+    dias_restantes: int
+    estatus: Optional[str] = None
+
+class StatusBreakdownItem(BaseModel):
+    status: str
+    count: int
+    total_value: float
+    percent: float
+    total_units: float
+    total_metros: float
+
+class RiskAlertItem(BaseModel):
+    id: int
+    numero_cotizacion: Optional[str] = None
+    descripcion: str
+    cliente: Optional[str] = None
+    fecha_entrega: Optional[date] = None
+    dias: int
+    tipo: str
+    severidad: str
+    estatus: Optional[str] = None
+
+class WorkloadSnapshot(BaseModel):
+    ingresos_hoy_unidades: float
+    ingresos_hoy_metros: float
+    ingresos_semana_unidades: float
+    ingresos_semana_metros: float
+    entregas_semana_unidades: float
+    entregas_semana_metros: float
+    promedio_plazo_dias: Optional[float] = None
+    promedio_retraso_dias: Optional[float] = None
+
+class FinancialSummary(BaseModel):
+    total_en_produccion: float
+    valor_atrasado: float
+    valor_listo_para_retiro: float
+    saldo_por_cobrar: float
+
+class DataGapSummary(BaseModel):
+    sin_fecha_entrega: int
+    sin_estatus: int
+    sin_cliente: int
+    sin_cantidad: int
+
+class TopClientItem(BaseModel):
+    name: str
+    item_count: int
+    total_value: float
+    total_units: float
+    total_metros: float
+
+class DailyWorkloadItem(BaseModel):
+    fecha: date
+    metros: float
+    unidades: float
+
+class DailyProductionPlanEntry(BaseModel):
+    fecha: date
+    metros: float = Field(0, ge=0)
+    unidades: float = Field(0, ge=0)
+    notas: Optional[str] = None
+
+    @validator("notas")
+    def strip_notes(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+class DailyProductionPlanPayload(BaseModel):
+    plan: List[DailyProductionPlanEntry]
+
+    @validator("plan")
+    def validate_plan(cls, value: List[DailyProductionPlanEntry]) -> List[DailyProductionPlanEntry]:
+        seen: Set[date] = set()
+        for entry in value:
+            if entry.fecha in seen:
+                raise ValueError("Las fechas del plan diario deben ser únicas.")
+            seen.add(entry.fecha)
+        return value
+
+class DailyProductionPlanResponse(BaseModel):
+    item_id: int = Field(..., alias="item_id")
+    plan: List[DailyProductionPlanEntry]
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class DailyScheduleItem(BaseModel):
+    item_id: int
+    numero_cotizacion: Optional[str] = None
+    cliente: Optional[str] = None
+    descripcion: str
+    metros: float
+    unidades: float
+    estatus: Optional[str] = None
+    manual: bool = False
+
+
+class DailyScheduleDay(BaseModel):
+    fecha: date
+    metros: float
+    unidades: float
+    capacidad: Optional[float] = None
+    manual: bool = False
+    items: List[DailyScheduleItem]
+
+
+class DailyScheduleResponse(BaseModel):
+    days: List[DailyScheduleDay]
+
+class DashboardKpisResponse(BaseModel):
+    kpi_cards: List[KpiCard]
+    production_load_chart: List[DistributionChartItem]
+    status_breakdown: List[StatusBreakdownItem]
+    risk_alerts: List[RiskAlertItem]
+    workload_snapshot: WorkloadSnapshot
+    financial_summary: FinancialSummary
+    top_clients: List[TopClientItem]
+    upcoming_deliveries: List[UpcomingDeliveryItem]
+    data_gaps: DataGapSummary
+    daily_workload: List[DailyWorkloadItem]
+
+
 router = APIRouter(prefix="/production", tags=["Status Producción"])
+
+@router.get("/dashboard/kpis", response_model=DashboardKpisResponse)
+async def get_dashboard_kpis(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Endpoint para obtener los KPIs del dashboard de producción.
+    """
+    today = date.today()
+    start_of_week = today - timedelta(days=today.weekday())
+    decimal_zero = Decimal(0)
+
+    active_statuses = [
+        ProductionStatusEnum.EN_COLA,
+        ProductionStatusEnum.EN_PRODUCCION,
+        ProductionStatusEnum.PRODUCCION_PARCIAL,
+        ProductionStatusEnum.LISTO_PARA_RETIRO,
+    ]
+    status_summary: Dict[str, Dict[str, Decimal | int]] = {
+        status.value: {
+            "count": 0,
+            "value": decimal_zero,
+            "units": decimal_zero,
+            "metros": decimal_zero,
+        }
+        for status in active_statuses
+    }
+    status_summary["Sin estatus"] = {
+        "count": 0,
+        "value": decimal_zero,
+        "units": decimal_zero,
+        "metros": decimal_zero,
+    }
+
+    active_items: List[ProductionProduct] = (
+        db.query(ProductionProduct)
+        .options(joinedload(ProductionProduct.cotizacion))
+        .filter(ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO)
+        .all()
+    )
+
+    overdue_items: List[ProductionProduct] = []
+    due_next_7_items: List[ProductionProduct] = []
+    due_next_7_ids: Set[int] = set()
+    due_soon_items: List[Tuple[ProductionProduct, int]] = []
+    missing_date_items: List[ProductionProduct] = []
+    missing_status_items: List[ProductionProduct] = []
+    client_summary: Dict[str, Dict[str, Decimal | int]] = defaultdict(
+        lambda: {
+            "count": 0,
+            "value": decimal_zero,
+            "units": decimal_zero,
+            "metros": decimal_zero,
+        }
+    )
+
+    sin_cliente = 0
+    ingresos_hoy_unidades = decimal_zero
+    ingresos_hoy_metros = decimal_zero
+    ingresos_semana_unidades = decimal_zero
+    ingresos_semana_metros = decimal_zero
+    plazo_dias: List[int] = []
+    overdue_days: List[int] = []
+    valor_listo_para_retiro = decimal_zero
+    missing_quantity = 0
+    schedule_map: Dict[date, Dict[str, Decimal]] = defaultdict(
+        lambda: {"metros": decimal_zero, "unidades": decimal_zero}
+    )
+
+    manual_plan_by_item: Dict[int, List[ProductionDailyPlan]] = defaultdict(list)
+    if active_items:
+        plan_entries = (
+            db.query(ProductionDailyPlan)
+            .filter(ProductionDailyPlan.producto_id.in_([item.id for item in active_items]))
+            .all()
+        )
+        for plan_entry in plan_entries:
+            manual_plan_by_item[plan_entry.producto_id].append(plan_entry)
+        for entries in manual_plan_by_item.values():
+            entries.sort(key=lambda entry: entry.fecha)
+
+    for item in active_items:
+        quote = item.cotizacion
+        if _is_metadata_description(item.descripcion, quote.odc if quote else None):
+            continue
+        if _is_service_product(item.descripcion):
+            continue
+
+        status_label = item.estatus.value if item.estatus else "Sin estatus"
+        if status_label not in status_summary:
+            status_summary[status_label] = {
+                "count": 0,
+                "value": decimal_zero,
+                "units": decimal_zero,
+                "metros": decimal_zero,
+            }
+        entry = status_summary[status_label]
+        entry["count"] = int(entry["count"]) + 1
+
+        item_value = item.valor_subtotal if item.valor_subtotal is not None else decimal_zero
+        entry["value"] = entry["value"] + item_value
+
+        quantity_value, quantity_unit = _extract_quantity_info(item.cantidad)
+        if quantity_value is None:
+            missing_quantity += 1
+        else:
+            if quantity_unit == "metros":
+                entry["metros"] = entry["metros"] + quantity_value
+            else:
+                entry["units"] = entry["units"] + quantity_value
+
+        if item.estatus == ProductionStatusEnum.LISTO_PARA_RETIRO:
+            valor_listo_para_retiro += item_value
+
+        if quote and quote.fecha_ingreso:
+            ingreso_date = quote.fecha_ingreso.date()
+            if quantity_value is not None:
+                if ingreso_date == today:
+                    if quantity_unit == "metros":
+                        ingresos_hoy_metros += quantity_value
+                    else:
+                        ingresos_hoy_unidades += quantity_value
+                if ingreso_date >= start_of_week:
+                    if quantity_unit == "metros":
+                        ingresos_semana_metros += quantity_value
+                    else:
+                        ingresos_semana_unidades += quantity_value
+
+        client_name = None
+        if quote and quote.cliente and quote.cliente.strip():
+            client_name = quote.cliente.strip()
+            client_summary[client_name]["count"] = int(client_summary[client_name]["count"]) + 1
+            client_summary[client_name]["value"] = client_summary[client_name]["value"] + item_value
+            if quantity_value is not None:
+                if quantity_unit == "metros":
+                    client_summary[client_name]["metros"] = (
+                        client_summary[client_name]["metros"] + quantity_value
+                    )
+                else:
+                    client_summary[client_name]["units"] = (
+                        client_summary[client_name]["units"] + quantity_value
+                    )
+        else:
+            sin_cliente += 1
+
+        manual_plan_entries = manual_plan_by_item.get(item.id, [])
+        if manual_plan_entries:
+            for plan_entry in manual_plan_entries:
+                metros_plan = Decimal(plan_entry.metros or decimal_zero)
+                unidades_plan = Decimal(plan_entry.unidades or decimal_zero)
+                if metros_plan <= decimal_zero and unidades_plan <= decimal_zero:
+                    continue
+                target_date = plan_entry.fecha
+                if target_date < today:
+                    target_date = _next_working_day(today)
+                elif not _is_working_day(target_date):
+                    target_date = _next_working_day(target_date)
+                target_bucket = schedule_map[target_date]
+                target_bucket["metros"] = target_bucket["metros"] + metros_plan
+                target_bucket["unidades"] = target_bucket["unidades"] + unidades_plan
+        elif item.fecha_entrega and quantity_value is not None and quantity_value > decimal_zero:
+            end_date = item.fecha_entrega
+            if end_date < today:
+                target_date = _next_working_day(today)
+                target_bucket = schedule_map[target_date]
+                if quantity_unit == "metros":
+                    target_bucket["metros"] = target_bucket["metros"] + quantity_value
+                else:
+                    target_bucket["unidades"] = target_bucket["unidades"] + quantity_value
+            else:
+                if quote and quote.fecha_ingreso:
+                    start_date = quote.fecha_ingreso.date()
+                else:
+                    start_date = end_date
+                if start_date < today:
+                    start_date = today
+                start_date = _next_working_day(start_date)
+                production_end = _previous_working_day(end_date)
+                if production_end < start_date:
+                    if start_date == end_date and _is_working_day(start_date):
+                        working_days = [start_date]
+                    else:
+                        working_days = [production_end]
+                else:
+                    working_days = _iter_working_days(start_date, production_end)
+                if not working_days:
+                    fallback_date = _previous_working_day(end_date, include_today=True)
+                    working_days = [fallback_date]
+
+                share = quantity_value / Decimal(len(working_days))
+                for target_date in working_days:
+                    bucket_date = target_date if target_date >= today else _next_working_day(today)
+                    target_bucket = schedule_map[bucket_date]
+                    if quantity_unit == "metros":
+                        target_bucket["metros"] = target_bucket["metros"] + share
+                    else:
+                        target_bucket["unidades"] = target_bucket["unidades"] + share
+
+        if (
+            quote
+            and quote.fecha_ingreso
+            and item.fecha_entrega
+            and quantity_value is not None
+            and quantity_value > decimal_zero
+        ):
+            compromiso = (item.fecha_entrega - quote.fecha_ingreso.date()).days
+            if compromiso >= 0:
+                plazo_dias.append(compromiso)
+
+        if item.fecha_entrega:
+            delta_days = (item.fecha_entrega - today).days
+            if delta_days < 0:
+                overdue_items.append(item)
+                overdue_days.append(abs(delta_days))
+            else:
+                if delta_days <= 7 and item.id not in due_next_7_ids:
+                    due_next_7_ids.add(item.id)
+                    due_next_7_items.append(item)
+                if delta_days <= 3:
+                    due_soon_items.append((item, delta_days))
+        else:
+            missing_date_items.append(item)
+
+        if not item.estatus:
+            missing_status_items.append(item)
+
+    delivered_week_items = (
+        db.query(ProductionProduct)
+        .options(joinedload(ProductionProduct.cotizacion))
+        .filter(
+            ProductionProduct.estatus == ProductionStatusEnum.ENTREGADO,
+            ProductionProduct.fecha_entrega >= start_of_week,
+            ProductionProduct.fecha_entrega <= today,
+        )
+        .all()
+    )
+
+    entregas_semana_unidades = decimal_zero
+    entregas_semana_metros = decimal_zero
+
+    for delivered in delivered_week_items:
+        delivered_quote = delivered.cotizacion
+        if _is_metadata_description(
+            delivered.descripcion, delivered_quote.odc if delivered_quote else None
+        ):
+            continue
+        delivered_quantity, delivered_unit = _extract_quantity_info(delivered.cantidad)
+        if delivered_quantity is None:
+            continue
+        if delivered_unit == "metros":
+            entregas_semana_metros += delivered_quantity
+        else:
+            entregas_semana_unidades += delivered_quantity
+
+    def format_currency(value: Decimal | float | int) -> str:
+        decimal_value = value if isinstance(value, Decimal) else Decimal(value or 0)
+        return f"${decimal_value:,.2f}"
+
+    total_active = sum(int(data["count"]) for data in status_summary.values())
+    overdue_count = len(overdue_items)
+    due_next_7_count = len(due_next_7_items)
+    sin_fecha_entrega = len(missing_date_items)
+    sin_estatus = len(missing_status_items)
+
+    total_valor_activo = sum(data["value"] for data in status_summary.values())
+    overdue_value = sum(
+        item.valor_subtotal if item.valor_subtotal is not None else decimal_zero
+        for item in overdue_items
+    )
+
+    # Saldo Total por Cobrar
+    quotes_with_payments = (
+        db.query(
+            ProductionQuote.valor_total,
+            func.sum(ProductionPayment.monto).label("total_abonado"),
+        )
+        .outerjoin(ProductionPayment)
+        .group_by(ProductionQuote.id)
+        .all()
+    )
+
+    saldo_total_por_cobrar = decimal_zero
+    for registro in quotes_with_payments:
+        valor_total = registro.valor_total or decimal_zero
+        total_abonado = registro.total_abonado or decimal_zero
+        saldo_total_por_cobrar += valor_total - total_abonado
+    if saldo_total_por_cobrar < decimal_zero:
+        saldo_total_por_cobrar = decimal_zero
+
+    kpi_cards = [
+        KpiCard(label="Líneas activas", value=str(total_active)),
+        KpiCard(
+            label="Pedidos atrasados",
+            value=str(overdue_count),
+            color="red" if overdue_count > 0 else None,
+        ),
+        KpiCard(label="Entregas próximos 7 días", value=str(due_next_7_count)),
+        KpiCard(label="Valor activo", value=format_currency(total_valor_activo)),
+        KpiCard(label="Saldo por cobrar", value=format_currency(saldo_total_por_cobrar)),
+    ]
+
+    status_order = [status.value for status in active_statuses] + ["Sin estatus"]
+    production_load_chart = [
+        DistributionChartItem(
+            name=status_label,
+            value=float(
+                (status_summary[status_label]["units"] or decimal_zero)
+                + (status_summary[status_label]["metros"] or decimal_zero)
+            ),
+        )
+        for status_label in status_order
+        if status_label in status_summary and status_summary[status_label]["count"]
+    ]
+
+    status_breakdown = [
+        StatusBreakdownItem(
+            status=status_label,
+            count=int(status_summary[status_label]["count"]),
+            total_value=float(status_summary[status_label]["value"]),
+            percent=round(
+                (int(status_summary[status_label]["count"]) / total_active) * 100, 2
+            )
+            if total_active
+            else 0.0,
+            total_units=float(status_summary[status_label]["units"]),
+            total_metros=float(status_summary[status_label]["metros"]),
+        )
+        for status_label in status_order
+        if status_label in status_summary and status_summary[status_label]["count"]
+    ]
+
+    risk_alerts: List[RiskAlertItem] = []
+    added_alerts: Set[Tuple[str, int]] = set()
+
+    def append_alert(item: ProductionProduct, tipo: str, dias: int, severidad: str) -> None:
+        key = (tipo, item.id)
+        if key in added_alerts:
+            return
+        added_alerts.add(key)
+        risk_alerts.append(
+            RiskAlertItem(
+                id=item.id,
+                numero_cotizacion=item.cotizacion.numero_cotizacion if item.cotizacion else None,
+                descripcion=item.descripcion,
+                cliente=item.cotizacion.cliente if item.cotizacion else None,
+                fecha_entrega=item.fecha_entrega,
+                dias=dias,
+                tipo=tipo,
+                severidad=severidad,
+                estatus=item.estatus.value if item.estatus else None,
+            )
+        )
+
+    for item in overdue_items:
+        dias_atraso = (today - item.fecha_entrega).days if item.fecha_entrega else 0
+        append_alert(item, "overdue", dias_atraso, "high")
+
+    for item, dias in due_soon_items:
+        append_alert(item, "due_soon", dias, "medium")
+
+    for item in missing_date_items:
+        append_alert(item, "missing_date", 0, "medium")
+
+    for item in missing_status_items:
+        append_alert(item, "missing_status", 0, "low")
+
+    severity_rank = {"high": 0, "medium": 1, "low": 2}
+    risk_alerts.sort(
+        key=lambda alert: (
+            severity_rank.get(alert.severidad, 3),
+            -alert.dias if alert.tipo == "overdue" else alert.dias,
+        )
+    )
+    risk_alerts = risk_alerts[:12]
+
+    promedio_plazo = round(sum(plazo_dias) / len(plazo_dias), 1) if plazo_dias else None
+    promedio_retraso = round(sum(overdue_days) / len(overdue_days), 1) if overdue_days else None
+
+    workload_snapshot = WorkloadSnapshot(
+        ingresos_hoy_unidades=float(ingresos_hoy_unidades),
+        ingresos_hoy_metros=float(ingresos_hoy_metros),
+        ingresos_semana_unidades=float(ingresos_semana_unidades),
+        ingresos_semana_metros=float(ingresos_semana_metros),
+        entregas_semana_unidades=float(entregas_semana_unidades),
+        entregas_semana_metros=float(entregas_semana_metros),
+        promedio_plazo_dias=promedio_plazo,
+        promedio_retraso_dias=promedio_retraso,
+    )
+
+    financial_summary = FinancialSummary(
+        total_en_produccion=float(total_valor_activo),
+        valor_atrasado=float(overdue_value),
+        valor_listo_para_retiro=float(valor_listo_para_retiro),
+        saldo_por_cobrar=float(saldo_total_por_cobrar),
+    )
+
+    top_clients = [
+        TopClientItem(
+            name=name or "N/A",
+            item_count=int(data["count"]),
+            total_value=float(data["value"]),
+            total_units=float(data["units"]),
+            total_metros=float(data["metros"]),
+        )
+        for name, data in sorted(
+            client_summary.items(),
+            key=lambda pair: (
+                pair[1]["metros"],
+                pair[1]["units"],
+            ),
+            reverse=True,
+        )[:5]
+    ]
+
+    upcoming_deliveries = [
+        UpcomingDeliveryItem(
+            id=item.id,
+            numero_cotizacion=item.cotizacion.numero_cotizacion if item.cotizacion else None,
+            descripcion=item.descripcion,
+            cliente=item.cotizacion.cliente if item.cotizacion else None,
+            fecha_entrega=item.fecha_entrega,
+            dias_restantes=(item.fecha_entrega - today).days if item.fecha_entrega else 0,
+            estatus=item.estatus.value if item.estatus else None,
+        )
+        for item in sorted(
+            (itm for itm in due_next_7_items if itm.fecha_entrega is not None),
+            key=lambda itm: itm.fecha_entrega,
+        )[:10]
+    ]
+
+    data_gaps = DataGapSummary(
+        sin_fecha_entrega=sin_fecha_entrega,
+        sin_estatus=sin_estatus,
+        sin_cliente=sin_cliente,
+        sin_cantidad=missing_quantity,
+    )
+
+    max_future = today + timedelta(days=21)
+    daily_workload = [
+        DailyWorkloadItem(
+            fecha=target_date,
+            metros=float(values["metros"]),
+            unidades=float(values["unidades"]),
+        )
+        for target_date, values in sorted(schedule_map.items())
+        if (values["metros"] > decimal_zero or values["unidades"] > decimal_zero)
+        and target_date <= max_future
+    ]
+
+    return DashboardKpisResponse(
+        kpi_cards=kpi_cards,
+        production_load_chart=production_load_chart,
+        status_breakdown=status_breakdown,
+        risk_alerts=risk_alerts,
+        workload_snapshot=workload_snapshot,
+        financial_summary=financial_summary,
+        top_clients=top_clients,
+        upcoming_deliveries=upcoming_deliveries,
+        data_gaps=data_gaps,
+        daily_workload=daily_workload,
+    )
+
+
 
 UPLOAD_DIR = Path(Config.UPLOAD_DIR) / "production"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -75,6 +691,185 @@ def _is_metadata_description(descripcion: str | None, odc_value: Optional[str]) 
     if re.match(r"^(?:ODC|ORDEN\s+DE\s+COMPRA)\b", normalized_compact):
         return True
     return False
+
+_QUANTITY_PATTERN = re.compile(r"-?\d+(?:[.,]\d+)?")
+_METER_KEYWORDS = (
+    "M", "MT", "MTS", "METRO", "METROS", "MTR", "MTRS", "ML", "M2", "M3", "MTS2", "MT2", "MTS3", "MT3"
+)
+_UNIT_KEYWORDS = (
+    "UN", "UNIDAD", "UNIDADES", "UND", "UNDS", "U", "UNID", "UNIDS", "PIEZA", "PIEZAS", "PZA", "PZAS", "PZ", "PZS"
+)
+_SERVICE_KEYWORDS = (
+    "SERVICIO",
+    "SERVICIOS",
+    "LOGIST",
+    "LOGÍSTIC",
+    "TRANSPORTE",
+    "FLETE",
+    "INSTALACION",
+    "INSTALACIÓN",
+    "MANO DE OBRA",
+    "IMPLEMENTACION",
+    "IMPLEMENTACIÓN",
+)
+
+
+def _normalize_quantity_unit(raw: Optional[str]) -> str:
+    normalized = _strip_accents((raw or "")).upper()
+    if not normalized:
+        return "unidades"
+    normalized = re.sub(r"[^A-Z0-9]", " ", normalized)
+    tokens = normalized.split()
+    joined = " ".join(tokens)
+
+    for keyword in _METER_KEYWORDS:
+        pattern = rf"\b{re.escape(keyword)}\b"
+        if re.search(pattern, joined):
+            return "metros"
+
+    for keyword in _UNIT_KEYWORDS:
+        pattern = rf"\b{re.escape(keyword)}\b"
+        if re.search(pattern, joined):
+            return "unidades"
+
+    return "unidades"
+
+
+def _extract_quantity_info(raw: Optional[str]) -> Tuple[Optional[Decimal], str]:
+    if not raw:
+        return None, "unidades"
+
+    match = _QUANTITY_PATTERN.search(raw.replace(",", "."))
+    if not match:
+        return None, _normalize_quantity_unit(raw)
+
+    number_str = match.group(0)
+    try:
+        value = Decimal(number_str)
+    except InvalidOperation:
+        return None, _normalize_quantity_unit(raw)
+
+    unit = _normalize_quantity_unit(raw)
+    return value, unit
+
+
+def _is_service_product(description: Optional[str]) -> bool:
+    normalized = _strip_accents(description or "").upper()
+    if not normalized:
+        return False
+    return any(keyword in normalized for keyword in _SERVICE_KEYWORDS)
+
+
+_ECUADOR_HOLIDAY_CACHE: Dict[int, Set[date]] = {}
+
+
+def _calculate_easter_sunday(year: int) -> date:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = 1 + ((h + l - 7 * m + 114) % 31)
+    return date(year, month, day)
+
+
+def _apply_observance_rules(dates: Set[date]) -> Set[date]:
+    observed = set(dates)
+    for original in dates:
+        weekday = original.weekday()
+        if weekday == 5:  # Saturday -> Friday
+            observed.add(original - timedelta(days=1))
+        elif weekday == 6:  # Sunday -> Monday
+            observed.add(original + timedelta(days=1))
+        elif weekday == 1:  # Tuesday -> Monday
+            observed.add(original - timedelta(days=1))
+        elif weekday == 2:  # Wednesday -> Friday
+            observed.add(original + timedelta(days=2))
+        elif weekday == 3:  # Thursday -> Friday
+            observed.add(original + timedelta(days=1))
+    return observed
+
+
+def _fallback_ecuador_holidays(year: int) -> Set[date]:
+    easter = _calculate_easter_sunday(year)
+    carnival_monday = easter - timedelta(days=48)
+    carnival_tuesday = easter - timedelta(days=47)
+    good_friday = easter - timedelta(days=2)
+
+    base_dates = {
+        date(year, 1, 1),   # Año Nuevo
+        carnival_monday,
+        carnival_tuesday,
+        good_friday,
+        date(year, 5, 1),   # Día del Trabajo
+        date(year, 5, 24),  # Batalla de Pichincha
+        date(year, 8, 10),  # Primer Grito de Independencia
+        date(year, 10, 9),  # Independencia de Guayaquil
+        date(year, 11, 2),  # Día de los Difuntos
+        date(year, 11, 3),  # Independencia de Cuenca
+        date(year, 12, 25), # Navidad
+    }
+
+    return _apply_observance_rules(base_dates)
+
+
+def _get_ecuador_holidays(year: int) -> Set[date]:
+    if year in _ECUADOR_HOLIDAY_CACHE:
+        return _ECUADOR_HOLIDAY_CACHE[year]
+
+    holiday_set: Set[date]
+    if holidays is not None:
+        try:
+            country_holidays = holidays.country_holidays("EC", years=[year])  # type: ignore[attr-defined]
+            holiday_set = set(country_holidays.keys())
+        except Exception:  # pragma: no cover - defensive
+            holiday_set = _fallback_ecuador_holidays(year)
+    else:
+        holiday_set = _fallback_ecuador_holidays(year)
+
+    _ECUADOR_HOLIDAY_CACHE[year] = holiday_set
+    return holiday_set
+
+
+def _is_ecuador_holiday(value: date) -> bool:
+    holidays_set = _get_ecuador_holidays(value.year)
+    return value in holidays_set
+
+
+def _is_working_day(value: date) -> bool:
+    return value.weekday() < 5 and not _is_ecuador_holiday(value)
+
+
+def _next_working_day(value: date) -> date:
+    candidate = value
+    while not _is_working_day(candidate):
+        candidate += timedelta(days=1)
+    return candidate
+
+
+def _previous_working_day(value: date, *, include_today: bool = False) -> date:
+    candidate = value if include_today else value - timedelta(days=1)
+    while not _is_working_day(candidate):
+        candidate -= timedelta(days=1)
+    return candidate
+
+
+def _iter_working_days(start: date, end: date) -> List[date]:
+    days: List[date] = []
+    current = start
+    while current <= end:
+        if _is_working_day(current):
+            days.append(current)
+        current += timedelta(days=1)
+    return days
 
 
 # ---------------------------------------------------------------------------
@@ -675,6 +1470,7 @@ def product_to_dict(product: ProductionProduct) -> dict:
         "totalAbonado": total_abonado,
         "saldoPendiente": saldo_pendiente,
         "metadataNotes": metadata_notes,
+        "esServicio": _is_service_product(product.descripcion),
     }
 
 
@@ -813,13 +1609,13 @@ async def upload_quotes(
     }
 
 
-@router.get("/items")
-async def list_items(
+@router.get("/items/all")
+async def list_all_items(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Devuelve todas las líneas de producción obtenidas a partir de las cotizaciones cargadas.
+    Devuelve TODAS las líneas de producción, activas e históricas.
     """
     products = (
         db.query(ProductionProduct)
@@ -828,8 +1624,56 @@ async def list_items(
         .all()
     )
 
+    serialized = [product_to_dict(product) for product in products]
+    items_output = [item for item in serialized if not item.get("esServicio")]
     return {
-        "items": [product_to_dict(product) for product in products],
+        "items": items_output,
+        "statusOptions": sorted(list(STATUS_CHOICES)),
+    }
+
+
+@router.get("/items/active")
+async def list_active_items(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Devuelve solo las líneas de producción ACTIVAS (no entregadas).
+    """
+    products = (
+        db.query(ProductionProduct)
+        .join(ProductionQuote)
+        .filter(ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO)
+        .order_by(ProductionQuote.fecha_ingreso.desc(), ProductionProduct.id.desc())
+        .all()
+    )
+    serialized = [product_to_dict(product) for product in products]
+    active_items = [item for item in serialized if not item.get("esServicio")]
+    return {
+        "items": active_items,
+        "statusOptions": sorted(list(STATUS_CHOICES)),
+    }
+
+
+@router.get("/items/archive")
+async def list_archive_items(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Devuelve solo las líneas de producción HISTÓRICAS (entregadas).
+    """
+    products = (
+        db.query(ProductionProduct)
+        .join(ProductionQuote)
+        .filter(ProductionProduct.estatus == ProductionStatusEnum.ENTREGADO)
+        .order_by(ProductionQuote.fecha_ingreso.desc(), ProductionProduct.id.desc())
+        .all()
+    )
+    serialized = [product_to_dict(product) for product in products]
+    items_output = [item for item in serialized if not item.get("esServicio")]
+    return {
+        "items": items_output,
         "statusOptions": sorted(list(STATUS_CHOICES)),
     }
 
@@ -879,6 +1723,336 @@ async def update_item(
     db.refresh(product)
 
     return {"item": product_to_dict(product)}
+
+
+@router.get("/items/{item_id}/daily-plan", response_model=DailyProductionPlanResponse)
+async def get_daily_production_plan(
+    item_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DailyProductionPlanResponse:
+    product = (
+        db.query(ProductionProduct)
+        .options(joinedload(ProductionProduct.plan_diario))
+        .filter(ProductionProduct.id == item_id)
+        .first()
+    )
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Producto de producción no encontrado.",
+        )
+
+    plan_entries = sorted(product.plan_diario, key=lambda entry: entry.fecha)
+    response_entries = [
+        DailyProductionPlanEntry(
+            fecha=entry.fecha,
+            metros=float(entry.metros or Decimal("0")),
+            unidades=float(entry.unidades or Decimal("0")),
+            notas=entry.notas,
+        )
+        for entry in plan_entries
+    ]
+    return DailyProductionPlanResponse(item_id=item_id, plan=response_entries)
+
+
+@router.put("/items/{item_id}/daily-plan", response_model=DailyProductionPlanResponse)
+async def upsert_daily_production_plan(
+    item_id: int,
+    payload: DailyProductionPlanPayload,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DailyProductionPlanResponse:
+    product = (
+        db.query(ProductionProduct)
+        .options(joinedload(ProductionProduct.plan_diario))
+        .filter(ProductionProduct.id == item_id)
+        .first()
+    )
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Producto de producción no encontrado.",
+        )
+
+    existing_by_date: Dict[date, ProductionDailyPlan] = {
+        entry.fecha: entry for entry in product.plan_diario
+    }
+
+    requested_entries: List[DailyProductionPlanEntry] = []
+    total_metros = Decimal("0")
+    total_unidades = Decimal("0")
+    for entry in payload.plan:
+        if not _is_working_day(entry.fecha):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"La fecha {entry.fecha.isoformat()} no es un día hábil en Ecuador.",
+            )
+        keep_entry = entry.metros > 0 or entry.unidades > 0 or (entry.notas is not None)
+        if not keep_entry:
+            continue
+        requested_entries.append(entry)
+        total_metros += Decimal(str(entry.metros))
+        total_unidades += Decimal(str(entry.unidades))
+
+    quantity_value, quantity_unit = _extract_quantity_info(product.cantidad)
+    tolerance = Decimal("0.0001")
+    if quantity_value is not None:
+        if quantity_unit == "metros":
+            difference = (quantity_value - total_metros).copy_abs()
+            if requested_entries and difference > tolerance:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"El plan diario debe sumar exactamente {float(quantity_value)} metros. "
+                        f"Actualmente suma {float(total_metros)} metros."
+                    ),
+                )
+            if (total_metros - quantity_value) > tolerance:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"La suma del plan diario ({float(total_metros)} m) supera la cantidad comprometida "
+                        f"({float(quantity_value)} m) de la cotización."
+                    ),
+                )
+        else:
+            difference = (quantity_value - total_unidades).copy_abs()
+            if requested_entries and difference > tolerance:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"El plan diario debe sumar exactamente {float(quantity_value)} unidades. "
+                        f"Actualmente suma {float(total_unidades)} unidades."
+                    ),
+                )
+            if (total_unidades - quantity_value) > tolerance:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"La suma del plan diario ({float(total_unidades)} u) supera la cantidad comprometida "
+                        f"({float(quantity_value)} u) de la cotización."
+                    ),
+                )
+
+    requested_dates = {entry.fecha for entry in requested_entries}
+    for fecha, record in list(existing_by_date.items()):
+        if fecha not in requested_dates:
+            db.delete(record)
+
+    for entry in requested_entries:
+        metros_value = Decimal(str(entry.metros))
+        unidades_value = Decimal(str(entry.unidades))
+        record = existing_by_date.get(entry.fecha)
+        if record:
+            record.metros = metros_value
+            record.unidades = unidades_value
+            record.notas = entry.notas
+        else:
+            db.add(
+                ProductionDailyPlan(
+                    producto_id=item_id,
+                    fecha=entry.fecha,
+                    metros=metros_value,
+                    unidades=unidades_value,
+                    notas=entry.notas,
+                )
+            )
+
+    db.commit()
+
+    refreshed_entries = (
+        db.query(ProductionDailyPlan)
+        .filter(ProductionDailyPlan.producto_id == item_id)
+        .order_by(ProductionDailyPlan.fecha)
+        .all()
+    )
+
+    response_entries = [
+        DailyProductionPlanEntry(
+            fecha=entry.fecha,
+            metros=float(entry.metros or Decimal("0")),
+            unidades=float(entry.unidades or Decimal("0")),
+            notas=entry.notas,
+        )
+        for entry in refreshed_entries
+    ]
+    return DailyProductionPlanResponse(item_id=item_id, plan=response_entries)
+
+
+@router.get("/dashboard/schedule", response_model=DailyScheduleResponse)
+async def get_dashboard_schedule(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DailyScheduleResponse:
+    today = date.today()
+    max_future = today + timedelta(days=21)
+    decimal_zero = Decimal(0)
+
+    active_items: List[ProductionProduct] = (
+        db.query(ProductionProduct)
+        .options(joinedload(ProductionProduct.cotizacion))
+        .filter(ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO)
+        .all()
+    )
+
+    schedule_totals: Dict[date, Dict[str, Decimal | bool]] = defaultdict(
+        lambda: {"metros": decimal_zero, "unidades": decimal_zero, "manual": False}
+    )
+    schedule_items_map: Dict[date, List[DailyScheduleItem]] = defaultdict(list)
+
+    manual_plan_by_item: Dict[int, List[ProductionDailyPlan]] = defaultdict(list)
+    if active_items:
+        plan_entries = (
+            db.query(ProductionDailyPlan)
+            .filter(ProductionDailyPlan.producto_id.in_([item.id for item in active_items]))
+            .all()
+        )
+        for plan_entry in plan_entries:
+            manual_plan_by_item[plan_entry.producto_id].append(plan_entry)
+        for entries in manual_plan_by_item.values():
+            entries.sort(key=lambda entry: entry.fecha)
+
+    for item in active_items:
+        quote = item.cotizacion
+        if _is_metadata_description(item.descripcion, quote.odc if quote else None):
+            continue
+        if _is_service_product(item.descripcion):
+            continue
+
+        quantity_value, quantity_unit = _extract_quantity_info(item.cantidad)
+        if quantity_value is None or quantity_value <= decimal_zero:
+            continue
+
+        base_cliente = quote.cliente.strip() if quote and quote.cliente else None
+        base_cotizacion = quote.numero_cotizacion if quote else None
+        estatus_label = item.estatus.value if item.estatus else None
+
+        manual_entries = manual_plan_by_item.get(item.id, [])
+        if manual_entries:
+            for plan_entry in manual_entries:
+                metros_plan = Decimal(plan_entry.metros or decimal_zero)
+                unidades_plan = Decimal(plan_entry.unidades or decimal_zero)
+                if metros_plan <= decimal_zero and unidades_plan <= decimal_zero:
+                    continue
+                target_date = plan_entry.fecha
+                if target_date < today:
+                    target_date = _next_working_day(today)
+                elif not _is_working_day(target_date):
+                    target_date = _next_working_day(target_date)
+                if target_date > max_future:
+                    continue
+                bucket = schedule_totals[target_date]
+                bucket["metros"] = bucket["metros"] + metros_plan
+                bucket["unidades"] = bucket["unidades"] + unidades_plan
+                bucket["manual"] = True
+                schedule_items_map[target_date].append(
+                    DailyScheduleItem(
+                        item_id=item.id,
+                        numero_cotizacion=base_cotizacion,
+                        cliente=base_cliente,
+                        descripcion=item.descripcion,
+                        metros=float(metros_plan),
+                        unidades=float(unidades_plan),
+                        estatus=estatus_label,
+                        manual=True,
+                    )
+                )
+            continue
+
+        if not item.fecha_entrega:
+            continue
+
+        end_date = item.fecha_entrega
+        if end_date < today:
+            target_date = _next_working_day(today)
+            if target_date > max_future:
+                continue
+            bucket = schedule_totals[target_date]
+            if quantity_unit == "metros":
+                bucket["metros"] = bucket["metros"] + quantity_value
+            else:
+                bucket["unidades"] = bucket["unidades"] + quantity_value
+            schedule_items_map[target_date].append(
+                DailyScheduleItem(
+                    item_id=item.id,
+                    numero_cotizacion=base_cotizacion,
+                    cliente=base_cliente,
+                    descripcion=item.descripcion,
+                    metros=float(quantity_value if quantity_unit == "metros" else decimal_zero),
+                    unidades=float(quantity_value if quantity_unit != "metros" else decimal_zero),
+                    estatus=estatus_label,
+                    manual=False,
+                )
+            )
+            continue
+
+        if quote and quote.fecha_ingreso:
+            start_date = quote.fecha_ingreso.date()
+        else:
+            start_date = end_date
+        if start_date < today:
+            start_date = today
+        start_date = _next_working_day(start_date)
+        production_end = _previous_working_day(end_date)
+        if production_end < start_date:
+            if start_date == end_date and _is_working_day(start_date):
+                working_days = [start_date]
+            else:
+                working_days = [production_end]
+        else:
+            working_days = _iter_working_days(start_date, production_end)
+        if not working_days:
+            fallback_date = _previous_working_day(end_date, include_today=True)
+            working_days = [fallback_date]
+
+        share = quantity_value / Decimal(len(working_days))
+        for target_date in working_days:
+            bucket_date = target_date if target_date >= today else _next_working_day(today)
+            if bucket_date > max_future:
+                continue
+            bucket = schedule_totals[bucket_date]
+            metros_share = share if quantity_unit == "metros" else decimal_zero
+            unidades_share = share if quantity_unit != "metros" else decimal_zero
+            bucket["metros"] = bucket["metros"] + metros_share
+            bucket["unidades"] = bucket["unidades"] + unidades_share
+            schedule_items_map[bucket_date].append(
+                DailyScheduleItem(
+                    item_id=item.id,
+                    numero_cotizacion=base_cotizacion,
+                    cliente=base_cliente,
+                    descripcion=item.descripcion,
+                    metros=float(metros_share),
+                    unidades=float(unidades_share),
+                    estatus=estatus_label,
+                    manual=False,
+                )
+            )
+
+    schedule_days: List[DailyScheduleDay] = []
+    for target_date, totals in schedule_totals.items():
+        metros_total = totals["metros"]
+        unidades_total = totals["unidades"]
+        if (
+            target_date > max_future
+            or target_date < today - timedelta(days=1)
+            or (metros_total <= decimal_zero and unidades_total <= decimal_zero)
+        ):
+            continue
+        items = schedule_items_map.get(target_date, [])
+        schedule_days.append(
+            DailyScheduleDay(
+                fecha=target_date,
+                metros=float(metros_total),
+                unidades=float(unidades_total),
+                capacidad=None,
+                manual=bool(totals.get("manual", False)),
+                items=items,
+            )
+        )
+
+    schedule_days.sort(key=lambda day: day.fecha)
+    return DailyScheduleResponse(days=schedule_days)
 
 
 @router.delete("/quotes/{quote_id}")
