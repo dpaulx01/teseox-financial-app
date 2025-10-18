@@ -8,6 +8,7 @@ type PlanRow = {
   metros: string;
   unidades: string;
   notas: string;
+  isManuallyEdited?: boolean;
 };
 
 interface DailyProductionModalProps {
@@ -266,6 +267,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
   const [rows, setRows] = useState<PlanRow[]>([]);
   const [customDate, setCustomDate] = useState<string>('');
   const [localError, setLocalError] = useState<string | null>(null);
+  const [manuallyEditedDates, setManuallyEditedDates] = useState<Set<string>>(new Set());
 
   const startDate = useMemo(() => {
     const ingreso = item.fechaIngreso ? parseISODate(item.fechaIngreso) : null;
@@ -317,6 +319,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
         metros: entry.metros ? String(entry.metros) : '',
         unidades: entry.unidades ? String(entry.unidades) : '',
         notas: entry.notas ?? '',
+        isManuallyEdited: true, // Las entradas del plan existente se consideran editadas manualmente
       });
     }
     for (const date of suggestedDates) {
@@ -326,6 +329,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
           metros: '',
           unidades: '',
           notas: '',
+          isManuallyEdited: false,
         });
       }
     }
@@ -371,6 +375,14 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
       (a, b) => (parseISODate(a.fecha)?.getTime() ?? 0) - (parseISODate(b.fecha)?.getTime() ?? 0),
     );
     setRows(sorted);
+    
+    // Inicializar las fechas editadas manualmente basado en el plan existente
+    const editedDates = new Set<string>();
+    for (const entry of plan) {
+      editedDates.add(entry.fecha);
+    }
+    setManuallyEditedDates(editedDates);
+    
     setLocalError(null);
     setCustomDate('');
   }, [open, plan, suggestedDates, item.cantidad]);
@@ -397,7 +409,15 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
   const handleChange = (index: number, key: keyof PlanRow, value: string) => {
     setRows((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], [key]: value };
+      const editedDate = next[index].fecha;
+      
+      // Marcar esta fecha como editada manualmente cuando se cambian metros o unidades
+      if (key === 'metros' || key === 'unidades') {
+        setManuallyEditedDates(prevDates => new Set([...prevDates, editedDate]));
+        next[index] = { ...next[index], [key]: value, isManuallyEdited: true };
+      } else {
+        next[index] = { ...next[index], [key]: value };
+      }
       
       // Recálculo automático inteligente para metros/unidades
       if (key === 'metros' || key === 'unidades') {
@@ -409,15 +429,12 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
           const newValue = Number.parseFloat(value) || 0;
           const currentDate = new Date();
           currentDate.setHours(0, 0, 0, 0);
-          const editedRowDate = parseISODate(next[index].fecha);
+          const editedRowDate = parseISODate(editedDate);
           
           // Calcular cuánto necesitamos distribuir en las otras filas
           const remainingAmount = quantityInfo.amount - newValue;
           
-          // Si estamos editando una fecha pasada, solo redistribuir entre fechas futuras/actuales
-          // Si estamos editando una fecha actual/futura, redistribuir entre todas las demás fechas
-          const shouldPreservePastDates = editedRowDate && editedRowDate >= currentDate;
-          
+          // Filtrar filas elegibles para redistribución
           const otherEditableRows = next.filter((row, idx) => {
             if (idx === index) return false; // Excluir la fila actual
             
@@ -426,13 +443,18 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
             
             if (!hasValue || !rowDate) return false;
             
-            // Si editamos fecha futura/actual, redistribuir entre todas las fechas con valores
-            if (shouldPreservePastDates) {
-              return true;
+            // NUNCA redistribuir en fechas que han sido editadas manualmente
+            if (manuallyEditedDates.has(row.fecha) || row.isManuallyEdited) {
+              return false;
             }
             
-            // Si editamos fecha pasada, solo redistribuir entre fechas actuales/futuras
-            return rowDate >= currentDate;
+            // Si editamos fecha pasada, solo redistribuir entre fechas futuras/actuales no editadas
+            if (editedRowDate && editedRowDate < currentDate) {
+              return rowDate >= currentDate;
+            }
+            
+            // Si editamos fecha actual/futura, redistribuir entre todas las fechas no editadas
+            return true;
           });
           
           if (remainingAmount > 0 && otherEditableRows.length > 0) {
@@ -499,7 +521,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
       return;
     }
     setRows((prev) =>
-      [...prev, { fecha: iso, metros: '', unidades: '', notas: '' }].sort(
+      [...prev, { fecha: iso, metros: '', unidades: '', notas: '', isManuallyEdited: false }].sort(
         (a, b) => (parseISODate(a.fecha)?.getTime() ?? 0) - (parseISODate(b.fecha)?.getTime() ?? 0),
       ),
     );
@@ -515,7 +537,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
     const quantityInfo = extractQuantityInfo(item.cantidad);
     const entries = new Map<string, PlanRow>();
     for (const date of suggestedDates) {
-      entries.set(date, { fecha: date, metros: '', unidades: '', notas: '' });
+      entries.set(date, { fecha: date, metros: '', unidades: '', notas: '', isManuallyEdited: false });
     }
     if (quantityInfo.amount !== null && quantityInfo.amount > 0) {
       const totalDays = suggestedDates.length;
@@ -535,9 +557,9 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
           return;
         }
         if (quantityInfo.unit === 'metros') {
-          entries.set(date, { ...current, metros: shareString });
+          entries.set(date, { ...current, metros: shareString, isManuallyEdited: false });
         } else {
-          entries.set(date, { ...current, unidades: shareString });
+          entries.set(date, { ...current, unidades: shareString, isManuallyEdited: false });
         }
       });
     }
@@ -546,6 +568,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
         (a, b) => (parseISODate(a.fecha)?.getTime() ?? 0) - (parseISODate(b.fecha)?.getTime() ?? 0),
       ),
     );
+    setManuallyEditedDates(new Set()); // Reiniciar fechas editadas manualmente
     setLocalError(null);
   };
 
@@ -737,8 +760,17 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                     rows.map((row, index) => (
                       <tr key={row.fecha} className="border-t border-slate-800/60">
                         <td className="px-4 py-3 text-xs text-slate-300">
-                          <div className="font-medium text-slate-100">{formatDisplayDate(row.fecha)}</div>
-                          <div className="text-[11px] text-slate-500">{row.fecha}</div>
+                          <div className="flex items-center gap-2">
+                            <div>
+                              <div className="font-medium text-slate-100">{formatDisplayDate(row.fecha)}</div>
+                              <div className="text-[11px] text-slate-500">{row.fecha}</div>
+                            </div>
+                            {(manuallyEditedDates.has(row.fecha) || row.isManuallyEdited) && (
+                              <div className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-indigo-500/20 text-indigo-300 rounded-full">
+                                📌 Manual
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <input
