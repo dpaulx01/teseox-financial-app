@@ -1,0 +1,40 @@
+ 1. a13c878 | 2025-08-28 | ux(kpi-dashboard): skeleton loaders, tooltips y rendimiento\n\n- Hook usePnlResult y loaders esque..
+ 2. e826879 | 2025-08-28 | fix(dashboard-kpis): async P&L loading via usePnlResult; realistic KPI trends from monthly data; l..
+ 3. cae62a5 | 2025-08-28 | ux(balance-interno): hacer clic en tarjetas de algoritmo cambia el modo activo; cursor/hover/tecla..
+ 4. e9e6206 | 2025-08-28 | ux(balance-interno): tooltips en tarjetas de algoritmos con totales y promedios jul–dic (UB/UN/EBI..
+ 5. b023c6b | 2025-08-28 | ux(balance-interno): tooltip enriquecido en chip 'Mejor' con comparativa de EBITDA promedio entre ..
+ 6. ca7f98a | 2025-08-28 | ux(balance-interno): resumen auto-recalculado; ocultar botón 'Actualizar' y agregar leyenda de fue..
+ 7. 4f6680b | 2025-08-28 | ux(balance-interno): patrones ON por defecto en modo avanzado + persistir preferencia en localStor..
+ 8. 8d690cd | 2025-08-28 | ux(balance-interno): footer inteligente con estado, proyección, edición y guardado dinámicos        
+ 9. a39981c | 2025-08-28 | ux(balance-interno): actualizar leyenda del footer ('Análisis Múltiple' -> 'Métricas de Utilidad')  
+10. 93e1874 | 2025-08-28 | ux(balance-interno): toolbar responsive (flex-wrap), priorizar Recalcular/Descartar y ocultar Resu..
+11. b422f43 | 2025-08-28 | ux(balance-interno): overlay y bloqueos durante recálculo + toasts                                  
+12. 7075a45 | 2025-08-23 | perf(balance-interno): suavizar UI y rendimiento                                                    
+13. e553165 | 2025-08-23 | feat(balance-interno): tooltip de subcuentas en nodos no editables                                  
+14. f68eb84 | 2025-08-23 | feat(balance-interno): mejoras UX y control de recálculo                                            
+15. fdaca91 | 2025-08-23 | chore(balance-interno): snapshot antes de mejoras UI y recálculo                                    
+16. 4aff0f6 | 2025-08-16 | 🔧 FIX CRÍTICO: ProjectionEngine ahora calcula jerarquía correctamente                              
+17. 31e8897 | 2025-08-16 | 🔧 FIX STRUCTURE: Corregir estructura if-else en ProjectionEngine                                   
+18. e91618d | 2025-08-16 | 🔧 FIX SYNTAX: Corregir llaves mal balanceadas en EditablePygMatrixV2                               
+19. 7985171 | 2025-08-16 | 🔧 FIX CRÍTICO: ProjectionEngine avanzado + logs edición detallados                                 
+20. 325155a | 2025-08-16 | 🔧 FIX CRÍTICO: Balance Interno edición jerárquica + proyecciones reales                            
+21. bf73ea2 | 2025-08-16 | 📋 DOCUMENTACIÓN COMPLETA: Balance Interno 100% terminado                                           
+22. d7cd46f | 2025-08-16 | 🔧 FIX CRÍTICO: Restaurar cálculo de utilidades para meses con datos reales                         
+23. bb4c737 | 2025-08-16 | 🚀 PROYECCIONES IA FUNCIONANDO: Balance Interno con datos completos                                 
+24. c022bc3 | 2025-08-16 | 🚀 MEJORAS BALANCE INTERNO: Edición, Colapsar Todo y Proyecciones IA                                
+25. e006d06 | 2025-08-16 | ✅ FIX DEFINITIVO: Balance Interno calculando utilidades correctamente                              
+26. e1fbf39 | 2025-08-16 | 🔧 FIX CRÍTICO: Balance Interno con utilidades por mes específico                                   
+27. cab53ff | 2025-08-16 | ✅ UTILIDADES FUNCIONALES: UB, UN y EBITDA calculadas y mostradas                                   
+28. 8e61370 | 2025-08-16 | 🎯 MATRIZ REDISEÑADA: Eliminar selector y agregar 3 filas de utilidades                             
+29. 111da3f | 2025-08-15 | 🔧 HOTFIX: Restaurar interfaz de gestión de patrones                                                
+30. 71a9c70 | 2025-08-15 | 🔧 FIX FRONTEND: Formato API corregido y auth simplificado                                          
+31. c067360 | 2025-08-15 | ✅ API ANALYSIS COMPLETADA: Backend Docker funcional                                                
+32. 634dfc3 | 2025-08-15 | 🔧 FIX CRÍTICO: EBITDA excluye correctamente cuentas con acentos                                    
+33. d67f763 | 2025-08-12 | ⚡ SOLUCIÓN INMEDIATA: Usar PygContainer que YA FUNCIONA                                            
+34. 50cb186 | 2025-08-12 | 🎯 SOLUCIÓN INTELIGENTE: Usar lógica comprobada de PygContainer.tsx                                 
+35. b47c596 | 2025-08-12 | 🔧 FIX CRÍTICO: Balance Interno funcionando completamente                                           
+36. 3936abf | 2025-08-12 | 🔧 FIX CRÍTICO: Corregir formato de meses en Balance Interno                                        
+37. c65f022 | 2025-08-12 | 🧠 BALANCE INTERNO COMPLETADO: Módulo funcional con IA avanzada                                     
+38. 8fb3a5d | 2025-08-12 | 🚨 FIX URGENTE: Detener bucle infinito en useEffect                                                 
+39. 4cfc103 | 2025-08-12 | 🔧 FIX CRÍTICO: Selector global de año ahora funciona correctamente                                 
+40. 9888cd9 | 2025-08-12 | 🔧 FIX: Resolver error TypeError roles.find is not a function                                       

@@ -96,7 +96,8 @@ class WorkloadSnapshot(BaseModel):
     promedio_retraso_dias: Optional[float] = None
 
 class FinancialSummary(BaseModel):
-    total_en_produccion: float
+    total_en_produccion: float  # Suma de valor_subtotal de productos activos
+    total_cotizaciones_activas: float  # Suma de valor_total de cotizaciones activas
     valor_atrasado: float
     valor_listo_para_retiro: float
     saldo_por_cobrar: float
@@ -336,8 +337,14 @@ async def get_dashboard_kpis(
             sin_cliente += 1
 
         manual_plan_entries = manual_plan_by_item.get(item.id, [])
-        if manual_plan_entries:
-            for plan_entry in manual_plan_entries:
+        # Solo considerar como plan manual si fue editado manualmente
+        manually_edited_entries = [
+            entry for entry in manual_plan_entries 
+            if getattr(entry, 'is_manually_edited', True)  # True por defecto para compatibilidad
+        ]
+        
+        if manually_edited_entries:
+            for plan_entry in manually_edited_entries:
                 metros_plan = Decimal(plan_entry.metros or decimal_zero)
                 unidades_plan = Decimal(plan_entry.unidades or decimal_zero)
                 if metros_plan <= decimal_zero and unidades_plan <= decimal_zero:
@@ -416,13 +423,20 @@ async def get_dashboard_kpis(
         if not item.estatus:
             missing_status_items.append(item)
 
+    # Cambiar lógica: entregas programadas para esta semana (no solo entregadas)
+    end_of_week = start_of_week + timedelta(days=6)  # Domingo de esta semana
     delivered_week_items = (
         db.query(ProductionProduct)
         .options(joinedload(ProductionProduct.cotizacion))
         .filter(
-            ProductionProduct.estatus == ProductionStatusEnum.ENTREGADO,
             ProductionProduct.fecha_entrega >= start_of_week,
-            ProductionProduct.fecha_entrega <= today,
+            ProductionProduct.fecha_entrega <= end_of_week,
+            # Incluir productos en producción Y entregados (entregas programadas)
+            ProductionProduct.estatus.in_([
+                ProductionStatusEnum.EN_PRODUCCION,
+                ProductionStatusEnum.ENTREGADO,
+                ProductionStatusEnum.LISTO_PARA_RETIRO
+            ])
         )
         .all()
     )
@@ -430,19 +444,19 @@ async def get_dashboard_kpis(
     entregas_semana_unidades = decimal_zero
     entregas_semana_metros = decimal_zero
 
-    for delivered in delivered_week_items:
-        delivered_quote = delivered.cotizacion
+    for scheduled in delivered_week_items:
+        scheduled_quote = scheduled.cotizacion
         if _is_metadata_description(
-            delivered.descripcion, delivered_quote.odc if delivered_quote else None
+            scheduled.descripcion, scheduled_quote.odc if scheduled_quote else None
         ):
             continue
-        delivered_quantity, delivered_unit = _extract_quantity_info(delivered.cantidad)
-        if delivered_quantity is None:
+        scheduled_quantity, scheduled_unit = _extract_quantity_info(scheduled.cantidad)
+        if scheduled_quantity is None:
             continue
-        if delivered_unit == "metros":
-            entregas_semana_metros += delivered_quantity
+        if scheduled_unit == "metros":
+            entregas_semana_metros += scheduled_quantity
         else:
-            entregas_semana_unidades += delivered_quantity
+            entregas_semana_unidades += scheduled_quantity
 
     def format_currency(value: Decimal | float | int) -> str:
         decimal_value = value if isinstance(value, Decimal) else Decimal(value or 0)
@@ -455,6 +469,26 @@ async def get_dashboard_kpis(
     sin_estatus = len(missing_status_items)
 
     total_valor_activo = sum(data["value"] for data in status_summary.values())
+    
+    # Calcular valor total de cotizaciones activas (no solo suma de productos)
+    # Obtener IDs únicos de cotizaciones con productos activos
+    active_quote_ids = (
+        db.query(ProductionQuote.id.distinct())
+        .join(ProductionProduct)
+        .filter(ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO)
+        .subquery()
+    )
+    
+    # Sumar valor_total de esas cotizaciones
+    total_cotizaciones_activas = (
+        db.query(func.sum(ProductionQuote.valor_total))
+        .filter(
+            ProductionQuote.id.in_(active_quote_ids),
+            ProductionQuote.valor_total.isnot(None)
+        )
+        .scalar()
+    ) or decimal_zero
+    
     overdue_value = sum(
         item.valor_subtotal if item.valor_subtotal is not None else decimal_zero
         for item in overdue_items
@@ -581,6 +615,7 @@ async def get_dashboard_kpis(
 
     financial_summary = FinancialSummary(
         total_en_produccion=float(total_valor_activo),
+        total_cotizaciones_activas=float(total_cotizaciones_activas),
         valor_atrasado=float(overdue_value),
         valor_listo_para_retiro=float(valor_listo_para_retiro),
         saldo_por_cobrar=float(saldo_total_por_cobrar),
@@ -1707,6 +1742,31 @@ async def update_item(
     if payload.valorTotal is not None:
         quote.valor_total = payload.valorTotal
 
+    # LÓGICA CRÍTICA: Si cambió la fecha de entrega, validar plan manual
+    if (product.fecha_entrega != payload.fechaEntrega and 
+        payload.fechaEntrega is not None):
+        
+        # Verificar si existe plan manual para este producto
+        existing_manual_plan = (
+            db.query(ProductionDailyPlan)
+            .filter(
+                ProductionDailyPlan.producto_id == product_id,
+                ProductionDailyPlan.is_manually_edited == True
+            )
+            .first()
+        )
+        
+        if existing_manual_plan:
+            # ADVERTENCIA: No regenerar automáticamente si hay plan manual
+            # El encargado debe actualizar manualmente el plan desde "Plan diario"
+            pass  # Preservar plan manual existente
+        else:
+            # Solo limpiar planes automáticos (no manuales) si no hay plan manual
+            db.query(ProductionDailyPlan).filter(
+                ProductionDailyPlan.producto_id == product_id,
+                ProductionDailyPlan.is_manually_edited == False
+            ).delete()
+
     # Reemplazar pagos asociados a la cotización
     quote.pagos.clear()
     for pago_payload in payload.pagos:
@@ -1848,6 +1908,7 @@ async def upsert_daily_production_plan(
             record.metros = metros_value
             record.unidades = unidades_value
             record.notas = entry.notas
+            record.is_manually_edited = True  # Marcar como editado manualmente
         else:
             db.add(
                 ProductionDailyPlan(
@@ -1856,6 +1917,7 @@ async def upsert_daily_production_plan(
                     metros=metros_value,
                     unidades=unidades_value,
                     notas=entry.notas,
+                    is_manually_edited=True,  # Marcar como editado manualmente
                 )
             )
 

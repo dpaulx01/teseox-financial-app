@@ -28,6 +28,10 @@ import useProductionSchedule from '../hooks/useProductionSchedule';
 import ProductionCalendarBoard from './ProductionCalendarBoard';
 import financialAPI from '../../../services/api';
 import DailyProductionModal from './DailyProductionModal';
+import FinancialDetailModal from './FinancialDetailModal';
+import { useDailyPlans } from '../hooks/useDailyPlans';
+import { getWorkingDaysBetween, parseISODate } from '../utils/dateUtils';
+import { extractQuantityInfo, formatNumber } from '../utils/quantityUtils';
 
 type SortKey =
   | 'fechaIngreso'
@@ -405,6 +409,7 @@ function computeProgress(
   item: ProductionItem,
   fechaEntrega: string | null | undefined,
   estatus: string | null | undefined,
+  dailyPlan?: DailyProductionPlanEntry[] | null,
 ): ProgressInfo | null {
   const statusLabel = estatus || 'Sin estatus';
   const tooltipParts: string[] = [];
@@ -432,14 +437,50 @@ function computeProgress(
     Entregado: 100,
   };
 
-  if (
+  // Si tenemos plan diario real, usarlo en lugar del cálculo estimado
+  if (dailyPlan && dailyPlan.length > 0 && quantity !== null && quantity > 0) {
+    const quantityInfo = extractQuantityInfo(item.cantidad);
+    const targetField = quantityInfo.unit;
+    
+    // Calcular producción real hasta hoy
+    const producedSoFar = dailyPlan
+      .filter(entry => {
+        const entryDate = parseISODate(entry.fecha);
+        return entryDate && entryDate <= today;
+      })
+      .reduce((sum, entry) => {
+        return sum + (targetField === 'metros' ? entry.metros : entry.unidades);
+      }, 0);
+
+    // Calcular total planificado
+    const totalPlanned = dailyPlan.reduce((sum, entry) => {
+      return sum + (targetField === 'metros' ? entry.metros : entry.unidades);
+    }, 0);
+
+    if (totalPlanned > 0) {
+      percentFromTime = (producedSoFar / totalPlanned) * 100;
+      producedEstimate = producedSoFar;
+      
+      const totalDays = dailyPlan.length;
+      const completedDays = dailyPlan.filter(entry => {
+        const entryDate = parseISODate(entry.fecha);
+        return entryDate && entryDate <= today;
+      }).length;
+      
+      tooltipParts.push(
+        `Plan real: ${Math.round(percentFromTime)}% (${formatNumber(producedSoFar)}/${formatNumber(totalPlanned)} ${targetField})`
+      );
+      tooltipParts.push(`Días completados: ${completedDays}/${totalDays}`);
+    }
+  } else if (
     fechaIngresoDate &&
     fechaEntregaDate &&
     fechaEntregaDate >= fechaIngresoDate &&
     quantity !== null &&
     quantity > 0
   ) {
-    const workingDays = _iter_working_days(fechaIngresoDate, fechaEntregaDate);
+    // Fallback a cálculo estimado con días hábiles mejorados
+    const workingDays = getWorkingDaysBetween(fechaIngresoDate, fechaEntregaDate);
     const totalDays = workingDays.length;
     if (totalDays > 0) {
       const elapsedDays = workingDays.filter((day) => day <= today).length;
@@ -447,7 +488,7 @@ function computeProgress(
       const produccionDiaria = quantity / totalDays;
       producedEstimate = produccionDiaria * elapsedDays;
       tooltipParts.push(
-        `Avance por tiempo: ${Math.round(percentFromTime)}% (${elapsedDays}/${totalDays} días hábiles)`
+        `Avance estimado: ${Math.round(percentFromTime)}% (${elapsedDays}/${totalDays} días hábiles)`
       );
     }
   } else if (fechaEntregaDate && fechaEntregaDate < today) {
@@ -566,6 +607,12 @@ const StatusTable: React.FC<StatusTableProps> = ({
   const [planModalSaving, setPlanModalSaving] = useState<boolean>(false);
   const [planModalError, setPlanModalError] = useState<string | null>(null);
   const baseItems = useMemo(() => items.filter((item) => !item.esServicio), [items]);
+  
+  // Hook para obtener planes diarios
+  const { getDailyPlan, preloadPlans } = useDailyPlans();
+  
+  // Estado para cachear planes diarios
+  const [dailyPlans, setDailyPlans] = useState<Record<number, DailyProductionPlanEntry[]>>({});
 
   // Initialize or update the forms state when the base items change
   useEffect(() => {
@@ -583,6 +630,38 @@ const StatusTable: React.FC<StatusTableProps> = ({
     }
     setForms(initialForms);
   }, [baseItems]);
+
+  // Cargar planes diarios para todos los items
+  useEffect(() => {
+    const loadDailyPlans = async () => {
+      const itemIds = baseItems
+        .filter(item => !isMetadataDescription(item.producto))
+        .map(item => item.id);
+      
+      const planPromises = itemIds.map(async (itemId) => {
+        try {
+          const plan = await getDailyPlan(itemId);
+          return { itemId, plan };
+        } catch (error) {
+          console.warn(`Failed to load daily plan for item ${itemId}:`, error);
+          return { itemId, plan: [] };
+        }
+      });
+
+      const results = await Promise.allSettled(planPromises);
+      const newDailyPlans: Record<number, DailyProductionPlanEntry[]> = {};
+      
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          newDailyPlans[result.value.itemId] = result.value.plan;
+        }
+      });
+      
+      setDailyPlans(newDailyPlans);
+    };
+
+    loadDailyPlans();
+  }, [baseItems, getDailyPlan]);
 
   const { days: scheduleDays, loading: scheduleLoading, error: scheduleError, refetch: refetchSchedule } = useProductionSchedule();
 
@@ -984,7 +1063,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
       if (!form) {
         continue;
       }
-      const progress = computeProgress(item, form.fechaEntrega, form.estatus);
+      const progress = computeProgress(item, form.fechaEntrega, form.estatus, dailyPlans[item.id]);
       const quantity = extractQuantityInfo(item.cantidad);
       const quote = quoteGroupMap.get(item.cotizacionId);
       const saving = savingStatus[item.id] || 'idle';
@@ -1569,6 +1648,7 @@ const QuoteRow: React.FC<{
   const [isSavingQuote, setIsSavingQuote] = useState(false);
   const [showMetadataNotes, setShowMetadataNotes] = useState(false);
   const [showPaymentsModal, setShowPaymentsModal] = useState(false);
+  const [showFinancialModal, setShowFinancialModal] = useState(false);
 
   useEffect(() => {
     if (!expanded) {
@@ -1589,7 +1669,7 @@ const QuoteRow: React.FC<{
       .map((item) => {
         const form = forms[item.id];
         if (!form) return null;
-        return computeProgress(item, form.fechaEntrega, form.estatus);
+        return computeProgress(item, form.fechaEntrega, form.estatus, dailyPlans[item.id]);
       })
       .filter((entry): entry is NonNullable<ReturnType<typeof computeProgress>> => Boolean(entry));
 
@@ -1865,41 +1945,30 @@ const QuoteRow: React.FC<{
             {quoteForm.factura ? quoteForm.factura : 'Sin factura'}
           </span>
         </td>
-      <td className="align-top px-4 py-3 w-[210px]">
-        <div className="space-y-3 text-xs text-text-secondary">
-          <div className="rounded-xl border border-border/50 bg-dark-card/40 px-3 py-3 space-y-2">
-            <div className="flex items-center justify-between text-sm font-semibold text-text-primary">
-              <span className="inline-flex items-center gap-2">
-                <DollarSign className="w-3.5 h-3.5 text-primary" />
-                Total
-              </span>
-              <span>{group.totalCotizacion !== null ? formatCurrency(group.totalCotizacion) : '—'}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm font-semibold text-emerald-300">
-              <span>Saldo</span>
-              <span>{quoteTotals.saldo !== null ? formatCurrency(quoteTotals.saldo) : '—'}</span>
-            </div>
-            {quoteTotals.totalAbonado > 0 && (
-              <div className="flex items-center justify-between text-[11px] text-text-secondary">
-                <span>Abonos</span>
-                <span>{formatCurrency(quoteTotals.totalAbonado)}</span>
-              </div>
-            )}
+      <td className="align-top px-4 py-3 w-[160px]">
+        <button
+          type="button"
+          onClick={() => setShowFinancialModal(true)}
+          className="w-full text-left rounded-xl border border-border/50 bg-dark-card/40 hover:bg-dark-card/60 px-4 py-3 space-y-2 transition-all duration-200 hover:border-primary/40 hover:shadow-glow-sm group"
+        >
+          <div className="flex items-center justify-between text-sm font-semibold text-text-primary">
+            <span className="inline-flex items-center gap-2">
+              <DollarSign className="w-3.5 h-3.5 text-primary group-hover:text-primary/80" />
+              Total
+            </span>
+            <span>{group.totalCotizacion !== null ? formatCurrency(group.totalCotizacion) : '—'}</span>
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-text-secondary">
-            <CalendarDays className="w-3.5 h-3.5 text-primary/70" />
-            <span className="leading-snug">{dueDateStatus.message}</span>
+          <div className="flex items-center justify-between text-sm font-semibold text-accent">
+            <span>Saldo</span>
+            <span>{quoteTotals.saldo !== null ? formatCurrency(quoteTotals.saldo) : '—'}</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowPaymentsModal(true)}
-            disabled={isSavingQuote}
-            className="inline-flex items-center gap-2 text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <CreditCard className="w-3 h-3" />
-            Gestionar cobros
-          </button>
-        </div>
+          <div className="text-[11px] text-text-muted group-hover:text-text-secondary transition-colors">
+            <div className="flex items-center gap-2">
+              <Info className="w-3 h-3" />
+              <span>Clic para ver detalle</span>
+            </div>
+          </div>
+        </button>
       </td>
         <td className="align-top px-4 py-3 w-[220px]">
           <div className="flex flex-col gap-3 min-w-[180px]">
@@ -1977,6 +2046,7 @@ const QuoteRow: React.FC<{
                         onChange={(newFormData) => onRowChange(item.id, newFormData)}
                         quoteTotal={group.totalCotizacion}
                         saveStatus={savingStatus[item.id] || 'idle'}
+                        dailyPlan={dailyPlans[item.id]}
                       />
                     ))}
                   </tbody>
@@ -2143,6 +2213,21 @@ const QuoteRow: React.FC<{
           </div>,
           document.body
         )}
+      {showFinancialModal && typeof document !== 'undefined' &&
+        createPortal(
+          <FinancialDetailModal
+            group={group}
+            quoteTotals={quoteTotals}
+            dueDateStatus={dueDateStatus}
+            open={showFinancialModal}
+            onClose={() => setShowFinancialModal(false)}
+            onManagePayments={() => {
+              setShowFinancialModal(false);
+              setShowPaymentsModal(true);
+            }}
+          />,
+          document.body
+        )}
     </>
   );
 };
@@ -2263,7 +2348,8 @@ const ProductionRow: React.FC<{
   onChange: (form: RowFormState) => void;
   quoteTotal: number | null;
   saveStatus: 'idle' | 'saving' | 'success' | 'error';
-}> = ({ item, form, statusOptions, onChange, quoteTotal, saveStatus }) => {
+  dailyPlan?: DailyProductionPlanEntry[];
+}> = ({ item, form, statusOptions, onChange, quoteTotal, saveStatus, dailyPlan }) => {
   const totalCotizacion = useMemo(() => {
     if (quoteTotal !== null && quoteTotal !== undefined) {
       return quoteTotal;
@@ -2285,7 +2371,7 @@ const ProductionRow: React.FC<{
   }, [form.pagos]);
 
   const saldoPendiente = totalCotizacion !== null ? Math.max(totalCotizacion - totalAbonado, 0) : null;
-  const progress = computeProgress(item, form.fechaEntrega, form.estatus);
+  const progress = computeProgress(item, form.fechaEntrega, form.estatus, dailyPlan);
 
   const updateField = (key: keyof RowFormState, value: string) => {
     onChange({ ...form, [key]: value });

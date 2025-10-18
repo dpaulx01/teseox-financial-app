@@ -49,17 +49,17 @@ const ProductionControlPanel: React.FC = () => {
   }, [showUploader]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-text-primary mb-2">Status Producción</h1>
-        <p className="text-text-muted max-w-3xl">
+        <h1 className="text-4xl font-bold text-text-primary neon-text mb-3">Status Producción</h1>
+        <p className="text-text-muted max-w-4xl text-base leading-relaxed">
           Centraliza el seguimiento operativo de las cotizaciones cargadas: controla entregas, estatus, facturación y cobros
           asociados a cada línea de producción.
         </p>
       </div>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="inline-flex rounded-2xl border border-border/70 bg-dark-card/60 p-1 shadow-inner w-full max-w-xl">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="glass-panel inline-flex rounded-2xl border border-border/60 bg-dark-card/80 p-2 shadow-hologram w-full max-w-2xl">
           {[
             { key: 'quotes', label: 'Por cotización', icon: LayoutGrid },
             { key: 'products', label: 'Por producto', icon: PackageOpen },
@@ -72,41 +72,45 @@ const ProductionControlPanel: React.FC = () => {
                 key={key}
                 type="button"
                 onClick={() => setViewMode(key as typeof viewMode)}
-                className={`flex-1 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium transition-colors ${
+                className={`flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-all duration-200 ${
                   active
-                    ? 'bg-primary text-dark-card shadow-lg'
-                    : 'text-text-secondary hover:text-text-primary'
+                    ? 'bg-primary text-dark-card shadow-glow-md neon-text'
+                    : 'text-text-muted hover:text-text-primary hover:bg-dark-card/60'
                 }`}
               >
                 <Icon className="w-4 h-4" />
-                {label}
+                <span className="hidden sm:inline">{label}</span>
               </button>
             );
           })}
         </div>
-        <div className="flex flex-col gap-2 lg:items-end">
+        <div className="flex flex-col gap-3 lg:items-end">
           <button
             type="button"
             onClick={() => setShowUploader(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary/50 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/15 transition-colors"
+            className="cyber-button inline-flex items-center justify-center gap-2"
           >
-            <UploadCloud className="h-4 w-4" />
+            <UploadCloud className="h-5 w-5" />
             Subir cotización
           </button>
-          <p className="text-xs text-text-muted max-w-xl text-left lg:text-right">{viewDescription}</p>
+          <p className="text-sm text-text-muted max-w-xl text-left lg:text-right bg-dark-card/30 rounded-lg px-3 py-2 border border-border/40">{viewDescription}</p>
         </div>
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {error}
+        <div className="glass-card rounded-xl border border-danger/40 bg-danger-glow px-5 py-4 text-sm text-danger shadow-glow-danger">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-danger animate-pulse"></div>
+            {error}
+          </div>
         </div>
       )}
 
       {loading ? (
-        <div className="glass-panel rounded-2xl border border-border shadow-hologram p-12 flex flex-col items-center justify-center text-text-muted">
-          <Loader2 className="w-8 h-8 animate-spin mb-2 text-primary" />
-          <p>Cargando matriz de producción...</p>
+        <div className="glass-panel rounded-2xl border border-border/60 shadow-hologram p-16 flex flex-col items-center justify-center text-text-muted">
+          <Loader2 className="w-10 h-10 animate-spin mb-4 text-primary" />
+          <p className="text-lg font-medium">Cargando matriz de producción...</p>
+          <p className="text-sm text-text-dim mt-2">Procesando datos de producción activa</p>
         </div>
       ) : (
         <StatusTable
@@ -121,13 +125,13 @@ const ProductionControlPanel: React.FC = () => {
 
       {showUploader && (
         <div
-          className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4"
+          className="fixed inset-0 z-[1200] flex items-center justify-center bg-dark-bg/90 backdrop-blur-md px-4"
           role="dialog"
           aria-modal="true"
           onClick={() => setShowUploader(false)}
         >
           <div
-            className="relative w-full max-w-3xl"
+            className="relative w-full max-w-4xl animate-scale-in"
             onClick={(event) => {
               event.stopPropagation();
             }}
@@ -135,10 +139,10 @@ const ProductionControlPanel: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowUploader(false)}
-              className="absolute right-4 top-4 inline-flex items-center justify-center rounded-full border border-border bg-dark-card/80 p-2 text-text-secondary hover:text-primary hover:border-primary transition-colors"
+              className="absolute right-6 top-6 z-10 inline-flex items-center justify-center rounded-full border border-border/60 bg-dark-card/90 p-3 text-text-secondary hover:text-danger hover:border-danger/40 transition-all duration-200 shadow-glass"
               aria-label="Cerrar carga de cotizaciones"
             >
-              <X className="h-4 w-4" />
+              <X className="h-5 w-5" />
             </button>
             <UploadCard onUpload={uploadQuotes} status={uploadStatus} onReset={resetUploadStatus} />
           </div>

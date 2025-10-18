@@ -370,6 +370,44 @@ body:not(.dark)::before {
   .cyber-button::before {
     pointer-events: none !important;
   }
+  
+  /* Micro-interacciones mejoradas */
+  .interactive-scale {
+    transition: transform 0.2s ease;
+  }
+  
+  .interactive-scale:hover {
+    transform: scale(1.05);
+  }
+  
+  .interactive-scale:active {
+    transform: scale(0.95);
+  }
+  
+  /* Animaciones de entrada para modales */
+  .animate-scale-in {
+    animation: scaleIn 0.4s ease-out;
+  }
+  
+  @keyframes scaleInModal {
+    0% {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  
+  .animate-scale-in {
+    animation: scaleInModal 0.4s ease-out;
+  }
+  
+  /* Efectos de enfoque mejorados */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-dark-bg;
+  }
 }
 
 /* Responsive adjustments */

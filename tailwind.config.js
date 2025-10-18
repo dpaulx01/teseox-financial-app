@@ -140,6 +140,10 @@ export default {
         // Animación del toggle theme
         'spin-180': 'spin180 0.3s ease-in-out',
         'spin-360': 'spin360 0.5s ease-in-out',
+        
+        // Animaciones para modales
+        'scale-in': 'scaleIn 0.4s ease-out',
+        'fade-in-up': 'fadeInUp 0.5s ease-out',
       },
       keyframes: {
         // Básicas
@@ -228,6 +232,16 @@ export default {
             opacity: '1', 
             transform: 'scale(1) rotateX(0deg)',
             filter: 'blur(0px)'
+          },
+        },
+        fadeInUp: {
+          '0%': {
+            opacity: '0',
+            transform: 'translateY(30px)',
+          },
+          '100%': {
+            opacity: '1',
+            transform: 'translateY(0)',
           },
         },
         digitalIn: {

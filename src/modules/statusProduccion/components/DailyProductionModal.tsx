@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CalendarDays, Loader2, Plus, Trash2, X } from 'lucide-react';
 import type { DailyProductionPlanEntry, ProductionItem } from '../../../types/production';
+import { parseISODate, toISODate, isWorkingDay, nextWorkingDay, previousWorkingDay } from '../utils/dateUtils';
+import { extractQuantityInfo, formatNumber } from '../utils/quantityUtils';
 
 type PlanRow = {
   fecha: string;

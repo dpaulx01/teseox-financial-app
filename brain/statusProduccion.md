@@ -65,11 +65,14 @@ Algoritmos y Lógica Relevante
 - El frontend representa la agenda con un `ComposedChart` de dos áreas y métricas agregadas (total planificado, próximos 7 días, promedio diario).
 
 ### Control diario de producción
-- El modelo `plan_diario_produccion` permite registrar manualmente la producción real por producto y día hábil; estos valores reemplazan la distribución automática en `daily_workload` y alimentan el tablero “Por día”.
+- El modelo `plan_diario_produccion` permite registrar manualmente la producción real por producto y día hábil; estos valores reemplazan la distribución automática en `daily_workload` y alimentan el tablero "Por día".
+- **Nueva funcionalidad**: Campo `is_manually_edited` para proteger planes manuales contra regeneración automática cuando se cambian fechas en la matriz principal.
 - Endpoints disponibles:
   - `GET /api/production/items/{id}/daily-plan` y `PUT /api/production/items/{id}/daily-plan`. Validan días hábiles ecuatorianos y exigen que la suma manual coincida exactamente con la cantidad comprometida en la cotización (sin excedentes ni faltantes).
-  - `GET /api/production/dashboard/schedule` entrega la agenda diaria: totales por día (metros/unidades/capacidad opcional), bandera de plan manual y lista detallada de productos. Sirve tanto para el ComposedChart del dashboard como para el tablero “Por día”.
-- En la vista “Por producto”, cada fila ofrece la acción **Control diario** (modal) que precarga la distribución promedio, permite ajustes manuales y valida capacidades antes de guardar.
+  - `GET /api/production/dashboard/schedule` entrega la agenda diaria: totales por día (metros/unidades/capacidad opcional), bandera de plan manual y lista detallada de productos. Sirve tanto para el ComposedChart del dashboard como para el tablero "Por día".
+- En la vista "Por producto", cada fila ofrece la acción **Control diario** (modal) que precarga la distribución promedio, permite ajustes manuales y valida capacidades antes de guardar.
+- **Recálculo automático inteligente**: Al editar manualmente una cantidad en el plan diario, el sistema redistribuye automáticamente el remanente de forma proporcional entre las otras fechas con valores existentes, evitando cálculos manuales y errores de balance.
+- **Corrección de zona horaria**: Implementado parsing de fechas ISO en zona horaria local para evitar desfases de días en la visualización del calendario (ej: "2025-10-17" ahora se muestra correctamente como "vie, 17 oct" en lugar de "jue, 16 oct").
 
 ### Autoguardado con Debounce (Frontend)
 - El componente `StatusTable.tsx` ahora gestiona el estado de todos los formularios de las filas.
@@ -77,6 +80,43 @@ Algoritmos y Lógica Relevante
 - Cuando los cambios se detienen por 1.5 segundos, un `setTimeout` dispara la función `handleAutoSave`.
 - `handleAutoSave` crea y envía todas las peticiones de guardado para las filas modificadas en paralelo (`Promise.allSettled`).
 - Un estado `savingStatus` por fila (`Record<number, 'saving' | 'success' | 'error'>`) se pasa a `ProductionRow` para mostrar el indicador visual correspondiente.
+
+Mejoras Recientes y Migraciones
+-------------------------------
+
+### Migración de Base de Datos (2024-10-15)
+- **Archivo**: `database/migrations/20241015_add_manual_edit_flag.sql`
+- **Objetivo**: Agregar campo `is_manually_edited` a la tabla `plan_diario_produccion` para proteger planes manuales
+- **Cambios**:
+  ```sql
+  ALTER TABLE plan_diario_produccion 
+  ADD COLUMN is_manually_edited BOOLEAN DEFAULT FALSE NOT NULL;
+  
+  -- Preservar planes existentes marcándolos como editados manualmente
+  UPDATE plan_diario_produccion 
+  SET is_manually_edited = TRUE 
+  WHERE id > 0;
+  
+  -- Índice para optimizar consultas
+  CREATE INDEX idx_plan_diario_manual_edit ON plan_diario_produccion(is_manually_edited);
+  ```
+
+### Correcciones Críticas Implementadas
+1. **Protección contra sobrescritura automática**: Los planes diarios marcados como `is_manually_edited = TRUE` no se regeneran automáticamente cuando se modifican fechas de entrega en la matriz principal.
+
+2. **Recálculo inteligente en tiempo real**: Al editar cantidades en el plan diario, el sistema redistribuye automáticamente el remanente de forma proporcional, manteniendo el balance exacto sin cálculos manuales.
+
+3. **Corrección de zona horaria**: Solucionado el desfase de fechas causado por interpretación UTC vs local timezone. Las fechas ISO ahora se parsean correctamente en zona horaria local.
+
+4. **Validación de días hábiles**: Algoritmo robusto que excluye correctamente fines de semana y feriados ecuatorianos, incluye viernes y excluye domingos como corresponde.
+
+### Estado Actual del Sistema
+- ✅ Plan diario con recálculo automático inteligente
+- ✅ Protección contra sobrescritura de ajustes manuales  
+- ✅ Fechas correctas sin desfase de zona horaria
+- ✅ Días hábiles validados según calendario ecuatoriano
+- ✅ Migración de base de datos aplicada y funcional
+- ✅ Redistribución proporcional automática en edición manual
 
 Referencias Principales
 -----------------------
@@ -86,4 +126,6 @@ Referencias Principales
 - **Hooks de Datos**: `useActiveProductionItems.ts`, `useArchivedProductionItems.ts`, `useProductionSchedule.ts`
 - **Endpoints**: `routes/production_status.py`
 - **Modelos compartidos**: `src/types/production.ts`
+- **Modelos de BD**: `models/production.py` (incluye `ProductionDailyPlan` con `is_manually_edited`)
+- **Migraciones**: `database/migrations/20241015_add_manual_edit_flag.sql`
 - **Carga/Modal**: `src/modules/statusProduccion/components/UploadCard.tsx`

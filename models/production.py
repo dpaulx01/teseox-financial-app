@@ -9,6 +9,7 @@ from decimal import Decimal
 from typing import List, Optional
 
 from sqlalchemy import (
+    Boolean,
     Column,
     Date,
     DateTime,
@@ -106,6 +107,7 @@ class ProductionDailyPlan(Base):
     metros: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
     unidades: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
     notas: Mapped[Optional[str]] = mapped_column(Text)
+    is_manually_edited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

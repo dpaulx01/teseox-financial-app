@@ -162,7 +162,8 @@ export interface WorkloadSnapshot {
 }
 
 export interface FinancialSummary {
-  total_en_produccion: number;
+  total_en_produccion: number;  // Suma de valor_subtotal de productos activos
+  total_cotizaciones_activas: number;  // Suma de valor_total de cotizaciones activas
   valor_atrasado: number;
   valor_listo_para_retiro: number;
   saldo_por_cobrar: number;

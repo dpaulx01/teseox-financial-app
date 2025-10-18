@@ -21,8 +21,8 @@ const getMonthKey = (value: Date) => `${value.getFullYear()}-${String(value.getM
 
 const DayCard: React.FC<DayCardProps> = ({ day, onSelect }) => {
   const badgeColor = day.manual
-    ? 'bg-emerald-500/10 text-emerald-200 border-emerald-400/40'
-    : 'bg-primary/10 text-primary border-primary/30';
+    ? 'bg-accent-glow text-accent border-accent/40'
+    : 'bg-primary-glow text-primary border-primary/30';
 
   const parsedDate = new Date(day.fecha);
 
@@ -51,11 +51,11 @@ const DayCard: React.FC<DayCardProps> = ({ day, onSelect }) => {
       <div className="px-4 py-4 space-y-3 text-sm text-text-secondary">
         <div className="flex items-center justify-between">
           <span className="uppercase text-[11px] tracking-wide">Metros</span>
-          <span className="font-semibold text-sky-300">{formatNumber(day.metros)}</span>
+          <span className="font-semibold text-primary data-display">{formatNumber(day.metros)}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="uppercase text-[11px] tracking-wide">Unidades</span>
-          <span className="font-semibold text-emerald-300">{formatNumber(day.unidades)}</span>
+          <span className="font-semibold text-accent data-display">{formatNumber(day.unidades)}</span>
         </div>
         <div className="flex items-center justify-between text-[11px] text-text-muted">
           <span>Productos</span>
@@ -111,72 +111,116 @@ const DayDetailModal: React.FC<DayDetailModalProps> = ({ day, onClose }) => {
   }, [day.items]);
 
   return (
-    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4">
-      <div className="w-full max-w-4xl rounded-2xl border border-border/60 bg-dark-card/95 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div>
-            <h3 className="text-xl font-semibold text-text-primary">Carga programada</h3>
-            <p className="text-xs text-text-secondary">{dateLabel}</p>
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-dark-bg/90 backdrop-blur-md px-4">
+      <div className="w-full max-w-5xl glass-panel rounded-2xl border border-border/60 bg-dark-card/95 shadow-hologram animate-scale-in">
+        <div className="flex items-center justify-between border-b border-border/40 px-6 py-5 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-accent/5" />
+          <div className="relative z-10">
+            <h3 className="text-2xl font-bold text-text-primary neon-text">Carga programada</h3>
+            <p className="text-sm text-text-muted font-medium mt-1">{dateLabel}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-border px-3 py-1 text-xs font-medium text-text-secondary hover:text-primary hover:border-primary transition-colors"
+            className="relative z-10 cyber-button-sm bg-dark-card/80 border-border/60 text-text-secondary hover:text-danger hover:border-danger/40 transition-all duration-200"
           >
             Cerrar
           </button>
         </div>
-        <div className="px-6 py-4 space-y-6 max-h-[70vh] overflow-y-auto">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-border/60 bg-dark-card/70 p-4">
-              <p className="text-[11px] uppercase tracking-wide text-text-muted">Metros</p>
-              <p className="mt-1 text-lg font-semibold text-sky-300">{formatNumber(day.metros)}</p>
+        <div className="px-6 py-6 space-y-8 max-h-[75vh] overflow-y-auto">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="glass-card rounded-xl border border-primary/30 bg-primary-glow p-5 shadow-glow-sm hover:shadow-glow-md transition-all duration-300">
+              <p className="text-xs uppercase tracking-wider text-text-muted font-semibold">Metros totales</p>
+              <p className="mt-2 text-3xl font-bold text-primary data-display">{formatNumber(day.metros)}</p>
             </div>
-            <div className="rounded-xl border border-border/60 bg-dark-card/70 p-4">
-              <p className="text-[11px] uppercase tracking-wide text-text-muted">Unidades</p>
-              <p className="mt-1 text-lg font-semibold text-emerald-300">{formatNumber(day.unidades)}</p>
+            <div className="glass-card rounded-xl border border-accent/30 bg-accent-glow p-5 shadow-glow-sm hover:shadow-glow-md transition-all duration-300">
+              <p className="text-xs uppercase tracking-wider text-text-muted font-semibold">Unidades totales</p>
+              <p className="mt-2 text-3xl font-bold text-accent data-display">{formatNumber(day.unidades)}</p>
             </div>
-            <div className="rounded-xl border border-border/60 bg-dark-card/70 p-4">
-              <p className="text-[11px] uppercase tracking-wide text-text-muted">Productos</p>
-              <p className="mt-1 text-lg font-semibold text-text-primary">{day.items.length}</p>
-              {day.manual ? <p className="mt-1 text-[11px] text-emerald-300">Plan manual registrado</p> : null}
+            <div className="glass-card rounded-xl border border-border/60 bg-dark-card/80 p-5 hover:bg-dark-card/90 transition-all duration-300">
+              <p className="text-xs uppercase tracking-wider text-text-muted font-semibold">Productos únicos</p>
+              <p className="mt-2 text-3xl font-bold text-text-primary">{day.items.length}</p>
+              {day.manual ? (
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-glow border border-accent/30">
+                  <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
+                  <p className="text-xs text-accent font-semibold">Plan manual registrado</p>
+                </div>
+              ) : null}
             </div>
           </div>
 
           {groupedByQuote.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-text-secondary">
-              No hay productos asignados a este día.
+            <div className="glass-card rounded-2xl border border-dashed border-border/60 bg-dark-card/30 px-6 py-8 text-center">
+              <div className="space-y-3">
+                <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-dashed"></div>
+                </div>
+                <p className="text-base font-medium text-text-muted">No hay productos asignados</p>
+                <p className="text-sm text-text-dim">Este día no tiene carga de producción programada</p>
+              </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-1 h-6 bg-gradient-to-b from-primary to-accent rounded-full"></div>
+                <h4 className="text-lg font-semibold text-text-primary">Productos por cotización</h4>
+              </div>
               {groupedByQuote.map((group) => (
-                <div key={group.cotizacion} className="rounded-2xl border border-border/70 bg-dark-card/60">
-                  <div className="flex flex-col gap-1 border-b border-border px-4 py-3">
-                    <span className="text-sm font-semibold text-text-primary">{group.cotizacion}</span>
-                    {group.cliente && <span className="text-xs text-text-secondary">{group.cliente}</span>}
+                <div key={group.cotizacion} className="glass-card rounded-2xl border border-border/60 bg-dark-card/70 overflow-hidden hover:bg-dark-card/80 transition-all duration-300">
+                  <div className="relative px-6 py-4 border-b border-border/40 bg-gradient-to-r from-primary/5 to-transparent">
+                    <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-accent/5"></div>
+                    <div className="relative z-10">
+                      <span className="text-lg font-bold text-text-primary">{group.cotizacion}</span>
+                      {group.cliente && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="w-2 h-2 rounded-full bg-accent"></div>
+                          <span className="text-sm text-text-secondary font-medium">{group.cliente}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="divide-y divide-border/60">
+                  <div className="divide-y divide-border/30">
                     {group.items.map((item) => (
                       <div
                         key={`${item.item_id}-${item.descripcion}`}
-                        className="flex flex-col gap-2 px-4 py-3 text-sm text-text-secondary"
+                        className="px-6 py-4 hover:bg-dark-card/40 transition-colors duration-200"
                       >
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium text-text-primary">{item.descripcion}</p>
-                          {item.manual ? (
-                            <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300">
-                              Manual
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="flex items-center gap-4 text-[12px] text-text-muted">
-                          <span>{formatNumber(item.metros)} m</span>
-                          <span>{formatNumber(item.unidades)} u</span>
-                          {item.estatus ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-text-primary">
-                              {item.estatus}
-                            </span>
-                          ) : null}
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <p className="font-semibold text-text-primary text-base leading-tight">{item.descripcion}</p>
+                            <div className="flex items-center gap-6 mt-3 text-sm">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-primary"></div>
+                                <span className="text-text-muted">Metros:</span>
+                                <span className="font-bold text-primary">{formatNumber(item.metros)}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-accent"></div>
+                                <span className="text-text-muted">Unidades:</span>
+                                <span className="font-bold text-accent">{formatNumber(item.unidades)}</span>
+                              </div>
+                              {item.estatus && (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 rounded-full bg-text-secondary"></div>
+                                  <span className="text-text-muted">Estado:</span>
+                                  <span className="font-medium text-text-secondary">{item.estatus}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0">
+                            {item.manual ? (
+                              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-accent-glow border border-accent/40 shadow-glow-accent">
+                                <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
+                                <span className="text-xs font-bold text-accent uppercase tracking-wide">Manual</span>
+                              </div>
+                            ) : (
+                              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-dark-card/60 border border-border/40">
+                                <div className="w-2 h-2 rounded-full bg-primary"></div>
+                                <span className="text-xs font-medium text-text-muted uppercase tracking-wide">Auto</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}

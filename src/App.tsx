@@ -211,18 +211,18 @@ const MainAppContent: React.FC = () => {
                 {/* Header con selector global de año */}
                 <div className="absolute top-4 right-4 z-50 flex items-center gap-4">
                   <GlobalYearBar />
-                  <div className="bg-gray-800/80 backdrop-blur-lg px-4 py-2 rounded-lg border border-gray-700/50">
-                    <span className="text-sm text-gray-400">Usuario: </span>
-                    <span className="text-sm font-medium text-white">{user.username || 'Unknown'}</span>
+                  <div className="glass-card px-4 py-2 rounded-xl border border-border/60 bg-dark-card/80">
+                    <span className="text-sm text-text-muted">Usuario: </span>
+                    <span className="text-sm font-semibold text-text-primary">{user.username || 'Unknown'}</span>
                     {user.is_superuser && (
-                      <span className="ml-2 px-2 py-1 text-xs bg-purple-500/20 text-purple-400 rounded-full">
+                      <span className="ml-2 px-2 py-1 text-xs bg-purple/20 text-purple rounded-full border border-purple/30">
                         Admin
                       </span>
                     )}
                   </div>
                   <button
                     onClick={handleLogout}
-                    className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors"
+                    className="cyber-button-sm bg-danger/20 hover:bg-danger/30 text-danger border-danger/40 hover:border-danger"
                   >
                     Cerrar Sesión
                   </button>
