@@ -448,13 +448,9 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
               return false;
             }
             
-            // Si editamos fecha pasada, solo redistribuir entre fechas futuras/actuales no editadas
-            if (editedRowDate && editedRowDate < currentDate) {
-              return rowDate >= currentDate;
-            }
-            
-            // Si editamos fecha actual/futura, redistribuir entre todas las fechas no editadas
-            return true;
+            // Solo redistribuir entre fechas actuales/futuras no editadas manualmente
+            // NUNCA redistribuir en fechas pasadas, sin importar qué fecha se esté editando
+            return rowDate >= currentDate;
           });
           
           if (remainingAmount > 0 && otherEditableRows.length > 0) {
