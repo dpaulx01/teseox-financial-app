@@ -235,7 +235,7 @@ function formatCurrency(value: number | null | undefined): string {
   }).format(value);
 }
 
-function formatNumber(value: number | null | undefined): string {
+function formatNumberWithDash(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return '—';
   }
@@ -553,13 +553,13 @@ function matchesFilters(item: ProductionItem, filters: Filters): boolean {
       haystacks.some((value) => includesNormalized(value, needle)) ||
       includesNormalized(
         item.valorSubtotal !== null && item.valorSubtotal !== undefined
-          ? formatNumber(item.valorSubtotal)
+          ? formatNumberWithDash(item.valorSubtotal)
           : '',
         needle,
       ) ||
       includesNormalized(
         item.valorTotal !== null && item.valorTotal !== undefined
-          ? formatNumber(item.valorTotal)
+          ? formatNumberWithDash(item.valorTotal)
           : '',
         needle,
       );
@@ -1365,25 +1365,25 @@ const StatusTable: React.FC<StatusTableProps> = ({
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
             <span className="text-xs uppercase tracking-wide text-text-muted">Productos activos</span>
-            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumber(metrics.totalItems)}</p>
+            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(metrics.totalItems)}</p>
           </div>
           <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
             <span className="text-xs uppercase tracking-wide text-text-muted">Productos únicos</span>
-            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumber(metrics.uniqueProducts)}</p>
+            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(metrics.uniqueProducts)}</p>
           </div>
           <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
             <span className="text-xs uppercase tracking-wide text-text-muted">Metros totales</span>
-            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumber(metrics.totalMetros)}</p>
-            <p className="text-[11px] text-text-secondary">Próx. 7 días: {formatNumber(metrics.metrosProximos7)}</p>
-            <p className="text-[11px] text-text-secondary">Promedio diario 7d: {formatNumber(metrics.metrosDiarios)}</p>
-            <p className="text-[11px] text-text-secondary">Hoy: {formatNumber(metrics.metrosHoy)}</p>
+            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(metrics.totalMetros)}</p>
+            <p className="text-[11px] text-text-secondary">Próx. 7 días: {formatNumberWithDash(metrics.metrosProximos7)}</p>
+            <p className="text-[11px] text-text-secondary">Promedio diario 7d: {formatNumberWithDash(metrics.metrosDiarios)}</p>
+            <p className="text-[11px] text-text-secondary">Hoy: {formatNumberWithDash(metrics.metrosHoy)}</p>
           </div>
           <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
             <span className="text-xs uppercase tracking-wide text-text-muted">Unidades totales</span>
-            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumber(metrics.totalUnidades)}</p>
-            <p className="text-[11px] text-text-secondary">Próx. 7 días: {formatNumber(metrics.unidadesProximos7)}</p>
-            <p className="text-[11px] text-text-secondary">Promedio diario 7d: {formatNumber(metrics.unidadesDiarias)}</p>
-            <p className="text-[11px] text-text-secondary">Hoy: {formatNumber(metrics.unidadesHoy)}</p>
+            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(metrics.totalUnidades)}</p>
+            <p className="text-[11px] text-text-secondary">Próx. 7 días: {formatNumberWithDash(metrics.unidadesProximos7)}</p>
+            <p className="text-[11px] text-text-secondary">Promedio diario 7d: {formatNumberWithDash(metrics.unidadesDiarias)}</p>
+            <p className="text-[11px] text-text-secondary">Hoy: {formatNumberWithDash(metrics.unidadesHoy)}</p>
           </div>
         </div>
 
@@ -1437,15 +1437,15 @@ const StatusTable: React.FC<StatusTableProps> = ({
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
             <span className="text-xs uppercase tracking-wide text-text-muted">Clientes activos</span>
-            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumber(rows.length)}</p>
+            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(rows.length)}</p>
           </div>
           <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
             <span className="text-xs uppercase tracking-wide text-text-muted">Metros comprometidos</span>
-            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumber(totalMetros)}</p>
+            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(totalMetros)}</p>
           </div>
           <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
             <span className="text-xs uppercase tracking-wide text-text-muted">Unidades comprometidas</span>
-            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumber(totalUnidades)}</p>
+            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(totalUnidades)}</p>
           </div>
           <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
             <span className="text-xs uppercase tracking-wide text-text-muted">Saldo pendiente</span>
@@ -1475,12 +1475,12 @@ const StatusTable: React.FC<StatusTableProps> = ({
                   {rows.map((row) => (
                     <tr key={row.client} className="border-b border-border/40 hover:bg-dark-card/40 transition-colors">
                       <td className="px-4 py-3 font-medium text-text-primary">{row.client}</td>
-                      <td className="px-4 py-3">{formatNumber(row.cotizacionCount)}</td>
-                      <td className="px-4 py-3">{formatNumber(row.productoCount)}</td>
-                      <td className="px-4 py-3">{formatNumber(row.metros)}</td>
-                      <td className="px-4 py-3">{formatNumber(row.unidades)}</td>
+                      <td className="px-4 py-3">{formatNumberWithDash(row.cotizacionCount)}</td>
+                      <td className="px-4 py-3">{formatNumberWithDash(row.productoCount)}</td>
+                      <td className="px-4 py-3">{formatNumberWithDash(row.metros)}</td>
+                      <td className="px-4 py-3">{formatNumberWithDash(row.unidades)}</td>
                       <td className="px-4 py-3">{formatCurrency(row.saldo)}</td>
-                      <td className="px-4 py-3">{formatNumber(row.entregasProximas)}</td>
+                      <td className="px-4 py-3">{formatNumberWithDash(row.entregasProximas)}</td>
                       <td className="px-4 py-3">
                         {row.fechaProxima ? formatDateLabel(row.fechaProxima) : 'Sin programación'}
                       </td>
@@ -2282,7 +2282,7 @@ const ProductViewRow: React.FC<{
         <span className="text-sm text-text-primary">{item.cantidad || '—'}</span>
         {quantity.amount !== null && (
           <p className="text-[11px] text-text-secondary">
-            {formatNumber(quantity.amount)} {quantity.unit === 'metros' ? 'm' : 'u'}
+            {formatNumberWithDash(quantity.amount)} {quantity.unit === 'metros' ? 'm' : 'u'}
           </p>
         )}
       </td>
@@ -2417,7 +2417,7 @@ const ProductionRow: React.FC<{
               {progress.label}
               {progress.producedEstimate !== null && progress.quantity !== null && (
                 <span className="block text-[11px] text-text-secondary">
-                  Estimado: {formatNumber(progress.producedEstimate)} / {formatNumber(progress.quantity)} u.
+                  Estimado: {formatNumberWithDash(progress.producedEstimate)} / {formatNumberWithDash(progress.quantity)} u.
                 </span>
               )}
             </p>
