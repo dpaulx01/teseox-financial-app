@@ -302,19 +302,6 @@ const productColorPalette = [
   'bg-lime-500/10 border-l-4 border-lime-500/60',
 ];
 
-function extractQuantityInfo(value: string | null | undefined): { amount: number | null; unit: 'metros' | 'unidades' } {
-  if (!value) {
-    return { amount: null, unit: 'unidades' };
-  }
-  const amount = parseQuantityFromString(value);
-  const normalized = normalizeText(value);
-  const isMeters = meterKeywords.some((keyword) => normalized.includes(keyword));
-  return {
-    amount,
-    unit: isMeters ? 'metros' : 'unidades',
-  };
-}
-
 function getStatusProgressPercent(estatus: string | null | undefined): number {
   const status = estatus ?? '';
   switch (status) {
