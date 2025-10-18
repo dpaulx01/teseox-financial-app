@@ -39,6 +39,17 @@ const parseISODate = (value: string): Date | null => {
   if (!value) {
     return null;
   }
+  
+  // Forzar parsing en zona horaria local para evitar desfase UTC
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const [, year, month, day] = match;
+    const parsed = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    parsed.setHours(0, 0, 0, 0);
+    return parsed;
+  }
+  
+  // Fallback al parsing estándar para fechas con hora
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     return null;
@@ -195,6 +206,7 @@ const formatDisplayDate = (value: string): string => {
   if (!parsed) {
     return value;
   }
+  
   return parsed.toLocaleDateString('es-EC', {
     weekday: 'short',
     day: '2-digit',
@@ -282,10 +294,15 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
     }
     const result: string[] = [];
     let cursor = new Date(startDate.getTime());
+    
+    // Generar todos los días hábiles entre startDate y productionEnd (inclusivo)
     while (cursor <= productionEnd) {
-      result.push(toISODate(cursor));
-      cursor = nextWorkingDay(addDays(cursor, 1));
+      if (isWorkingDay(cursor)) {
+        result.push(toISODate(cursor));
+      }
+      cursor = addDays(cursor, 1); // Avanzar día por día, no saltar
     }
+    
     return result;
   }, [item.fechaEntrega, startDate]);
 
@@ -381,6 +398,79 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
     setRows((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [key]: value };
+      
+      // Recálculo automático inteligente para metros/unidades
+      if (key === 'metros' || key === 'unidades') {
+        const quantityInfo = extractQuantityInfo(item.cantidad);
+        const targetField = quantityInfo.unit;
+        
+        // Solo aplicar recálculo si estamos editando el campo correcto (metros o unidades)
+        if (key === targetField && quantityInfo.amount && quantityInfo.amount > 0) {
+          const newValue = Number.parseFloat(value) || 0;
+          const currentDate = new Date();
+          currentDate.setHours(0, 0, 0, 0);
+          const editedRowDate = parseISODate(next[index].fecha);
+          
+          // Calcular cuánto necesitamos distribuir en las otras filas
+          const remainingAmount = quantityInfo.amount - newValue;
+          
+          // Si estamos editando una fecha pasada, solo redistribuir entre fechas futuras/actuales
+          // Si estamos editando una fecha actual/futura, redistribuir entre todas las demás fechas
+          const shouldPreservePastDates = editedRowDate && editedRowDate >= currentDate;
+          
+          const otherEditableRows = next.filter((row, idx) => {
+            if (idx === index) return false; // Excluir la fila actual
+            
+            const rowDate = parseISODate(row.fecha);
+            const hasValue = (Number.parseFloat(row[targetField]) || 0) > 0;
+            
+            if (!hasValue || !rowDate) return false;
+            
+            // Si editamos fecha futura/actual, redistribuir entre todas las fechas con valores
+            if (shouldPreservePastDates) {
+              return true;
+            }
+            
+            // Si editamos fecha pasada, solo redistribuir entre fechas actuales/futuras
+            return rowDate >= currentDate;
+          });
+          
+          if (remainingAmount > 0 && otherEditableRows.length > 0) {
+            // Distribuir proporcionalmente basado en los valores actuales
+            const otherRowsCurrentTotal = otherEditableRows.reduce((sum, row) => {
+              return sum + (Number.parseFloat(row[targetField]) || 0);
+            }, 0);
+            
+            if (otherRowsCurrentTotal > 0) {
+              // Redistribuir proporcionalmente
+              let distributedSoFar = 0;
+              
+              otherEditableRows.forEach((row, otherIndex) => {
+                const currentValue = Number.parseFloat(row[targetField]) || 0;
+                const proportion = currentValue / otherRowsCurrentTotal;
+                
+                // En la última iteración, asignar el remanente para evitar errores de redondeo
+                const isLast = otherIndex === otherEditableRows.length - 1;
+                const newDistributedValue = isLast 
+                  ? remainingAmount - distributedSoFar
+                  : Math.round((remainingAmount * proportion) * 100) / 100;
+                
+                distributedSoFar += newDistributedValue;
+                
+                // Encontrar el índice real en el array original
+                const realIndex = next.findIndex(r => r.fecha === row.fecha);
+                if (realIndex !== -1 && newDistributedValue >= 0) {
+                  next[realIndex] = {
+                    ...next[realIndex],
+                    [targetField]: newDistributedValue > 0 ? newDistributedValue.toString() : '0'
+                  };
+                }
+              });
+            }
+          }
+        }
+      }
+      
       return next;
     });
   };
@@ -517,18 +607,69 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
 
         <div className="px-6 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Metros planificados</p>
-              <p className="mt-2 text-2xl font-semibold text-sky-300">{formatNumber(totals.metros)}</p>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Unidades planificadas</p>
-              <p className="mt-2 text-2xl font-semibold text-emerald-300">{formatNumber(totals.unidades)}</p>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Fechas programadas</p>
-              <p className="mt-2 text-2xl font-semibold text-indigo-300">{rows.length}</p>
-            </div>
+            {(() => {
+              const quantityInfo = extractQuantityInfo(item.cantidad);
+              const targetAmount = quantityInfo.amount || 0;
+              const currentTotal = quantityInfo.unit === 'metros' ? totals.metros : totals.unidades;
+              const difference = currentTotal - targetAmount;
+              const isBalanced = Math.abs(difference) < 0.01;
+              const isOver = difference > 0.01;
+              
+              return (
+                <>
+                  <div className={`rounded-xl border p-4 ${
+                    isBalanced 
+                      ? 'border-green-500/40 bg-green-500/10' 
+                      : isOver 
+                        ? 'border-red-500/40 bg-red-500/10'
+                        : 'border-orange-500/40 bg-orange-500/10'
+                  }`}>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                      {quantityInfo.unit === 'metros' ? 'Metros planificados' : 'Unidades planificadas'}
+                    </p>
+                    <div className="mt-2 flex items-center justify-between">
+                      <p className={`text-2xl font-semibold ${
+                        isBalanced 
+                          ? 'text-green-400' 
+                          : isOver 
+                            ? 'text-red-400'
+                            : 'text-orange-400'
+                      }`}>
+                        {formatNumber(currentTotal)}
+                      </p>
+                      <div className="text-right">
+                        <p className="text-xs text-slate-400">Objetivo: {formatNumber(targetAmount)}</p>
+                        {!isBalanced && (
+                          <p className={`text-xs font-semibold ${
+                            isOver ? 'text-red-400' : 'text-orange-400'
+                          }`}>
+                            {isOver ? '+' : ''}{formatNumber(difference)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {isBalanced && (
+                      <p className="mt-1 text-xs text-green-400">✓ Balanceado automáticamente</p>
+                    )}
+                  </div>
+                  
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                      {quantityInfo.unit === 'metros' ? 'Unidades' : 'Metros'} planificados
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-300">
+                      {formatNumber(quantityInfo.unit === 'metros' ? totals.unidades : totals.metros)}
+                    </p>
+                  </div>
+                  
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Días laborables</p>
+                    <p className="mt-2 text-2xl font-semibold text-indigo-300">{rows.length}</p>
+                    <p className="mt-1 text-xs text-slate-400">Excluye fines de semana</p>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {(error || localError) && (
