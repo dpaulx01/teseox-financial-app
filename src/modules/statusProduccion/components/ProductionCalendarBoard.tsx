@@ -9,74 +9,142 @@ interface ProductionCalendarBoardProps {
   onRefresh: () => void;
 }
 
-interface DayCardProps {
-  day: DailyScheduleDay;
-  onSelect: (day: DailyScheduleDay) => void;
-}
-
 const formatNumber = (value: number) =>
   Intl.NumberFormat('es-EC', { maximumFractionDigits: 1 }).format(value || 0);
 
 const getMonthKey = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`;
 
-const DayCard: React.FC<DayCardProps> = ({ day, onSelect }) => {
-  const badgeColor = day.manual
-    ? 'bg-accent-glow text-accent border-accent/40'
-    : 'bg-primary-glow text-primary border-primary/30';
+const parseScheduleDate = (value: string | Date): Date => {
+  if (value instanceof Date) {
+    return new Date(value.getTime());
+  }
+  if (typeof value === 'string') {
+    const normalized = value.includes('T') ? value : `${value}T00:00:00`;
+    const parsed = new Date(normalized);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  return new Date(value);
+};
 
-  const parsedDate = new Date(day.fecha);
+const getDateKey = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const startOfWeek = (value: Date): Date => {
+  const day = value.getDay();
+  const diff = (day + 6) % 7; // Monday as first day
+  const result = new Date(value);
+  result.setDate(value.getDate() - diff);
+  result.setHours(0, 0, 0, 0);
+  return result;
+};
+
+const addDays = (value: Date, amount: number): Date => {
+  const result = new Date(value);
+  result.setDate(value.getDate() + amount);
+  return result;
+};
+
+interface CalendarCell {
+  date: Date;
+  dateKey: string;
+  dayData?: DailyScheduleDay;
+  isCurrentMonth: boolean;
+  isToday: boolean;
+  isWeekend: boolean;
+}
+
+interface CalendarDayCellProps {
+  cell: CalendarCell;
+  onSelect: (day: DailyScheduleDay) => void;
+}
+
+const CalendarDayCell: React.FC<CalendarDayCellProps> = ({ cell, onSelect }) => {
+  const { dayData, isCurrentMonth, isToday, isWeekend } = cell;
+  const hasData = Boolean(dayData);
+
+  let baseClasses =
+    'relative h-full rounded-2xl border border-border/50 bg-dark-card/40 p-3 text-left transition-all flex flex-col gap-3';
+  if (hasData) {
+    baseClasses += ' hover:border-primary/40 hover:-translate-y-1 hover:shadow-lg cursor-pointer';
+  } else {
+    baseClasses += ' cursor-default';
+  }
+  if (!isCurrentMonth) {
+    baseClasses += ' opacity-40';
+  }
+  if (isWeekend) {
+    baseClasses += ' bg-dark-card/30';
+  }
+  if (isToday) {
+    baseClasses += ' border-primary/60 shadow-glow-sm';
+  }
+  if (dayData?.manual) {
+    baseClasses += ' ring-1 ring-accent/40';
+  }
 
   return (
     <button
       type="button"
-      onClick={() => onSelect(day)}
-      className="h-full w-full text-left rounded-2xl border border-border/60 bg-dark-card/50 shadow-inner transition-transform hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg"
+      className={baseClasses}
+      onClick={() => dayData && onSelect(dayData)}
+      disabled={!hasData}
     >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-text-muted">
-            {parsedDate.toLocaleDateString('es-EC', { weekday: 'short' })}
-          </p>
-          <p className="text-lg font-semibold text-text-primary">
-            {parsedDate.toLocaleDateString('es-EC', { day: '2-digit', month: 'short' })}
-          </p>
+      <div className="flex items-start justify-between">
+        <div className="flex flex-col">
+          <span className="text-sm font-semibold text-text-primary leading-none">{cell.date.getDate()}</span>
+          <span className="text-[10px] uppercase tracking-wide text-text-muted">
+            {cell.date.toLocaleDateString('es-EC', { weekday: 'short' })}
+          </span>
         </div>
-        <span
-          className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${badgeColor}`}
-        >
-          <CalendarRange className="h-3 w-3" />
-          {day.manual ? 'Plan manual' : 'Distribución'}
-        </span>
-      </div>
-      <div className="px-4 py-4 space-y-3 text-sm text-text-secondary">
-        <div className="flex items-center justify-between">
-          <span className="uppercase text-[11px] tracking-wide">Metros</span>
-          <span className="font-semibold text-primary data-display">{formatNumber(day.metros)}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="uppercase text-[11px] tracking-wide">Unidades</span>
-          <span className="font-semibold text-accent data-display">{formatNumber(day.unidades)}</span>
-        </div>
-        <div className="flex items-center justify-between text-[11px] text-text-muted">
-          <span>Productos</span>
-          <span>{day.items.length}</span>
-        </div>
-        {typeof day.capacidad === 'number' && day.capacidad > 0 ? (
-          <div className="flex items-center justify-between text-[11px] text-text-muted">
-            <span>Capacidad</span>
-            <span>{Math.min(999, Math.round(((day.metros + day.unidades) / day.capacidad) * 100))}%</span>
-          </div>
+        {dayData ? (
+          <span
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+              dayData.manual ? 'bg-accent-glow text-accent border-accent/40' : 'bg-primary-glow text-primary border-primary/30'
+            }`}
+          >
+            <CalendarRange className="h-3 w-3" />
+            {dayData.manual ? 'Manual' : 'Auto'}
+          </span>
         ) : null}
       </div>
-      <div className="px-4 pb-4">
-        <span className="inline-flex items-center gap-2 text-[11px] font-semibold text-primary">
+
+      {dayData ? (
+        <div className="space-y-2 text-[11px] text-text-secondary">
+          <div className="flex items-center justify-between">
+            <span className="uppercase tracking-wide text-text-muted">Metros</span>
+            <span className="font-semibold text-primary data-display">{formatNumber(dayData.metros)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="uppercase tracking-wide text-text-muted">Unidades</span>
+            <span className="font-semibold text-accent data-display">{formatNumber(dayData.unidades)}</span>
+          </div>
+          <div className="flex items-center justify-between text-text-muted">
+            <span>Productos</span>
+            <span>{dayData.items.length}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-1 items-center justify-center text-[10px] text-text-muted">
+          {isCurrentMonth ? 'Sin datos' : ''}
+        </div>
+      )}
+
+      {dayData ? (
+        <div className="mt-auto inline-flex items-center gap-2 text-[11px] font-semibold text-primary">
           <TrendingUp className="h-3 w-3" />
           Ver detalle
-        </span>
-      </div>
+        </div>
+      ) : null}
     </button>
   );
 };
+
 
 interface DayDetailModalProps {
   day: DailyScheduleDay | null;
@@ -88,31 +156,61 @@ const DayDetailModal: React.FC<DayDetailModalProps> = ({ day, onClose }) => {
     return null;
   }
 
-  const dateLabel = new Date(day.fecha).toLocaleDateString('es-EC', {
+  const dateLabel = parseScheduleDate(day.fecha).toLocaleDateString('es-EC', {
     weekday: 'long',
     day: '2-digit',
     month: 'long',
     year: 'numeric',
   });
 
-  const groupedByQuote = useMemo(() => {
-    const groups = new Map<string, { cotizacion: string; cliente: string | null; items: DailyScheduleItem[] }>();
+  const groupedByProduct = useMemo(() => {
+    const products = new Map<string, {
+      descripcion: string;
+      totalMetros: number;
+      totalUnidades: number;
+      cotizaciones: Set<string>;
+      clientes: Set<string>;
+      hasManual: boolean;
+    }>();
+
     for (const item of day.items) {
-      const key = item.numero_cotizacion || `item-${item.item_id}`;
-      const bucket = groups.get(key) || {
-        cotizacion: item.numero_cotizacion || 'Sin cotización',
-        cliente: item.cliente || null,
-        items: [],
+      const key = item.descripcion.trim();
+      const existing = products.get(key) || {
+        descripcion: item.descripcion,
+        totalMetros: 0,
+        totalUnidades: 0,
+        cotizaciones: new Set(),
+        clientes: new Set(),
+        hasManual: false,
       };
-      bucket.items.push(item);
-      groups.set(key, bucket);
+
+      existing.totalMetros += item.metros;
+      existing.totalUnidades += item.unidades;
+      
+      if (item.numero_cotizacion) {
+        existing.cotizaciones.add(item.numero_cotizacion);
+      }
+      if (item.cliente) {
+        existing.clientes.add(item.cliente);
+      }
+      if (item.manual) {
+        existing.hasManual = true;
+      }
+
+      products.set(key, existing);
     }
-    return Array.from(groups.values());
+
+    return Array.from(products.values()).sort((a, b) => {
+      // Ordenar por mayor cantidad (metros primero, luego unidades)
+      const aTotal = a.totalMetros > 0 ? a.totalMetros : a.totalUnidades;
+      const bTotal = b.totalMetros > 0 ? b.totalMetros : b.totalUnidades;
+      return bTotal - aTotal;
+    });
   }, [day.items]);
 
   return (
-    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-dark-bg/90 backdrop-blur-md px-4">
-      <div className="w-full max-w-5xl glass-panel rounded-2xl border border-border/60 bg-dark-card/95 shadow-hologram animate-scale-in">
+    <div className="fixed inset-0 z-[1200] flex items-start justify-center bg-dark-bg/90 backdrop-blur-md px-4 py-4">
+      <div className="w-full max-w-6xl h-[90vh] glass-panel rounded-2xl border border-border/60 bg-dark-card/95 shadow-hologram animate-scale-in flex flex-col">
         <div className="flex items-center justify-between border-b border-border/40 px-6 py-5 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-accent/5" />
           <div className="relative z-10">
@@ -127,19 +225,19 @@ const DayDetailModal: React.FC<DayDetailModalProps> = ({ day, onClose }) => {
             Cerrar
           </button>
         </div>
-        <div className="px-6 py-6 space-y-8 max-h-[75vh] overflow-y-auto">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="glass-card rounded-xl border border-primary/30 bg-primary-glow p-5 shadow-glow-sm hover:shadow-glow-md transition-all duration-300">
-              <p className="text-xs uppercase tracking-wider text-text-muted font-semibold">Metros totales</p>
-              <p className="mt-2 text-3xl font-bold text-primary data-display">{formatNumber(day.metros)}</p>
+        <div className="flex-1 px-6 py-6 space-y-6 overflow-y-auto min-h-0">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="glass-card rounded-xl border border-primary/30 bg-primary-glow p-6 shadow-glow-sm hover:shadow-glow-md transition-all duration-300">
+              <p className="text-sm uppercase tracking-wider text-text-muted font-semibold">Metros totales</p>
+              <p className="mt-3 text-4xl font-bold text-primary data-display">{formatNumber(day.metros)}</p>
             </div>
-            <div className="glass-card rounded-xl border border-accent/30 bg-accent-glow p-5 shadow-glow-sm hover:shadow-glow-md transition-all duration-300">
-              <p className="text-xs uppercase tracking-wider text-text-muted font-semibold">Unidades totales</p>
-              <p className="mt-2 text-3xl font-bold text-accent data-display">{formatNumber(day.unidades)}</p>
+            <div className="glass-card rounded-xl border border-accent/30 bg-accent-glow p-6 shadow-glow-sm hover:shadow-glow-md transition-all duration-300">
+              <p className="text-sm uppercase tracking-wider text-text-muted font-semibold">Unidades totales</p>
+              <p className="mt-3 text-4xl font-bold text-accent data-display">{formatNumber(day.unidades)}</p>
             </div>
-            <div className="glass-card rounded-xl border border-border/60 bg-dark-card/80 p-5 hover:bg-dark-card/90 transition-all duration-300">
-              <p className="text-xs uppercase tracking-wider text-text-muted font-semibold">Productos únicos</p>
-              <p className="mt-2 text-3xl font-bold text-text-primary">{day.items.length}</p>
+            <div className="glass-card rounded-xl border border-border/60 bg-dark-card/80 p-6 hover:bg-dark-card/90 transition-all duration-300">
+              <p className="text-sm uppercase tracking-wider text-text-muted font-semibold">Productos únicos</p>
+              <p className="mt-3 text-4xl font-bold text-text-primary">{groupedByProduct.length}</p>
               {day.manual ? (
                 <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-glow border border-accent/30">
                   <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
@@ -149,7 +247,7 @@ const DayDetailModal: React.FC<DayDetailModalProps> = ({ day, onClose }) => {
             </div>
           </div>
 
-          {groupedByQuote.length === 0 ? (
+          {groupedByProduct.length === 0 ? (
             <div className="glass-card rounded-2xl border border-dashed border-border/60 bg-dark-card/30 px-6 py-8 text-center">
               <div className="space-y-3">
                 <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
@@ -160,56 +258,93 @@ const DayDetailModal: React.FC<DayDetailModalProps> = ({ day, onClose }) => {
               </div>
             </div>
           ) : (
-            <div className="space-y-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-1 h-6 bg-gradient-to-b from-primary to-accent rounded-full"></div>
-                <h4 className="text-lg font-semibold text-text-primary">Productos por cotización</h4>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-2 border-b border-border/20">
+                <div className="w-1 h-8 bg-gradient-to-b from-primary to-accent rounded-full"></div>
+                <h4 className="text-xl font-bold text-text-primary">Programación de productos</h4>
+                <span className="text-sm text-text-muted bg-dark-card/60 px-3 py-1 rounded-full border border-border/40">
+                  {groupedByProduct.length} {groupedByProduct.length === 1 ? 'producto' : 'productos'} únicos
+                </span>
               </div>
-              {groupedByQuote.map((group) => (
-                <div key={group.cotizacion} className="glass-card rounded-2xl border border-border/60 bg-dark-card/70 overflow-hidden hover:bg-dark-card/80 transition-all duration-300">
-                  <div className="relative px-6 py-4 border-b border-border/40 bg-gradient-to-r from-primary/5 to-transparent">
-                    <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-accent/5"></div>
-                    <div className="relative z-10">
-                      <span className="text-lg font-bold text-text-primary">{group.cotizacion}</span>
-                      {group.cliente && (
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="w-2 h-2 rounded-full bg-accent"></div>
-                          <span className="text-sm text-text-secondary font-medium">{group.cliente}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="divide-y divide-border/30">
-                    {group.items.map((item) => (
-                      <div
-                        key={`${item.item_id}-${item.descripcion}`}
-                        className="px-6 py-4 hover:bg-dark-card/40 transition-colors duration-200"
-                      >
+              <div className="grid gap-3">
+                {groupedByProduct.map((product, index) => {
+                  const isMetrosProduct = product.totalMetros > 0;
+                  const mainQuantity = isMetrosProduct ? product.totalMetros : product.totalUnidades;
+                  const mainUnit = isMetrosProduct ? 'metros' : 'unidades';
+                  
+                  return (
+                    <div
+                      key={`${product.descripcion}-${index}`}
+                      className="glass-card rounded-2xl border border-border/60 bg-dark-card/70 overflow-hidden hover:bg-dark-card/80 transition-all duration-300"
+                    >
+                      <div className="px-5 py-4">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
-                            <p className="font-semibold text-text-primary text-base leading-tight">{item.descripcion}</p>
-                            <div className="flex items-center gap-6 mt-3 text-sm">
-                              <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-primary"></div>
-                                <span className="text-text-muted">Metros:</span>
-                                <span className="font-bold text-primary">{formatNumber(item.metros)}</span>
+                            <h5 className="font-bold text-text-primary text-base leading-tight mb-3">
+                              {product.descripcion}
+                            </h5>
+                            
+                            <div className="flex items-center gap-4 mb-3">
+                              <div className={`inline-flex items-center gap-3 px-3 py-2 rounded-lg border ${
+                                isMetrosProduct 
+                                  ? 'border-primary/40 bg-primary-glow' 
+                                  : 'border-accent/40 bg-accent-glow'
+                              }`}>
+                                <div className={`w-3 h-3 rounded-full ${
+                                  isMetrosProduct ? 'bg-primary' : 'bg-accent'
+                                }`}></div>
+                                <div>
+                                  <p className="text-xs uppercase tracking-wider text-text-muted font-semibold">
+                                    {mainUnit}
+                                  </p>
+                                  <p className={`text-xl font-bold ${
+                                    isMetrosProduct ? 'text-primary' : 'text-accent'
+                                  } data-display`}>
+                                    {formatNumber(mainQuantity)}
+                                  </p>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-accent"></div>
-                                <span className="text-text-muted">Unidades:</span>
-                                <span className="font-bold text-accent">{formatNumber(item.unidades)}</span>
-                              </div>
-                              {item.estatus && (
+                              
+                              {/* Mostrar la cantidad complementaria si existe */}
+                              {((isMetrosProduct && product.totalUnidades > 0) || (!isMetrosProduct && product.totalMetros > 0)) && (
+                                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border/40 bg-dark-card/60">
+                                  <div className={`w-3 h-3 rounded-full ${
+                                    !isMetrosProduct ? 'bg-primary' : 'bg-accent'
+                                  }`}></div>
+                                  <span className="text-sm text-text-muted">
+                                    {!isMetrosProduct ? 'Metros' : 'Unidades'}:
+                                  </span>
+                                  <span className={`font-semibold ${
+                                    !isMetrosProduct ? 'text-primary' : 'text-accent'
+                                  }`}>
+                                    {formatNumber(!isMetrosProduct ? product.totalMetros : product.totalUnidades)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-3 text-xs">
+                              {product.cotizaciones.size > 0 && (
                                 <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 rounded-full bg-text-secondary"></div>
-                                  <span className="text-text-muted">Estado:</span>
-                                  <span className="font-medium text-text-secondary">{item.estatus}</span>
+                                  <div className="w-2 h-2 rounded-full bg-text-secondary"></div>
+                                  <span className="text-text-muted">
+                                    {product.cotizaciones.size} {product.cotizaciones.size === 1 ? 'cotización' : 'cotizaciones'}
+                                  </span>
+                                </div>
+                              )}
+                              {product.clientes.size > 0 && (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-2 h-2 rounded-full bg-accent"></div>
+                                  <span className="text-text-muted">
+                                    {product.clientes.size} {product.clientes.size === 1 ? 'cliente' : 'clientes'}
+                                  </span>
                                 </div>
                               )}
                             </div>
                           </div>
+                          
                           <div className="flex-shrink-0">
-                            {item.manual ? (
+                            {product.hasManual ? (
                               <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-accent-glow border border-accent/40 shadow-glow-accent">
                                 <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
                                 <span className="text-xs font-bold text-accent uppercase tracking-wide">Manual</span>
@@ -223,10 +358,10 @@ const DayDetailModal: React.FC<DayDetailModalProps> = ({ day, onClose }) => {
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -241,7 +376,7 @@ const ProductionCalendarBoard: React.FC<ProductionCalendarBoardProps> = ({ days,
   const monthBuckets = useMemo(() => {
     const map = new Map<string, { monthDate: Date; days: DailyScheduleDay[] }>();
     for (const day of days) {
-      const parsed = new Date(day.fecha);
+      const parsed = parseScheduleDate(day.fecha);
       parsed.setHours(0, 0, 0, 0);
       const key = getMonthKey(parsed);
       const bucket = map.get(key) || {
@@ -282,8 +417,69 @@ const ProductionCalendarBoard: React.FC<ProductionCalendarBoardProps> = ({ days,
     if (!currentBucket) {
       return [] as DailyScheduleDay[];
     }
-    return [...currentBucket[1].days].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+    return [...currentBucket[1].days].sort(
+      (a, b) => parseScheduleDate(a.fecha).getTime() - parseScheduleDate(b.fecha).getTime(),
+    );
   }, [currentBucket]);
+
+  const scheduleMap = useMemo(() => {
+    const map = new Map<string, DailyScheduleDay>();
+    for (const day of visibleDays) {
+      const parsed = parseScheduleDate(day.fecha);
+      const key = getDateKey(parsed);
+      map.set(key, day);
+    }
+    return map;
+  }, [visibleDays]);
+
+  const weeks = useMemo(() => {
+    if (!currentBucket) {
+      return [] as CalendarCell[][];
+    }
+    const monthDate = currentBucket[1].monthDate;
+    const startOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+    const endOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const weeksMatrix: CalendarCell[][] = [];
+    let cursor = startOfWeek(startOfMonth);
+
+    while (true) {
+      const weekCells: CalendarCell[] = [];
+      for (let i = 0; i < 7; i += 1) {
+        const cellDate = addDays(cursor, i);
+        cellDate.setHours(0, 0, 0, 0);
+        const dateKey = getDateKey(cellDate);
+        const dayData = scheduleMap.get(dateKey);
+        weekCells.push({
+          date: cellDate,
+          dateKey,
+          dayData,
+          isCurrentMonth: cellDate.getMonth() === monthDate.getMonth(),
+          isToday: cellDate.getTime() === today.getTime(),
+          isWeekend: cellDate.getDay() === 0 || cellDate.getDay() === 6,
+        });
+      }
+      weeksMatrix.push(weekCells);
+
+      const lastDay = weekCells[6].date;
+      if (
+        lastDay >= endOfMonth &&
+        (lastDay.getMonth() !== monthDate.getMonth() || lastDay.getDate() === endOfMonth.getDate())
+      ) {
+        break;
+      }
+      cursor = addDays(cursor, 7);
+    }
+
+    return weeksMatrix;
+  }, [currentBucket, scheduleMap]);
+
+  const weekdayLabels = useMemo(
+    () => ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+    [],
+  );
 
   const monthLabel = useMemo(() => {
     if (!currentBucket) {
@@ -315,18 +511,37 @@ const ProductionCalendarBoard: React.FC<ProductionCalendarBoardProps> = ({ days,
         </button>
       </div>
     );
-  } else if (!visibleDays.length) {
+  } else if (!weeks.length) {
     content = (
       <div className="flex h-64 flex-col items-center justify-center rounded-2xl border border-border/60 bg-dark-card/50 p-6 text-sm text-text-secondary">
-        Sin programación disponible para este mes.
+        Sin calendario disponible.
       </div>
     );
   } else {
+    const hasData = visibleDays.length > 0;
     content = (
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {visibleDays.map((day) => (
-          <DayCard key={day.fecha} day={day} onSelect={setSelectedDay} />
-        ))}
+      <div className="space-y-3">
+        {!hasData ? (
+          <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 text-sm text-text-muted text-center">
+            Sin programación registrada para este mes. Los días se muestran para control histórico.
+          </div>
+        ) : null}
+        <div className="grid grid-cols-7 gap-2 text-[12px] uppercase tracking-wide text-text-muted">
+          {weekdayLabels.map((label) => (
+            <div key={label} className="px-2 text-center">
+              {label}
+            </div>
+          ))}
+        </div>
+        <div className="space-y-2">
+          {weeks.map((week, index) => (
+            <div key={`week-${index}`} className="grid grid-cols-7 gap-2">
+              {week.map((cell) => (
+                <CalendarDayCell key={cell.dateKey} cell={cell} onSelect={setSelectedDay} />
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

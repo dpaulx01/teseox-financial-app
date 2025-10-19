@@ -169,11 +169,31 @@ export interface FinancialSummary {
   saldo_por_cobrar: number;
 }
 
+export type DataGapIssue =
+  | 'sin_fecha_entrega'
+  | 'sin_estatus'
+  | 'sin_cliente'
+  | 'sin_cantidad'
+  | 'sin_programacion'
+  | 'sin_factura';
+
+export interface DataGapDetail {
+  item_id: number;
+  numero_cotizacion?: string | null;
+  descripcion: string;
+  cliente?: string | null;
+  estatus?: string | null;
+  issues: DataGapIssue[];
+}
+
 export interface DataGapSummary {
   sin_fecha_entrega: number;
   sin_estatus: number;
   sin_cliente: number;
   sin_cantidad: number;
+  sin_programacion: number;
+  sin_factura: number;
+  detalles: DataGapDetail[];
 }
 
 export interface TopClientItem {

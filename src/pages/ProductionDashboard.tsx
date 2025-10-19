@@ -7,6 +7,8 @@ import {
   StatusBreakdownItem,
   TopClientItem,
   UpcomingDeliveryItem,
+  DataGapDetail,
+  DataGapIssue,
 } from '../types/production';
 import {
   Loader,
@@ -16,6 +18,8 @@ import {
   TrendingUp,
   Clock,
   RefreshCcw,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import {
   BarChart,
@@ -29,7 +33,7 @@ import {
   ComposedChart,
   Area,
 } from 'recharts';
-import ProductionControlPanel from './ProductionControlPanel';
+import ProductionControlPanel, { ExternalPanelContext } from './ProductionControlPanel';
 import ProductionArchive from './ProductionArchive';
 
 const numberFormatter = new Intl.NumberFormat('es-EC');
@@ -85,15 +89,25 @@ const renderTopClientsTooltip = ({ active, payload }: any) => {
   if (!active || !payload || !payload.length) {
     return null;
   }
-  const data: TopClientItem = payload[0].payload;
+  const data = payload[0].payload as {
+    name: string;
+    item_count?: number;
+    total_value?: number;
+    total_units?: number;
+    total_metros?: number;
+    unidades?: number;
+    metros?: number;
+  };
+  const unidades = data.total_units ?? data.unidades ?? 0;
+  const metros = data.total_metros ?? data.metros ?? 0;
   return (
     <div className="glass-card rounded-xl border border-border/60 bg-dark-card/95 px-4 py-3 shadow-glass">
       <p className="text-sm font-semibold text-text-primary">{data.name}</p>
       <p className="text-xs text-text-muted">
-        Unidades activas: {formatNumber(data.total_units)}
+        Unidades activas: {formatNumber(unidades)}
       </p>
       <p className="text-xs text-text-muted">
-        Metros activos: {formatNumber(data.total_metros)}
+        Metros activos: {formatNumber(metros)}
       </p>
       <p className="text-xs text-text-muted">
         Ítems activos: {formatNumber(data.item_count)}
@@ -141,6 +155,9 @@ const ProductionDashboard: React.FC = () => {
   const [kpiData, setKpiData] = useState<DashboardKpisResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [rangeType, setRangeType] = useState<'week' | 'half-month' | 'month'>('week');
+  const [rangeOffset, setRangeOffset] = useState<number>(0);
+  const [panelContext, setPanelContext] = useState<ExternalPanelContext | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -157,6 +174,11 @@ const ProductionDashboard: React.FC = () => {
   }, []);
 
   const hasMounted = useRef(false);
+
+  const handleNavigateToControlPanel = useCallback((payload: ExternalPanelContext) => {
+    setPanelContext(payload);
+    setActiveView('control_panel');
+  }, []);
 
   useEffect(() => {
     if (!hasMounted.current) {
@@ -202,6 +224,78 @@ const ProductionDashboard: React.FC = () => {
       daily_workload,
     } = kpiData;
 
+    const issueLabels: Record<DataGapIssue, string> = {
+      sin_programacion: 'Sin programación',
+      sin_fecha_entrega: 'Sin fecha de entrega',
+      sin_estatus: 'Sin estatus',
+      sin_cliente: 'Sin cliente',
+      sin_cantidad: 'Sin cantidad',
+      sin_factura: 'Sin factura',
+    };
+
+    const issueColorMap: Partial<Record<DataGapIssue, string>> = {
+      sin_programacion: 'bg-amber-500/10 text-amber-200 border border-amber-400/40',
+      sin_fecha_entrega: 'bg-red-500/10 text-red-200 border border-red-400/40',
+      sin_estatus: 'bg-slate-500/10 text-slate-200 border border-slate-400/40',
+      sin_cliente: 'bg-purple-500/10 text-purple-200 border border-purple-400/40',
+      sin_cantidad: 'bg-sky-500/10 text-sky-200 border border-sky-400/40',
+      sin_factura: 'bg-indigo-500/10 text-indigo-200 border border-indigo-400/40',
+    };
+
+    const dataGapIssueConfig: Array<{ key: DataGapIssue; label: string }> = [
+      { key: 'sin_programacion', label: issueLabels.sin_programacion },
+      { key: 'sin_fecha_entrega', label: issueLabels.sin_fecha_entrega },
+      { key: 'sin_estatus', label: issueLabels.sin_estatus },
+      { key: 'sin_cliente', label: issueLabels.sin_cliente },
+      { key: 'sin_cantidad', label: issueLabels.sin_cantidad },
+      { key: 'sin_factura', label: issueLabels.sin_factura },
+    ];
+
+    const getGapCount = (issue: DataGapIssue): number => {
+      switch (issue) {
+        case 'sin_programacion':
+          return data_gaps.sin_programacion;
+        case 'sin_fecha_entrega':
+          return data_gaps.sin_fecha_entrega;
+        case 'sin_estatus':
+          return data_gaps.sin_estatus;
+        case 'sin_cliente':
+          return data_gaps.sin_cliente;
+        case 'sin_cantidad':
+          return data_gaps.sin_cantidad;
+        case 'sin_factura':
+          return data_gaps.sin_factura;
+        default:
+          return 0;
+      }
+    };
+
+    const gapDetails: DataGapDetail[] = data_gaps.detalles ?? [];
+    const activeIssueSummaries = dataGapIssueConfig.filter(({ key }) => getGapCount(key) > 0);
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const addDays = (date: Date, amount: number) => {
+      const result = new Date(date);
+      result.setDate(result.getDate() + amount);
+      return result;
+    };
+
+    const startOfWeek = (date: Date) => {
+      const result = new Date(date);
+      const diff = (result.getDay() + 6) % 7;
+      result.setDate(result.getDate() - diff);
+      result.setHours(0, 0, 0, 0);
+      return result;
+    };
+
+    const startOfMonth = (date: Date) => {
+      const result = new Date(date.getFullYear(), date.getMonth(), 1);
+      result.setHours(0, 0, 0, 0);
+      return result;
+    };
+
     const parseDailyWorkloadDate = (value: string) => {
       if (!value) {
         return new Date();
@@ -235,25 +329,100 @@ const ProductionDashboard: React.FC = () => {
       })
       .sort((a, b) => a.rawDate.getTime() - b.rawDate.getTime());
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const sevenDaysAhead = new Date(todayStart.getTime());
-    sevenDaysAhead.setDate(sevenDaysAhead.getDate() + 7);
+    const getRangeLabel = (type: typeof rangeType, offset: number, start: Date, end: Date) => {
+      if (type === 'week') {
+        if (offset === 0) return 'Semana actual';
+        if (offset === -1) return 'Semana anterior';
+        if (offset === 1) return 'Semana siguiente';
+        return `Semana ${offset > 0 ? `+${offset}` : offset}`;
+      }
+      if (type === 'half-month') {
+        if (offset === 0) return 'Próximos 15 días';
+        if (offset === -1) return '15 días previos';
+        if (offset === 1) return '15 días siguientes';
+        return `15 días ${offset > 0 ? `+${offset}` : offset}`;
+      }
+      if (offset === 0) {
+        return 'Mes en curso';
+      }
+      const monthLabel = start.toLocaleDateString('es-EC', {
+        month: 'long',
+        year: 'numeric',
+      });
+      return monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+    };
 
-    const nextSevenTotals = scheduleData.reduce(
+    const rangeBounds = (() => {
+      if (scheduleData.length === 0) {
+        return {
+          start: todayStart,
+          end: todayStart,
+          label: 'Sin rango',
+        };
+      }
+      if (rangeType === 'week') {
+        const baseStart = startOfWeek(todayStart);
+        const start = addDays(baseStart, rangeOffset * 7);
+        const end = addDays(start, 6);
+        return {
+          start,
+          end,
+          label: getRangeLabel('week', rangeOffset, start, end),
+        };
+      }
+      if (rangeType === 'half-month') {
+        const start = addDays(todayStart, rangeOffset * 15);
+        const end = addDays(start, 14);
+        return {
+          start,
+          end,
+          label: getRangeLabel('half-month', rangeOffset, start, end),
+        };
+      }
+      const base = new Date(todayStart.getFullYear(), todayStart.getMonth() + rangeOffset, 1);
+      const start = startOfMonth(base);
+      const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+      end.setHours(0, 0, 0, 0);
+      return {
+        start,
+        end,
+        label: getRangeLabel('month', rangeOffset, start, end),
+      };
+    })();
+
+    const rangeFilteredSchedule = scheduleData.filter(
+      (item) => item.rawDate >= rangeBounds.start && item.rawDate <= rangeBounds.end,
+    );
+
+    const rangeTotals = rangeFilteredSchedule.reduce(
+      (acc, item) => {
+        acc.metros += item.metros;
+        acc.unidades += item.unidades;
+        return acc;
+      },
+      { metros: 0, unidades: 0 },
+    );
+
+    const futureTotals = scheduleData.reduce(
       (acc, item) => {
         if (item.rawDate >= todayStart) {
           acc.metros += item.metros;
           acc.unidades += item.unidades;
-          if (item.rawDate <= sevenDaysAhead) {
-            acc.metros7 += item.metros;
-            acc.unidades7 += item.unidades;
-          }
         }
         return acc;
       },
-      { metros: 0, unidades: 0, metros7: 0, unidades7: 0 },
+      { metros: 0, unidades: 0 },
     );
+
+    const minScheduleDate = scheduleData.length ? scheduleData[0].rawDate : null;
+    const maxScheduleDate = scheduleData.length ? scheduleData[scheduleData.length - 1].rawDate : null;
+
+    const canNavigatePrev = minScheduleDate
+      ? rangeBounds.start > minScheduleDate
+      : false;
+    const canNavigateNext = maxScheduleDate
+      ? rangeBounds.end < maxScheduleDate
+      : false;
 
     const statusChartData = status_breakdown.map((item) => ({
       status: item.status,
@@ -290,64 +459,129 @@ const ProductionDashboard: React.FC = () => {
                     Programación diaria basada en las fechas de entrega de los pedidos activos.
                   </p>
                 </div>
-                <div className="rounded-full border border-primary/40 bg-primary-glow px-4 py-2 text-sm font-semibold text-primary">
-                  Próx. 7 días: {formatNumber(nextSevenTotals.metros7)} m · {formatNumber(nextSevenTotals.unidades7)} u
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="inline-flex rounded-full border border-border/60 bg-dark-card/70 p-1 text-xs">
+                    {[
+                      { key: 'week', label: 'Semana' },
+                      { key: 'half-month', label: '15 días' },
+                      { key: 'month', label: 'Mes' },
+                    ].map((option) => (
+                      <button
+                        key={option.key}
+                        type="button"
+                        onClick={() => {
+                          setRangeType(option.key as typeof rangeType);
+                          setRangeOffset(0);
+                        }}
+                        className={`px-3 py-1 rounded-full font-semibold transition ${
+                          rangeType === option.key
+                            ? 'bg-primary text-dark-bg'
+                            : 'text-text-muted hover:text-text-secondary'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="inline-flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRangeOffset((value) => value - 1)}
+                      disabled={!canNavigatePrev}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/60 text-text-muted hover:text-primary hover:border-primary disabled:opacity-40 disabled:cursor-not-allowed"
+                      aria-label="Rango anterior"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <span className="text-xs font-semibold text-text-secondary whitespace-nowrap">
+                      {rangeBounds.label}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setRangeOffset((value) => value + 1)}
+                      disabled={!canNavigateNext}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/60 text-text-muted hover:text-primary hover:border-primary disabled:opacity-40 disabled:cursor-not-allowed"
+                      aria-label="Rango siguiente"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="mb-4 grid gap-3 rounded-2xl border border-border/60 bg-dark-card/70 p-4 text-sm text-text-muted sm:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-text-muted font-semibold">Totales del rango</p>
+                  <p className="mt-1 font-semibold text-primary data-display">
+                    {formatNumber(rangeTotals.metros)} m • {formatNumber(rangeTotals.unidades)} u
+                  </p>
+                  <p className="text-xs text-text-secondary mt-1">
+                    Del {rangeBounds.start.toLocaleDateString('es-EC', { day: '2-digit', month: 'short' })} al{' '}
+                    {rangeBounds.end.toLocaleDateString('es-EC', { day: '2-digit', month: 'short' })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-text-muted font-semibold">Proyección disponible</p>
+                  <p className="mt-1 font-semibold text-text-secondary">
+                    Próximos días programados: {formatNumber(futureTotals.metros)} m • {formatNumber(futureTotals.unidades)} u
+                  </p>
+                  <p className="text-xs text-text-secondary mt-1">
+                    {maxScheduleDate
+                      ? `Cobertura hasta ${maxScheduleDate.toLocaleDateString('es-EC', { day: '2-digit', month: 'short' })}`
+                      : 'Sin programación futura'}
+                  </p>
                 </div>
               </div>
               <div className="h-80 rounded-xl overflow-hidden">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={scheduleData} margin={{ top: 15, right: 25, left: 5, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="2 4" stroke="var(--color-border)" opacity={0.3} />
-                    <XAxis 
-                      dataKey="date" 
-                      tick={{ fontSize: 12, fill: 'var(--color-text-muted)' }}
-                      axisLine={{ stroke: 'var(--color-border)' }}
-                    />
-                    <YAxis 
-                      tick={{ fontSize: 12, fill: 'var(--color-text-muted)' }}
-                      axisLine={{ stroke: 'var(--color-border)' }}
-                    />
-                    <RechartsTooltip
-                      contentStyle={{ 
-                        fontSize: 13, 
-                        backgroundColor: 'var(--color-card)',
-                        border: '1px solid var(--color-border)',
-                        borderRadius: '12px',
-                        color: 'var(--color-text-primary)'
-                      }}
-                      formatter={(value: number) => formatNumber(value)}
-                    />
-                    <Legend wrapperStyle={{ color: 'var(--color-text-secondary)' }} />
-                    <Area
-                      type="monotone"
-                      dataKey="metros"
-                      name="Metros"
-                      stroke="var(--color-primary)"
-                      fill="var(--color-primary-glow)"
-                      strokeWidth={3}
-                      activeDot={{ r: 6, fill: 'var(--color-primary)' }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="unidades"
-                      name="Unidades"
-                      stroke="var(--color-accent)"
-                      fill="var(--color-accent-glow)"
-                      strokeWidth={3}
-                      activeDot={{ r: 6, fill: 'var(--color-accent)' }}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-6 grid grid-cols-1 gap-4 text-sm text-text-muted sm:grid-cols-2 border-t border-border/40 pt-4">
-                <span className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-primary"></div>
-                  Total planificado (≥ hoy): {formatNumber(nextSevenTotals.metros)} m · {formatNumber(nextSevenTotals.unidades)} u
-                </span>
-                <span className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-accent"></div>
-                  Ventana mostrada: hoy → {sevenDaysAhead.toLocaleDateString('es-EC', { day: '2-digit', month: 'short' })}
-                </span>
+                {rangeFilteredSchedule.length === 0 ? (
+                  <div className="flex h-full items-center justify-center border border-dashed border-border/60 bg-dark-card/40 text-sm text-text-muted">
+                    Sin producción programada en este rango.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart
+                      data={rangeFilteredSchedule}
+                      margin={{ top: 15, right: 25, left: 5, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="2 4" stroke="var(--color-border)" opacity={0.3} />
+                      <XAxis 
+                        dataKey="date" 
+                        tick={{ fontSize: 12, fill: 'var(--color-text-muted)' }}
+                        axisLine={{ stroke: 'var(--color-border)' }}
+                      />
+                      <YAxis 
+                        tick={{ fontSize: 12, fill: 'var(--color-text-muted)' }}
+                        axisLine={{ stroke: 'var(--color-border)' }}
+                      />
+                      <RechartsTooltip
+                        contentStyle={{ 
+                          fontSize: 13, 
+                          backgroundColor: 'var(--color-card)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: '12px',
+                          color: 'var(--color-text-primary)'
+                        }}
+                        formatter={(value: number) => formatNumber(value)}
+                      />
+                      <Legend wrapperStyle={{ color: 'var(--color-text-secondary)' }} />
+                      <Area
+                        type="monotone"
+                        dataKey="metros"
+                        name="Metros"
+                        stroke="var(--color-accent)"
+                        fill="var(--color-accent)"
+                        fillOpacity={0.2}
+                        strokeWidth={3}
+                        activeDot={{ r: 6, fill: 'var(--color-accent)' }}
+                      />
+                      <Bar
+                        dataKey="unidades"
+                        name="Unidades"
+                        fill="var(--color-primary)"
+                        radius={[8, 8, 0, 0]}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
           </section>
@@ -369,22 +603,35 @@ const ProductionDashboard: React.FC = () => {
             ) : (
               <ul className="space-y-4">
                 {risk_alerts.slice(0, 8).map((alert) => (
-                  <li key={`${alert.tipo}-${alert.id}`} className="rounded-xl border border-border/40 bg-dark-card/60 p-4 hover:bg-dark-card/80 transition-colors">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-2 flex-1">
-                        <p className="text-sm font-semibold text-text-primary">{alert.descripcion}</p>
-                        <p className="text-xs text-text-muted">
-                          {alert.numero_cotizacion ? `COT ${alert.numero_cotizacion}` : 'Sin número de cotización'}
-                          {alert.cliente ? ` • ${alert.cliente}` : ''}
-                        </p>
-                        <p className="text-xs text-text-light">{describeAlert(alert)}</p>
+                  <li key={`${alert.tipo}-${alert.id}`}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleNavigateToControlPanel({
+                          viewMode: 'products',
+                          focusItemId: alert.id,
+                          focusQuoteNumber: alert.numero_cotizacion ?? null,
+                          searchQuery: alert.numero_cotizacion ?? alert.descripcion,
+                        })
+                      }
+                      className="w-full rounded-xl border border-border/40 bg-dark-card/60 p-4 text-left transition-colors hover:bg-dark-card/80 focus:outline-none focus:ring-2 focus:ring-primary/60"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-2 flex-1">
+                          <p className="text-sm font-semibold text-text-primary">{alert.descripcion}</p>
+                          <p className="text-xs text-text-muted">
+                            {alert.numero_cotizacion ? `COT ${alert.numero_cotizacion}` : 'Sin número de cotización'}
+                            {alert.cliente ? ` • ${alert.cliente}` : ''}
+                          </p>
+                          <p className="text-xs text-text-light">{describeAlert(alert)}</p>
+                        </div>
+                        <span
+                          className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold ${severityStyles[alert.severidad]}`}
+                        >
+                          {severityLabel[alert.severidad]}
+                        </span>
                       </div>
-                      <span
-                        className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold ${severityStyles[alert.severidad]}`}
-                      >
-                        {severityLabel[alert.severidad]}
-                      </span>
-                    </div>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -498,22 +745,37 @@ const ProductionDashboard: React.FC = () => {
                 Calidad de datos
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <span className="rounded-lg border border-warning/30 bg-warning-glow px-3 py-2 text-warning">
-                  <span className="font-bold">{formatNumber(data_gaps.sin_fecha_entrega)}</span>{' '}
-                  sin fecha de entrega
-                </span>
-                <span className="rounded-lg border border-warning/30 bg-warning-glow px-3 py-2 text-warning">
-                  <span className="font-bold">{formatNumber(data_gaps.sin_estatus)}</span>{' '}
-                  sin estatus
-                </span>
-                <span className="rounded-lg border border-warning/30 bg-warning-glow px-3 py-2 text-warning">
-                  <span className="font-bold">{formatNumber(data_gaps.sin_cliente)}</span>{' '}
-                  sin cliente
-                </span>
-                <span className="rounded-lg border border-warning/30 bg-warning-glow px-3 py-2 text-warning">
-                  <span className="font-bold">{formatNumber(data_gaps.sin_cantidad)}</span>{' '}
-                  sin cantidad
-                </span>
+                {activeIssueSummaries.length === 0 ? (
+                  <span className="rounded-lg border border-border/60 bg-dark-card/40 px-3 py-2 text-text-muted">
+                    Sin observaciones pendientes.
+                  </span>
+                ) : (
+                  activeIssueSummaries.map(({ key, label }) => {
+                    const firstDetail = gapDetails.find((detail) => detail.issues.includes(key));
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        disabled={!firstDetail}
+                        onClick={() => {
+                          if (!firstDetail) return;
+                          handleNavigateToControlPanel({
+                            viewMode: 'products',
+                            focusItemId: firstDetail.item_id,
+                            focusQuoteNumber: firstDetail.numero_cotizacion ?? null,
+                            searchQuery: firstDetail.numero_cotizacion ?? firstDetail.descripcion,
+                          });
+                        }}
+                        className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                          issueColorMap[key] ?? 'bg-warning-glow text-warning border border-warning/30'
+                        }`}
+                      >
+                        <span className="font-bold">{formatNumber(getGapCount(key))}</span>{' '}
+                        {label}
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>
@@ -704,28 +966,38 @@ const ProductionDashboard: React.FC = () => {
           ) : (
             <ul className="space-y-4 text-sm">
               {upcoming_deliveries.map((delivery: UpcomingDeliveryItem) => (
-                <li
-                  key={delivery.id}
-                  className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/40 bg-dark-card/60 p-4 hover:bg-dark-card/80 transition-colors"
-                >
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-text-primary">{delivery.descripcion}</p>
-                    <p className="text-xs text-text-muted mt-1">
-                      {delivery.numero_cotizacion ? `COT ${delivery.numero_cotizacion}` : 'Sin número de cotización'}
-                      {delivery.cliente ? ` • ${delivery.cliente}` : ''}
-                    </p>
-                  </div>
-                  <div className="text-right text-xs text-text-muted">
-                    <p className="text-sm font-semibold text-primary data-display">
-                      {formatDate(delivery.fecha_entrega)}
-                    </p>
-                    <p className="font-medium text-text-secondary">
-                      {delivery.dias_restantes === 0
-                        ? 'Entrega hoy'
-                        : `En ${delivery.dias_restantes} día(s)`}
-                    </p>
-                    <p className="text-accent">{delivery.estatus ?? 'Sin estatus'}</p>
-                  </div>
+                <li key={delivery.id}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleNavigateToControlPanel({
+                        viewMode: 'products',
+                        focusItemId: delivery.id,
+                        focusQuoteNumber: delivery.numero_cotizacion ?? null,
+                        searchQuery: delivery.numero_cotizacion ?? delivery.descripcion,
+                      })
+                    }
+                    className="flex w-full flex-wrap items-center justify-between gap-4 rounded-xl border border-border/40 bg-dark-card/60 p-4 text-left transition-colors hover:bg-dark-card/80 focus:outline-none focus:ring-2 focus:ring-primary/60"
+                  >
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-text-primary">{delivery.descripcion}</p>
+                      <p className="text-xs text-text-muted mt-1">
+                        {delivery.numero_cotizacion ? `COT ${delivery.numero_cotizacion}` : 'Sin número de cotización'}
+                        {delivery.cliente ? ` • ${delivery.cliente}` : ''}
+                      </p>
+                    </div>
+                    <div className="text-right text-xs text-text-muted">
+                      <p className="text-sm font-semibold text-primary data-display">
+                        {formatDate(delivery.fecha_entrega)}
+                      </p>
+                      <p className="font-medium text-text-secondary">
+                        {delivery.dias_restantes === 0
+                          ? 'Entrega hoy'
+                          : `En ${delivery.dias_restantes} día(s)`}
+                      </p>
+                      <p className="text-accent">{delivery.estatus ?? 'Sin estatus'}</p>
+                    </div>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -740,7 +1012,12 @@ const ProductionDashboard: React.FC = () => {
       case 'kpi':
         return renderKPIs();
       case 'control_panel':
-        return <ProductionControlPanel />;
+        return (
+          <ProductionControlPanel
+            externalContext={panelContext}
+            onConsumedContext={() => setPanelContext(null)}
+          />
+        );
       case 'archive':
         return <ProductionArchive />;
       default:

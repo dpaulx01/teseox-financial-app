@@ -4,7 +4,19 @@ import UploadCard from '../modules/statusProduccion/components/UploadCard';
 import StatusTable from '../modules/statusProduccion/components/StatusTable';
 import { useActiveProductionItems } from '../modules/statusProduccion/hooks/useActiveProductionItems';
 
-const ProductionControlPanel: React.FC = () => {
+export interface ExternalPanelContext {
+  focusItemId?: number | null;
+  focusQuoteNumber?: string | null;
+  viewMode?: 'quotes' | 'products' | 'clients' | 'calendar';
+  searchQuery?: string | null;
+}
+
+interface ProductionControlPanelProps {
+  externalContext?: ExternalPanelContext | null;
+  onConsumedContext?: () => void;
+}
+
+const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({ externalContext, onConsumedContext }) => {
   const {
     items,
     statusOptions,
@@ -19,6 +31,7 @@ const ProductionControlPanel: React.FC = () => {
   } = useActiveProductionItems();
   const [viewMode, setViewMode] = useState<'quotes' | 'products' | 'clients' | 'calendar'>('quotes');
   const [showUploader, setShowUploader] = useState(false);
+  const [externalFocus, setExternalFocus] = useState<ExternalPanelContext | null>(null);
 
   const viewDescription = useMemo(() => {
     switch (viewMode) {
@@ -32,6 +45,34 @@ const ProductionControlPanel: React.FC = () => {
         return 'Vista agrupada por cotización para gestionar cartera, entregas y notas operativas.';
     }
   }, [viewMode]);
+
+  useEffect(() => {
+    if (!externalContext) {
+      return;
+    }
+
+    const targetItem = externalContext.focusItemId
+      ? items.find((item) => item.id === externalContext.focusItemId)
+      : undefined;
+
+    const resolvedView = externalContext.viewMode ?? 'products';
+    setViewMode((prev) => (prev === resolvedView ? prev : resolvedView));
+
+    const resolvedSearch =
+      externalContext.searchQuery ??
+      targetItem?.numeroCotizacion ??
+      targetItem?.producto ??
+      '';
+
+    setExternalFocus({
+      ...externalContext,
+      focusItemId: targetItem?.id ?? externalContext.focusItemId ?? null,
+      focusQuoteNumber: externalContext.focusQuoteNumber ?? targetItem?.numeroCotizacion ?? null,
+      searchQuery: resolvedSearch,
+    });
+
+    onConsumedContext?.();
+  }, [externalContext, items, onConsumedContext]);
 
   useEffect(() => {
     if (!showUploader) {
@@ -120,6 +161,8 @@ const ProductionControlPanel: React.FC = () => {
           isSaving={isSaving}
           onDeleteQuote={deleteQuote}
           viewMode={viewMode}
+          externalFocus={externalFocus}
+          onConsumeExternalFocus={() => setExternalFocus(null)}
         />
       )}
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
@@ -106,6 +106,7 @@ interface ProductViewRowModel {
   quote: QuoteGroup | undefined;
   saving: 'idle' | 'saving' | 'success' | 'error';
   colorClass: string;
+  isHighlighted: boolean;
 }
 
 interface ClientSummaryRow {
@@ -119,6 +120,13 @@ interface ClientSummaryRow {
   fechaProxima?: string;
 }
 
+interface ExternalFocusPayload {
+  focusItemId?: number | null;
+  focusQuoteNumber?: string | null;
+  viewMode?: ViewMode;
+  searchQuery?: string | null;
+}
+
 interface StatusTableProps {
   items: ProductionItem[];
   statusOptions: string[];
@@ -126,6 +134,8 @@ interface StatusTableProps {
   isSaving: (id: number) => boolean;
   onDeleteQuote: (quoteId: number) => Promise<void>;
   viewMode: ViewMode;
+  externalFocus?: ExternalFocusPayload | null;
+  onConsumeExternalFocus?: () => void;
 }
 
 interface ProgressInfo {
@@ -579,6 +589,8 @@ const StatusTable: React.FC<StatusTableProps> = ({
   isSaving,
   onDeleteQuote,
   viewMode = 'quotes',
+  externalFocus,
+  onConsumeExternalFocus,
 }) => {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [expandedQuotes, setExpandedQuotes] = useState<Record<number, boolean>>({});
@@ -593,6 +605,8 @@ const StatusTable: React.FC<StatusTableProps> = ({
   const [planModalLoading, setPlanModalLoading] = useState<boolean>(false);
   const [planModalSaving, setPlanModalSaving] = useState<boolean>(false);
   const [planModalError, setPlanModalError] = useState<string | null>(null);
+  const [highlightedProductId, setHighlightedProductId] = useState<number | null>(null);
+  const [highlightedQuoteId, setHighlightedQuoteId] = useState<number | null>(null);
   const baseItems = useMemo(() => items.filter((item) => !item.esServicio), [items]);
   
   // Hook para obtener planes diarios
@@ -807,6 +821,8 @@ const StatusTable: React.FC<StatusTableProps> = ({
 
   const resetFilters = useCallback(() => {
     setFilters(defaultFilters);
+    setHighlightedProductId(null);
+    setHighlightedQuoteId(null);
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -1029,6 +1045,53 @@ const StatusTable: React.FC<StatusTableProps> = ({
     return map;
   }, [groupedQuotes]);
 
+  useEffect(() => {
+    if (!externalFocus) {
+      return;
+    }
+
+    if (typeof externalFocus.searchQuery === 'string') {
+      setFilters((prev) =>
+        prev.query === externalFocus.searchQuery
+          ? prev
+          : {
+              ...prev,
+              query: externalFocus.searchQuery ?? '',
+            },
+      );
+    }
+
+    if (externalFocus.focusItemId) {
+      setHighlightedProductId(externalFocus.focusItemId);
+    }
+
+    if (externalFocus.focusQuoteNumber) {
+      const targetGroup = groupedQuotes.find(
+        (group) => group.numeroCotizacion === externalFocus.focusQuoteNumber,
+      );
+      if (targetGroup) {
+        setExpandedQuotes((prev) => ({
+          ...prev,
+          [targetGroup.cotizacionId]: true,
+        }));
+        setHighlightedQuoteId(targetGroup.cotizacionId);
+      }
+    } else if (externalFocus.focusItemId) {
+      const targetGroup = groupedQuotes.find((group) =>
+        group.items.some((item) => item.id === externalFocus.focusItemId),
+      );
+      if (targetGroup) {
+        setExpandedQuotes((prev) => ({
+          ...prev,
+          [targetGroup.cotizacionId]: true,
+        }));
+        setHighlightedQuoteId(targetGroup.cotizacionId);
+      }
+    }
+
+    onConsumeExternalFocus?.();
+  }, [externalFocus, groupedQuotes, onConsumeExternalFocus]);
+
   const productViewData = useMemo(() => {
     const rows: ProductViewRowModel[] = [];
     const uniqueProducts = new Set<string>();
@@ -1105,6 +1168,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
         quote,
         saving,
         colorClass,
+        isHighlighted: highlightedProductId === item.id,
       });
     }
 
@@ -1135,7 +1199,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
         unidadesDiarias: unidadesProximos7 / 7,
       },
     };
-  }, [filteredItems, forms, savingStatus, quoteGroupMap]);
+  }, [filteredItems, forms, savingStatus, quoteGroupMap, dailyPlans, highlightedProductId]);
 
   const clientViewData = useMemo(() => {
     const aggregates = new Map<string, {
@@ -1324,19 +1388,22 @@ const StatusTable: React.FC<StatusTableProps> = ({
           </thead>
           <tbody className="text-sm text-text-secondary">
             {sortedQuotes.map((group) => (
-              <QuoteRow
-                key={group.cotizacionId}
-                group={group}
-                expanded={Boolean(expandedQuotes[group.cotizacionId])}
-                onToggle={() => toggleQuote(group.cotizacionId)}
-                statusOptions={statusOptions}
-                onSave={onSave}
-                isSaving={isSaving}
-                onDeleteQuote={onDeleteQuote}
-                forms={forms}
-                onRowChange={handleRowChange}
-                savingStatus={savingStatus}
-              />
+            <QuoteRow
+              key={group.cotizacionId}
+              group={group}
+              expanded={Boolean(expandedQuotes[group.cotizacionId])}
+              onToggle={() => toggleQuote(group.cotizacionId)}
+              statusOptions={statusOptions}
+              onSave={onSave}
+              isSaving={isSaving}
+              onDeleteQuote={onDeleteQuote}
+              forms={forms}
+              onRowChange={handleRowChange}
+              savingStatus={savingStatus}
+              dailyPlans={dailyPlans}
+              highlightedItemId={highlightedProductId}
+              highlightedQuoteId={highlightedQuoteId}
+            />
             ))}
           </tbody>
         </table>
@@ -1625,7 +1692,24 @@ const QuoteRow: React.FC<{
   forms: Record<number, RowFormState>;
   onRowChange: (itemId: number, newFormData: RowFormState) => void;
   savingStatus: Record<number, 'idle' | 'saving' | 'success' | 'error'>;
-}> = ({ group, expanded, onToggle, statusOptions, onSave, isSaving, onDeleteQuote, forms, onRowChange, savingStatus }) => {
+  dailyPlans: Record<number, DailyProductionPlanEntry[]>;
+  highlightedItemId?: number | null;
+  highlightedQuoteId?: number | null;
+}> = ({
+  group,
+  expanded,
+  onToggle,
+  statusOptions,
+  onSave,
+  isSaving,
+  onDeleteQuote,
+  forms,
+  onRowChange,
+  savingStatus,
+  dailyPlans,
+  highlightedItemId,
+  highlightedQuoteId,
+}) => {
   const fileUrl = buildQuoteFileUrl(group.archivoOriginal);
   const [quoteForm, setQuoteForm] = useState<QuoteRowFormState>(() => ({
     factura: group.facturas[0] ?? '',
@@ -1636,6 +1720,22 @@ const QuoteRow: React.FC<{
   const [showMetadataNotes, setShowMetadataNotes] = useState(false);
   const [showPaymentsModal, setShowPaymentsModal] = useState(false);
   const [showFinancialModal, setShowFinancialModal] = useState(false);
+  const headerRef = useRef<HTMLTableRowElement>(null);
+  const isHighlightedQuote = useMemo(() => {
+    if (highlightedQuoteId !== null && highlightedQuoteId !== undefined) {
+      return highlightedQuoteId === group.cotizacionId;
+    }
+    if (highlightedItemId !== null && highlightedItemId !== undefined) {
+      return group.items.some((item) => item.id === highlightedItemId);
+    }
+    return false;
+  }, [group.cotizacionId, group.items, highlightedItemId, highlightedQuoteId]);
+
+  useEffect(() => {
+    if (isHighlightedQuote && headerRef.current) {
+      headerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [isHighlightedQuote]);
 
   useEffect(() => {
     if (!expanded) {
@@ -1672,7 +1772,7 @@ const QuoteRow: React.FC<{
       percent,
       color: progressColorFromPercent(percent),
     };
-  }, [group.items, forms]);
+  }, [group.items, forms, dailyPlans]);
 
   const quoteTotals = useMemo(() => {
     const totalAbonado = quoteForm.pagos.reduce((acc, pago) => {
@@ -1830,7 +1930,12 @@ const QuoteRow: React.FC<{
 
   return (
     <>
-      <tr className="border-b border-border/60 bg-dark-card/30 hover:bg-dark-card/40 transition-colors">
+      <tr
+        ref={headerRef}
+        className={`border-b border-border/60 bg-dark-card/30 hover:bg-dark-card/40 transition-colors ${
+          isHighlightedQuote ? 'ring-2 ring-primary/40 bg-primary/10' : ''
+        }`}
+      >
         <td className="align-top px-2 py-3">
           <div className="flex flex-col items-center gap-2">
             <button
@@ -2024,18 +2129,21 @@ const QuoteRow: React.FC<{
                     </tr>
                   </thead>
                   <tbody className="text-sm text-text-secondary">
-                    {group.items.map((item) => (
-                      forms[item.id] && <ProductionRow
-                        key={item.id}
-                        item={item}
-                        form={forms[item.id]}
-                        statusOptions={statusOptions}
-                        onChange={(newFormData) => onRowChange(item.id, newFormData)}
-                        quoteTotal={group.totalCotizacion}
-                        saveStatus={savingStatus[item.id] || 'idle'}
-                        dailyPlan={dailyPlans[item.id]}
-                      />
-                    ))}
+                    {group.items.map((item) =>
+                      forms[item.id] ? (
+                        <ProductionRow
+                          key={item.id}
+                          item={item}
+                          form={forms[item.id]}
+                          statusOptions={statusOptions}
+                          onChange={(newFormData) => onRowChange(item.id, newFormData)}
+                          quoteTotal={group.totalCotizacion}
+                          saveStatus={savingStatus[item.id] || 'idle'}
+                          dailyPlan={dailyPlans[item.id]}
+                          highlighted={item.id === highlightedItemId}
+                        />
+                      ) : null,
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -2226,6 +2334,13 @@ const ProductViewRow: React.FC<{
   onPlanClick: (item: ProductionItem) => void;
 }> = ({ data, statusOptions, onChange, onPlanClick }) => {
   const { item, form, progress, quantity, saving } = data;
+  const rowRef = useRef<HTMLTableRowElement>(null);
+
+  useEffect(() => {
+    if (data.isHighlighted && rowRef.current) {
+      rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [data.isHighlighted]);
 
   const updateField = (key: keyof RowFormState, value: string) => {
     onChange(item.id, { ...form, [key]: value });
@@ -2233,9 +2348,13 @@ const ProductViewRow: React.FC<{
 
   const fechaIngresoLabel = item.fechaIngreso ? formatDateLabel(item.fechaIngreso) : '—';
   const fechaEntregaLabel = form.fechaEntrega ? formatDateLabel(form.fechaEntrega) : 'Sin definir';
+  const highlightClasses = data.isHighlighted ? 'ring-2 ring-accent/40 bg-accent/10' : '';
 
   return (
-    <tr className={`border-b border-border/40 transition-colors ${data.colorClass} hover:brightness-[1.08]`}>
+    <tr
+      ref={rowRef}
+      className={`border-b border-border/40 transition-colors ${data.colorClass} ${highlightClasses} hover:brightness-[1.08]`}
+    >
       <td className="px-4 py-3 text-center align-top w-12">
         {saving === 'saving' && <Loader2 className="w-4 h-4 animate-spin text-primary mx-auto" />}
         {saving === 'success' && <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" />}
@@ -2336,7 +2455,8 @@ const ProductionRow: React.FC<{
   quoteTotal: number | null;
   saveStatus: 'idle' | 'saving' | 'success' | 'error';
   dailyPlan?: DailyProductionPlanEntry[];
-}> = ({ item, form, statusOptions, onChange, quoteTotal, saveStatus, dailyPlan }) => {
+  highlighted?: boolean;
+}> = ({ item, form, statusOptions, onChange, quoteTotal, saveStatus, dailyPlan, highlighted = false }) => {
   const totalCotizacion = useMemo(() => {
     if (quoteTotal !== null && quoteTotal !== undefined) {
       return quoteTotal;
@@ -2364,8 +2484,21 @@ const ProductionRow: React.FC<{
     onChange({ ...form, [key]: value });
   };
 
+  const rowRef = useRef<HTMLTableRowElement>(null);
+
+  useEffect(() => {
+    if (highlighted && rowRef.current) {
+      rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlighted]);
+
   return (
-    <tr className="border-t border-border/40 hover:bg-dark-card/40 transition-colors">
+    <tr
+      ref={rowRef}
+      className={`border-t border-border/40 hover:bg-dark-card/40 transition-colors ${
+        highlighted ? 'ring-1 ring-primary/40 bg-primary/10' : ''
+      }`}
+    >
       <td className="align-top px-2 py-4 w-10 text-center">
         {saveStatus === 'saving' && <Loader2 className="w-4 h-4 animate-spin text-primary mx-auto" />}
         {saveStatus === 'success' && <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" />}

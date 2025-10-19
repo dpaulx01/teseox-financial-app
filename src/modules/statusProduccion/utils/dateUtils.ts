@@ -55,7 +55,7 @@ const calculateEasterSunday = (year: number): Date => {
   return date;
 };
 
-const addDays = (value: Date, amount: number): Date => {
+export const addDays = (value: Date, amount: number): Date => {
   const next = new Date(value.getTime() + amount * DAY_IN_MS);
   next.setHours(0, 0, 0, 0);
   return next;

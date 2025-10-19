@@ -13,7 +13,7 @@ from collections import defaultdict
 from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 import pdfplumber
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -102,11 +102,22 @@ class FinancialSummary(BaseModel):
     valor_listo_para_retiro: float
     saldo_por_cobrar: float
 
+class DataGapDetail(BaseModel):
+    item_id: int
+    numero_cotizacion: Optional[str] = None
+    descripcion: str
+    cliente: Optional[str] = None
+    estatus: Optional[str] = None
+    issues: List[str]
+
 class DataGapSummary(BaseModel):
     sin_fecha_entrega: int
     sin_estatus: int
     sin_cliente: int
     sin_cantidad: int
+    sin_programacion: int
+    sin_factura: int
+    detalles: List[DataGapDetail]
 
 class TopClientItem(BaseModel):
     name: str
@@ -201,6 +212,9 @@ async def get_dashboard_kpis(
     """
     today = date.today()
     start_of_week = today - timedelta(days=today.weekday())
+    history_window_days = 31
+    month_start = date(today.year, today.month, 1)
+    min_allowed_date = min(month_start, today - timedelta(days=history_window_days))
     decimal_zero = Decimal(0)
 
     active_statuses = [
@@ -259,6 +273,19 @@ async def get_dashboard_kpis(
     schedule_map: Dict[date, Dict[str, Decimal]] = defaultdict(
         lambda: {"metros": decimal_zero, "unidades": decimal_zero}
     )
+    gap_registry: Dict[int, Dict[str, Any]] = {}
+
+    def register_gap(item: ProductionProduct, issue: str) -> None:
+        entry = gap_registry.setdefault(
+            item.id,
+            {
+                "item": item,
+                "quote": item.cotizacion,
+                "issues": set(),
+            },
+        )
+        issues_set: Set[str] = entry["issues"]  # type: ignore[assignment]
+        issues_set.add(issue)
 
     manual_plan_by_item: Dict[int, List[ProductionDailyPlan]] = defaultdict(list)
     if active_items:
@@ -279,6 +306,10 @@ async def get_dashboard_kpis(
         if _is_service_product(item.descripcion):
             continue
 
+        if not item.estatus:
+            register_gap(item, "sin_estatus")
+            missing_status_items.append(item)
+
         status_label = item.estatus.value if item.estatus else "Sin estatus"
         if status_label not in status_summary:
             status_summary[status_label] = {
@@ -296,6 +327,7 @@ async def get_dashboard_kpis(
         quantity_value, quantity_unit = _extract_quantity_info(item.cantidad)
         if quantity_value is None:
             missing_quantity += 1
+            register_gap(item, "sin_cantidad")
         else:
             if quantity_unit == "metros":
                 entry["metros"] = entry["metros"] + quantity_value
@@ -335,6 +367,10 @@ async def get_dashboard_kpis(
                     )
         else:
             sin_cliente += 1
+            register_gap(item, "sin_cliente")
+
+        if not item.factura or not item.factura.strip():
+            register_gap(item, "sin_factura")
 
         manual_plan_entries = manual_plan_by_item.get(item.id, [])
         # Solo considerar como plan manual si fue editado manualmente
@@ -342,6 +378,9 @@ async def get_dashboard_kpis(
             entry for entry in manual_plan_entries 
             if getattr(entry, 'is_manually_edited', True)  # True por defecto para compatibilidad
         ]
+        has_manual_plan = bool(manual_plan_entries)
+        if not has_manual_plan and item.fecha_entrega is None:
+            register_gap(item, "sin_programacion")
         
         if manually_edited_entries:
             for plan_entry in manually_edited_entries:
@@ -349,18 +388,25 @@ async def get_dashboard_kpis(
                 unidades_plan = Decimal(plan_entry.unidades or decimal_zero)
                 if metros_plan <= decimal_zero and unidades_plan <= decimal_zero:
                     continue
-                target_date = plan_entry.fecha
-                if target_date < today:
-                    target_date = _next_working_day(today)
-                elif not _is_working_day(target_date):
-                    target_date = _next_working_day(target_date)
+                raw_plan_date = plan_entry.fecha
+                if raw_plan_date < min_allowed_date:
+                    continue
+                if raw_plan_date < today:
+                    if _is_working_day(raw_plan_date):
+                        target_date = raw_plan_date
+                    else:
+                        target_date = _previous_working_day(raw_plan_date, include_today=True)
+                else:
+                    target_date = raw_plan_date if _is_working_day(raw_plan_date) else _next_working_day(raw_plan_date)
                 target_bucket = schedule_map[target_date]
                 target_bucket["metros"] = target_bucket["metros"] + metros_plan
                 target_bucket["unidades"] = target_bucket["unidades"] + unidades_plan
         elif item.fecha_entrega and quantity_value is not None and quantity_value > decimal_zero:
             end_date = item.fecha_entrega
             if end_date < today:
-                target_date = _next_working_day(today)
+                target_date = _previous_working_day(end_date, include_today=True)
+                if target_date < min_allowed_date:
+                    continue
                 target_bucket = schedule_map[target_date]
                 if quantity_unit == "metros":
                     target_bucket["metros"] = target_bucket["metros"] + quantity_value
@@ -388,7 +434,9 @@ async def get_dashboard_kpis(
 
                 share = quantity_value / Decimal(len(working_days))
                 for target_date in working_days:
-                    bucket_date = target_date if target_date >= today else _next_working_day(today)
+                    if target_date < min_allowed_date:
+                        continue
+                    bucket_date = target_date
                     target_bucket = schedule_map[bucket_date]
                     if quantity_unit == "metros":
                         target_bucket["metros"] = target_bucket["metros"] + share
@@ -419,9 +467,7 @@ async def get_dashboard_kpis(
                     due_soon_items.append((item, delta_days))
         else:
             missing_date_items.append(item)
-
-        if not item.estatus:
-            missing_status_items.append(item)
+            register_gap(item, "sin_fecha_entrega")
 
     # Cambiar lógica: entregas programadas para esta semana (no solo entregadas)
     end_of_week = start_of_week + timedelta(days=6)  # Domingo de esta semana
@@ -655,11 +701,62 @@ async def get_dashboard_kpis(
         )[:10]
     ]
 
+    issue_keys = [
+        "sin_fecha_entrega",
+        "sin_estatus",
+        "sin_cliente",
+        "sin_cantidad",
+        "sin_programacion",
+        "sin_factura",
+    ]
+    issue_counts = {key: 0 for key in issue_keys}
+    for record in gap_registry.values():
+        issues_set = cast(Set[str], record["issues"])
+        for key in issue_keys:
+            if key in issues_set:
+                issue_counts[key] += 1
+
+    severity_weights = {
+        "sin_fecha_entrega": 0,
+        "sin_programacion": 1,
+        "sin_estatus": 2,
+        "sin_cliente": 3,
+        "sin_cantidad": 4,
+        "sin_factura": 5,
+    }
+
+    gap_details_list: List[DataGapDetail] = []
+    for record in gap_registry.values():
+        issues_set = cast(Set[str], record["issues"])
+        sorted_issues = sorted(issues_set, key=lambda issue: severity_weights.get(issue, 99))
+        quote = record["quote"]
+        gap_details_list.append(
+            DataGapDetail(
+                item_id=record["item"].id,
+                numero_cotizacion=quote.numero_cotizacion if quote else None,
+                descripcion=record["item"].descripcion,
+                cliente=quote.cliente.strip() if quote and quote.cliente else None,
+                estatus=record["item"].estatus.value if record["item"].estatus else None,
+                issues=sorted_issues,
+            )
+        )
+
+    gap_details_list.sort(
+        key=lambda detail: (
+            severity_weights.get(detail.issues[0], 99) if detail.issues else 99,
+            detail.numero_cotizacion or "",
+            detail.item_id,
+        )
+    )
+
     data_gaps = DataGapSummary(
-        sin_fecha_entrega=sin_fecha_entrega,
-        sin_estatus=sin_estatus,
-        sin_cliente=sin_cliente,
-        sin_cantidad=missing_quantity,
+        sin_fecha_entrega=issue_counts["sin_fecha_entrega"],
+        sin_estatus=issue_counts["sin_estatus"],
+        sin_cliente=issue_counts["sin_cliente"],
+        sin_cantidad=issue_counts["sin_cantidad"],
+        sin_programacion=issue_counts["sin_programacion"],
+        sin_factura=issue_counts["sin_factura"],
+        detalles=gap_details_list,
     )
 
     max_future = today + timedelta(days=21)
@@ -672,6 +769,7 @@ async def get_dashboard_kpis(
         for target_date, values in sorted(schedule_map.items())
         if (values["metros"] > decimal_zero or values["unidades"] > decimal_zero)
         and target_date <= max_future
+        and target_date >= min_allowed_date
     ]
 
     return DashboardKpisResponse(
@@ -1949,6 +2047,9 @@ async def get_dashboard_schedule(
 ) -> DailyScheduleResponse:
     today = date.today()
     max_future = today + timedelta(days=21)
+    history_window_days = 31
+    month_start = date(today.year, today.month, 1)
+    min_allowed_date = min(month_start, today - timedelta(days=history_window_days))
     decimal_zero = Decimal(0)
 
     active_items: List[ProductionProduct] = (
@@ -1997,11 +2098,16 @@ async def get_dashboard_schedule(
                 unidades_plan = Decimal(plan_entry.unidades or decimal_zero)
                 if metros_plan <= decimal_zero and unidades_plan <= decimal_zero:
                     continue
-                target_date = plan_entry.fecha
-                if target_date < today:
-                    target_date = _next_working_day(today)
-                elif not _is_working_day(target_date):
-                    target_date = _next_working_day(target_date)
+                raw_plan_date = plan_entry.fecha
+                if raw_plan_date < min_allowed_date:
+                    continue
+                if raw_plan_date < today:
+                    if _is_working_day(raw_plan_date):
+                        target_date = raw_plan_date
+                    else:
+                        target_date = _previous_working_day(raw_plan_date, include_today=True)
+                else:
+                    target_date = raw_plan_date if _is_working_day(raw_plan_date) else _next_working_day(raw_plan_date)
                 if target_date > max_future:
                     continue
                 bucket = schedule_totals[target_date]
@@ -2027,7 +2133,9 @@ async def get_dashboard_schedule(
 
         end_date = item.fecha_entrega
         if end_date < today:
-            target_date = _next_working_day(today)
+            target_date = _previous_working_day(end_date, include_today=True)
+            if target_date < min_allowed_date:
+                continue
             if target_date > max_future:
                 continue
             bucket = schedule_totals[target_date]
@@ -2070,7 +2178,9 @@ async def get_dashboard_schedule(
 
         share = quantity_value / Decimal(len(working_days))
         for target_date in working_days:
-            bucket_date = target_date if target_date >= today else _next_working_day(today)
+            if target_date < min_allowed_date:
+                continue
+            bucket_date = target_date
             if bucket_date > max_future:
                 continue
             bucket = schedule_totals[bucket_date]
@@ -2097,7 +2207,7 @@ async def get_dashboard_schedule(
         unidades_total = totals["unidades"]
         if (
             target_date > max_future
-            or target_date < today - timedelta(days=1)
+            or target_date < min_allowed_date
             or (metros_total <= decimal_zero and unidades_total <= decimal_zero)
         ):
             continue
