@@ -163,6 +163,7 @@ const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({ externa
           viewMode={viewMode}
           externalFocus={externalFocus}
           onConsumeExternalFocus={() => setExternalFocus(null)}
+          onRequestViewChange={setViewMode}
         />
       )}
 

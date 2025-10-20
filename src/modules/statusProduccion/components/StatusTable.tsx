@@ -16,6 +16,8 @@ import {
   Search,
   Trash2,
   X,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 
 import type {
@@ -26,6 +28,8 @@ import type {
 } from '../../../types/production';
 import useProductionSchedule from '../hooks/useProductionSchedule';
 import ProductionCalendarBoard from './ProductionCalendarBoard';
+import ProductSummaryView from './ProductSummaryView';
+import ClientDetailDrawer from './ClientDetailDrawer';
 import financialAPI from '../../../services/api';
 import DailyProductionModal from './DailyProductionModal';
 import FinancialDetailModal from './FinancialDetailModal';
@@ -136,6 +140,7 @@ interface StatusTableProps {
   viewMode: ViewMode;
   externalFocus?: ExternalFocusPayload | null;
   onConsumeExternalFocus?: () => void;
+  onRequestViewChange?: (viewMode: ViewMode) => void;
 }
 
 interface ProgressInfo {
@@ -591,6 +596,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
   viewMode = 'quotes',
   externalFocus,
   onConsumeExternalFocus,
+  onRequestViewChange,
 }) => {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [expandedQuotes, setExpandedQuotes] = useState<Record<number, boolean>>({});
@@ -607,6 +613,9 @@ const StatusTable: React.FC<StatusTableProps> = ({
   const [planModalError, setPlanModalError] = useState<string | null>(null);
   const [highlightedProductId, setHighlightedProductId] = useState<number | null>(null);
   const [highlightedQuoteId, setHighlightedQuoteId] = useState<number | null>(null);
+  const [productViewType, setProductViewType] = useState<'summary' | 'detailed'>('summary');
+  const [selectedClient, setSelectedClient] = useState<string | null>(null);
+  const [clientDrawerOpen, setClientDrawerOpen] = useState(false);
   const baseItems = useMemo(() => items.filter((item) => !item.esServicio), [items]);
   
   // Hook para obtener planes diarios
@@ -852,6 +861,42 @@ const StatusTable: React.FC<StatusTableProps> = ({
 
     return baseItems.filter((item) => quoteMatches.get(item.cotizacionId) ?? evaluate(item));
   }, [baseItems, filters]);
+
+  // Callbacks para la vista resumida de productos
+  const handleViewDetails = useCallback((itemIds: number[]) => {
+    setProductViewType('detailed');
+    if (itemIds.length > 0) {
+      setHighlightedProductId(itemIds[0]);
+    }
+  }, []);
+
+  const handleOpenDailyPlanFromCard = useCallback((itemId: number) => {
+    const item = filteredItems.find(it => it.id === itemId);
+    if (item) {
+      handleOpenPlanModal(item);
+    }
+  }, [filteredItems, handleOpenPlanModal]);
+
+  // Handlers para el drawer de cliente
+  const handleOpenClientDrawer = useCallback((clientName: string) => {
+    setSelectedClient(clientName);
+    setClientDrawerOpen(true);
+  }, []);
+
+  const handleCloseClientDrawer = useCallback(() => {
+    setClientDrawerOpen(false);
+    setTimeout(() => setSelectedClient(null), 300); // Delay para animación de cierre
+  }, []);
+
+  const handleViewProductFromClient = useCallback((itemId: number) => {
+    // Cerrar el drawer y cambiar a vista de productos con enfoque
+    handleCloseClientDrawer();
+    setHighlightedProductId(itemId);
+    // Cambiar a vista de productos
+    onRequestViewChange?.('products');
+    // Cambiar a vista detallada dentro de productos
+    setProductViewType('detailed');
+  }, [handleCloseClientDrawer, onRequestViewChange]);
 
   const quoteTotals = useMemo(() => {
     const accumulator = new Map<
@@ -1416,66 +1461,116 @@ const StatusTable: React.FC<StatusTableProps> = ({
 
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
-            <span className="text-xs uppercase tracking-wide text-text-muted">Productos activos</span>
-            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(metrics.totalItems)}</p>
+        {/* Toggle entre Vista Resumida y Detallada */}
+        <div className="flex items-center justify-between p-3 bg-dark-card/40 rounded-xl border border-border/40">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setProductViewType('summary')}
+              className={`
+                flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
+                ${productViewType === 'summary'
+                  ? 'bg-primary/20 border border-primary/40 text-primary shadow-lg'
+                  : 'bg-dark-bg/40 border border-border/30 text-text-secondary hover:bg-dark-bg/60 hover:border-border/50'}
+              `}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              Vista Resumida
+            </button>
+            <button
+              onClick={() => setProductViewType('detailed')}
+              className={`
+                flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
+                ${productViewType === 'detailed'
+                  ? 'bg-primary/20 border border-primary/40 text-primary shadow-lg'
+                  : 'bg-dark-bg/40 border border-border/30 text-text-secondary hover:bg-dark-bg/60 hover:border-border/50'}
+              `}
+            >
+              <List className="w-4 h-4" />
+              Vista Detallada
+            </button>
           </div>
-          <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
-            <span className="text-xs uppercase tracking-wide text-text-muted">Productos únicos</span>
-            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(metrics.uniqueProducts)}</p>
-          </div>
-          <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
-            <span className="text-xs uppercase tracking-wide text-text-muted">Metros totales</span>
-            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(metrics.totalMetros)}</p>
-            <p className="text-[11px] text-text-secondary">Próx. 7 días: {formatNumberWithDash(metrics.metrosProximos7)}</p>
-            <p className="text-[11px] text-text-secondary">Promedio diario 7d: {formatNumberWithDash(metrics.metrosDiarios)}</p>
-            <p className="text-[11px] text-text-secondary">Hoy: {formatNumberWithDash(metrics.metrosHoy)}</p>
-          </div>
-          <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
-            <span className="text-xs uppercase tracking-wide text-text-muted">Unidades totales</span>
-            <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(metrics.totalUnidades)}</p>
-            <p className="text-[11px] text-text-secondary">Próx. 7 días: {formatNumberWithDash(metrics.unidadesProximos7)}</p>
-            <p className="text-[11px] text-text-secondary">Promedio diario 7d: {formatNumberWithDash(metrics.unidadesDiarias)}</p>
-            <p className="text-[11px] text-text-secondary">Hoy: {formatNumberWithDash(metrics.unidadesHoy)}</p>
-          </div>
+
+          <p className="text-xs text-text-muted">
+            {productViewType === 'summary'
+              ? 'Resumen ejecutivo con progreso por producto'
+              : 'Tabla detallada con todos los ítems de producción'}
+          </p>
         </div>
 
-        <div className="glass-panel rounded-2xl border border-border shadow-hologram overflow-hidden">
-          {rows.length === 0 ? (
-            <div className="p-6 text-sm text-text-secondary">No hay productos activos para mostrar.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse">
-                <thead className="bg-dark-card/80 border-b border-border">
-                  <tr className="text-xs uppercase tracking-wide text-text-muted">
-                    <th className="px-4 py-3 text-left w-10"></th>
-                    <th className="px-4 py-3 text-left">Producto</th>
-                    <th className="px-4 py-3 text-left">Cliente</th>
-                    <th className="px-4 py-3 text-left">Cotización</th>
-                    <th className="px-4 py-3 text-left">Ingreso</th>
-                    <th className="px-4 py-3 text-left">Cantidad</th>
-                    <th className="px-4 py-3 text-left">Entrega</th>
-                    <th className="px-4 py-3 text-left">Progreso</th>
-                    <th className="px-4 py-3 text-left">Estatus</th>
-                    <th className="px-4 py-3 text-left">Notas</th>
-                  </tr>
-                </thead>
-                <tbody className="text-sm text-text-secondary">
-                  {rows.map((row) => (
-                    <ProductViewRow
-                      key={row.item.id}
-                      data={row}
-                      statusOptions={statusOptions}
-                      onChange={handleRowChange}
-                      onPlanClick={handleOpenPlanModal}
-                    />
-                  ))}
-                </tbody>
-              </table>
+        {/* Renderizado condicional según el tipo de vista */}
+        {productViewType === 'summary' ? (
+          <ProductSummaryView
+            items={filteredItems}
+            dailyPlans={dailyPlans}
+            onViewDetails={handleViewDetails}
+            onOpenDailyPlan={handleOpenDailyPlanFromCard}
+          />
+        ) : (
+          <>
+            {/* KPIs de la vista detallada (original) */}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
+                <span className="text-xs uppercase tracking-wide text-text-muted">Productos activos</span>
+                <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(metrics.totalItems)}</p>
+              </div>
+              <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
+                <span className="text-xs uppercase tracking-wide text-text-muted">Productos únicos</span>
+                <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(metrics.uniqueProducts)}</p>
+              </div>
+              <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
+                <span className="text-xs uppercase tracking-wide text-text-muted">Metros totales</span>
+                <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(metrics.totalMetros)}</p>
+                <p className="text-[11px] text-text-secondary">Próx. 7 días: {formatNumberWithDash(metrics.metrosProximos7)}</p>
+                <p className="text-[11px] text-text-secondary">Promedio diario 7d: {formatNumberWithDash(metrics.metrosDiarios)}</p>
+                <p className="text-[11px] text-text-secondary">Hoy: {formatNumberWithDash(metrics.metrosHoy)}</p>
+              </div>
+              <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
+                <span className="text-xs uppercase tracking-wide text-text-muted">Unidades totales</span>
+                <p className="mt-2 text-xl font-semibold text-text-primary">{formatNumberWithDash(metrics.totalUnidades)}</p>
+                <p className="text-[11px] text-text-secondary">Próx. 7 días: {formatNumberWithDash(metrics.unidadesProximos7)}</p>
+                <p className="text-[11px] text-text-secondary">Promedio diario 7d: {formatNumberWithDash(metrics.unidadesDiarias)}</p>
+                <p className="text-[11px] text-text-secondary">Hoy: {formatNumberWithDash(metrics.unidadesHoy)}</p>
+              </div>
             </div>
-          )}
-        </div>
+
+            {/* Tabla detallada (original) */}
+            <div className="glass-panel rounded-2xl border border-border shadow-hologram overflow-hidden">
+              {rows.length === 0 ? (
+                <div className="p-6 text-sm text-text-secondary">No hay productos activos para mostrar.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border-collapse">
+                    <thead className="bg-dark-card/80 border-b border-border">
+                      <tr className="text-xs uppercase tracking-wide text-text-muted">
+                        <th className="px-4 py-3 text-left w-10"></th>
+                        <th className="px-4 py-3 text-left">Producto</th>
+                        <th className="px-4 py-3 text-left">Cliente</th>
+                        <th className="px-4 py-3 text-left">Cotización</th>
+                        <th className="px-4 py-3 text-left">Ingreso</th>
+                        <th className="px-4 py-3 text-left">Cantidad</th>
+                        <th className="px-4 py-3 text-left">Entrega</th>
+                        <th className="px-4 py-3 text-left">Progreso</th>
+                        <th className="px-4 py-3 text-left">Estatus</th>
+                        <th className="px-4 py-3 text-left">Notas</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-sm text-text-secondary">
+                      {rows.map((row) => (
+                        <ProductViewRow
+                          key={row.item.id}
+                          data={row}
+                          statusOptions={statusOptions}
+                          onChange={handleRowChange}
+                          onPlanClick={handleOpenPlanModal}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     );
   };
@@ -1527,8 +1622,15 @@ const StatusTable: React.FC<StatusTableProps> = ({
                 </thead>
                 <tbody className="text-sm text-text-secondary">
                   {rows.map((row) => (
-                    <tr key={row.client} className="border-b border-border/40 hover:bg-dark-card/40 transition-colors">
-                      <td className="px-4 py-3 font-medium text-text-primary">{row.client}</td>
+                    <tr
+                      key={row.client}
+                      className="border-b border-border/40 hover:bg-dark-card/40 transition-colors cursor-pointer group"
+                      onClick={() => handleOpenClientDrawer(row.client)}
+                      title="Click para ver detalles del cliente"
+                    >
+                      <td className="px-4 py-3 font-medium text-text-primary group-hover:text-primary transition-colors">
+                        {row.client}
+                      </td>
                       <td className="px-4 py-3">{formatNumberWithDash(row.cotizacionCount)}</td>
                       <td className="px-4 py-3">{formatNumberWithDash(row.productoCount)}</td>
                       <td className="px-4 py-3">{formatNumberWithDash(row.metros)}</td>
@@ -1677,6 +1779,15 @@ const StatusTable: React.FC<StatusTableProps> = ({
           onSave={handleSavePlanModal}
         />
       )}
+
+      {/* Drawer de detalle de cliente */}
+      <ClientDetailDrawer
+        clientName={selectedClient || ''}
+        items={selectedClient ? filteredItems.filter(item => item.cliente === selectedClient) : []}
+        open={clientDrawerOpen}
+        onClose={handleCloseClientDrawer}
+        onViewProduct={handleViewProductFromClient}
+      />
     </>
   );
 };
