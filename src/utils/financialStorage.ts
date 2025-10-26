@@ -1,5 +1,6 @@
 import { FinancialData } from '../types';
 import { hybridStorage } from './serverStorage';
+import { processFinancialData } from './financialDataProcessor';
 
 const FINANCIAL_DATA_KEY = 'artyco-financial-data-persistent';
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
@@ -77,12 +78,10 @@ export const loadFinancialData = async (year?: number): Promise<FinancialData | 
           const yearMsg = year ? ` for year ${year}` : '';
           console.log(`🔍 Raw data from MySQL${yearMsg}:`, result.raw_data.length, 'records');
           console.log('🔍 Sample raw record:', result.raw_data[0]);
-          
+
           // Procesar datos raw desde MySQL al formato esperado
-          const processedData = await import('./financialDataProcessor').then(module => 
-            module.processFinancialData(result.raw_data)
-          );
-          
+          const processedData = processFinancialData(result.raw_data);
+
           console.log(`📊 Financial data loaded from MySQL database${yearMsg}`);
           console.log('📊 Processed data:', processedData);
           console.log('📊 Monthly keys:', Object.keys(processedData.monthly || {}));

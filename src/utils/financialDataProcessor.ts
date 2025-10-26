@@ -81,6 +81,16 @@ export const processFinancialData = (data: RawDataRow[]): FinancialData => {
     raw: filteredData,
   };
 
+  // OPTIMIZACIÓN: Pre-calcular cuentas con subcuentas para evitar búsquedas O(n) en cada iteración
+  const codigosConSubcuentas = new Set<string>();
+  filteredData.forEach(row => {
+    const code = (row['COD.'] || '').toString().trim();
+    if (code.includes('.')) {
+      const parentCode = code.slice(0, code.lastIndexOf('.'));
+      codigosConSubcuentas.add(parentCode);
+    }
+  });
+
   // Process monthly data - VERSIÓN ORIGINAL QUE FUNCIONABA
   months.forEach(month => {
     const monthData: MonthlyData = {
@@ -144,13 +154,10 @@ export const processFinancialData = (data: RawDataRow[]): FinancialData => {
       // Segmentación detallada de costos basada en códigos de cuenta
       // IMPORTANTE: Solo procesar CUENTAS HOJA para evitar doble conteo
       const cuentaLower = cuenta.toLowerCase();
-      
-      // Verificar si esta cuenta tiene subcuentas para evitar doble conteo
-      const tieneSubcuentas = filteredData.some(otherRow => {
-        const otherCode = otherRow['COD.'] || '';
-        return otherCode !== code && otherCode.startsWith(code + '.');
-      });
-      
+
+      // OPTIMIZACIÓN: Verificar si esta cuenta tiene subcuentas usando Set (O(1) en lugar de O(n))
+      const tieneSubcuentas = codigosConSubcuentas.has(code);
+
       // Solo procesar si es cuenta hoja (no tiene subcuentas)
       if (!tieneSubcuentas) {
         // Costo de Materia Prima - cuenta específica 5.1.1.6 y productos terminados
