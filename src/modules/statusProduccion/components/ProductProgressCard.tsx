@@ -6,6 +6,7 @@ interface ProductProgressCardProps {
   summary: ProductSummary;
   onViewDetails: (itemIds: number[]) => void;
   onOpenDailyPlan: (itemId: number) => void;
+  onViewDetailed?: (itemIds: number[]) => void;
 }
 
 const numberFormatter = new Intl.NumberFormat('es-EC', { maximumFractionDigits: 1 });
@@ -23,6 +24,7 @@ const ProductProgressCard: React.FC<ProductProgressCardProps> = ({
   summary,
   onViewDetails,
   onOpenDailyPlan,
+  onViewDetailed,
 }) => {
   const totalAlerts = summary.alerts.reduce((sum, alert) => sum + alert.count, 0);
 
@@ -213,7 +215,10 @@ const ProductProgressCard: React.FC<ProductProgressCardProps> = ({
       {/* Acciones */}
       <div className="flex gap-2 pt-3 border-t border-border/30">
         <button
-          onClick={() => onViewDetails(summary.itemIds)}
+          onClick={() => {
+            onViewDetails(summary.itemIds);
+            onViewDetailed?.(summary.itemIds);
+          }}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg
                      bg-primary/10 border border-primary/30 text-primary text-xs font-medium
                      hover:bg-primary/20 transition-colors"

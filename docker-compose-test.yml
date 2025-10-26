@@ -26,6 +26,7 @@ services:
       - "3307:3306"
     volumes:
       - mysql-rbac-data:/var/lib/mysql
+      - ./docker/mysql:/docker-entrypoint-initdb.d
     networks:
       - artyco-network
     healthcheck:

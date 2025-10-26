@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { UploadCloud, FileText, Loader2, RefreshCcw } from 'lucide-react';
-import { UploadStatus } from '../hooks/useStatusProduccion';
+import { UploadStatus } from '../hooks/useActiveProductionItems';
 
 interface UploadCardProps {
   onUpload: (files: FileList | File[]) => void;
@@ -77,7 +77,7 @@ const UploadCard: React.FC<UploadCardProps> = ({ onUpload, status, onReset }) =>
                 <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
                   {status.status === 'loading' && <Loader2 className="w-4 h-4 animate-spin" />}
                   {status.status === 'success' && <FileText className="w-4 h-4 text-primary" />}
-                  {status.status === 'error' && <FileText className="w-4 h-4 text-red-400" />}
+                  {status.status === 'error' && <FileText className="w-4 h-4 text-danger" />}
                   <span>{status.message}</span>
                 </div>
                 {status.status === 'success' && status.detail.length > 0 && (
@@ -91,7 +91,7 @@ const UploadCard: React.FC<UploadCardProps> = ({ onUpload, status, onReset }) =>
                   </ul>
                 )}
                 {status.status === 'error' && (
-                  <p className="mt-2 text-sm text-red-300">
+                  <p className="mt-2 text-sm text-danger">
                     Verifica que el archivo siga el formato estándar de cotizaciones (PDF o Excel) y vuelve a intentarlo.
                   </p>
                 )}

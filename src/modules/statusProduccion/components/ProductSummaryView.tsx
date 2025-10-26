@@ -141,7 +141,7 @@ const ProductSummaryView: React.FC<ProductSummaryViewProps> = ({
         <p>
           Mostrando {filteredSummaries.length} de {totalProducts} productos
           {totalAlerts > 0 && (
-            <span className="ml-2 text-amber-400">
+            <span className="ml-2 text-warning">
               • {totalAlerts} alertas activas
             </span>
           )}
@@ -225,17 +225,17 @@ const FilterButton: React.FC<FilterButtonProps> = ({
       ? 'bg-primary/20 border-primary/40 text-primary'
       : 'bg-dark-bg/40 border-border/30 text-text-secondary hover:bg-dark-bg/60 hover:border-border/50',
     danger: active
-      ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
-      : 'bg-dark-bg/40 border-border/30 text-text-secondary hover:bg-rose-500/10 hover:border-rose-500/30',
+      ? 'bg-danger-glow border-danger/40 text-danger'
+      : 'bg-dark-bg/40 border-border/30 text-text-secondary hover:bg-danger-glow hover:border-danger/30',
     warning: active
-      ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
-      : 'bg-dark-bg/40 border-border/30 text-text-secondary hover:bg-amber-500/10 hover:border-amber-500/30',
+      ? 'bg-warning-glow border-warning/40 text-warning'
+      : 'bg-dark-bg/40 border-border/30 text-text-secondary hover:bg-warning-glow hover:border-warning/30',
     info: active
-      ? 'bg-sky-500/20 border-sky-500/40 text-sky-300'
-      : 'bg-dark-bg/40 border-border/30 text-text-secondary hover:bg-sky-500/10 hover:border-sky-500/30',
+      ? 'bg-primary-glow border-primary/40 text-primary'
+      : 'bg-dark-bg/40 border-border/30 text-text-secondary hover:bg-primary-glow hover:border-primary/30',
     muted: active
-      ? 'bg-slate-500/20 border-slate-500/40 text-slate-300'
-      : 'bg-dark-bg/40 border-border/30 text-text-secondary hover:bg-slate-500/10 hover:border-slate-500/30',
+      ? 'bg-dark-card/60 border-border/40 text-text-primary'
+      : 'bg-dark-bg/40 border-border/30 text-text-secondary hover:bg-dark-card/40 hover:border-border/40',
   };
 
   return (

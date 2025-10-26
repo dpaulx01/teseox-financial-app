@@ -1,14 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarRange, Loader2, LayoutGrid, PackageOpen, UploadCloud, Users2, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarRange, CheckCircle2, Loader2, LayoutGrid, PackageOpen, UploadCloud, Users2, X } from 'lucide-react';
 import UploadCard from '../modules/statusProduccion/components/UploadCard';
 import StatusTable from '../modules/statusProduccion/components/StatusTable';
 import { useActiveProductionItems } from '../modules/statusProduccion/hooks/useActiveProductionItems';
+import StockPlanningUploadModal from '../modules/statusProduccion/components/StockPlanningUploadModal';
+import type { StockPlanningConfirmResponse } from '../types/production';
 
 export interface ExternalPanelContext {
   focusItemId?: number | null;
   focusQuoteNumber?: string | null;
   viewMode?: 'quotes' | 'products' | 'clients' | 'calendar';
   searchQuery?: string | null;
+  productViewType?: 'summary' | 'detailed';
 }
 
 interface ProductionControlPanelProps {
@@ -28,10 +31,13 @@ const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({ externa
     updateItem,
     isSaving,
     deleteQuote,
+    refetch,
   } = useActiveProductionItems();
   const [viewMode, setViewMode] = useState<'quotes' | 'products' | 'clients' | 'calendar'>('quotes');
   const [showUploader, setShowUploader] = useState(false);
+  const [showStockUploader, setShowStockUploader] = useState(false);
   const [externalFocus, setExternalFocus] = useState<ExternalPanelContext | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const viewDescription = useMemo(() => {
     switch (viewMode) {
@@ -46,6 +52,15 @@ const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({ externa
     }
   }, [viewMode]);
 
+  const handleStockUploadSuccess = useCallback(
+    (result: StockPlanningConfirmResponse) => {
+      setSuccessMessage(`${result.message} (Pedido ${result.numero_pedido})`);
+      setShowStockUploader(false);
+      refetch();
+    },
+    [refetch],
+  );
+
   useEffect(() => {
     if (!externalContext) {
       return;
@@ -56,6 +71,8 @@ const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({ externa
       : undefined;
 
     const resolvedView = externalContext.viewMode ?? 'products';
+    const resolvedProductView =
+      externalContext.productViewType ?? (resolvedView === 'products' ? 'detailed' : undefined);
     setViewMode((prev) => (prev === resolvedView ? prev : resolvedView));
 
     const resolvedSearch =
@@ -69,25 +86,30 @@ const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({ externa
       focusItemId: targetItem?.id ?? externalContext.focusItemId ?? null,
       focusQuoteNumber: externalContext.focusQuoteNumber ?? targetItem?.numeroCotizacion ?? null,
       searchQuery: resolvedSearch,
+      ...(resolvedProductView ? { productViewType: resolvedProductView } : {}),
     });
 
     onConsumedContext?.();
   }, [externalContext, items, onConsumedContext]);
 
   useEffect(() => {
-    if (!showUploader) {
+    if (!showUploader && !showStockUploader) {
       return;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setShowUploader(false);
+        if (showStockUploader) {
+          setShowStockUploader(false);
+        } else if (showUploader) {
+          setShowUploader(false);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [showUploader]);
+  }, [showUploader, showStockUploader]);
 
   return (
     <div className="space-y-8">
@@ -126,14 +148,24 @@ const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({ externa
           })}
         </div>
         <div className="flex flex-col gap-3 lg:items-end">
-          <button
-            type="button"
-            onClick={() => setShowUploader(true)}
-            className="cyber-button inline-flex items-center justify-center gap-2"
-          >
-            <UploadCloud className="h-5 w-5" />
-            Subir cotización
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setShowUploader(true)}
+              className="cyber-button inline-flex items-center justify-center gap-2"
+            >
+              <UploadCloud className="h-5 w-5" />
+              Subir cotización
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowStockUploader(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-warning/50 bg-warning-glow px-4 py-3 text-sm font-semibold text-warning hover:bg-warning/20 hover:border-warning transition-all duration-200"
+            >
+              <PackageOpen className="h-5 w-5" />
+              Subir pedido stock
+            </button>
+          </div>
           <p className="text-sm text-text-muted max-w-xl text-left lg:text-right bg-dark-card/30 rounded-lg px-3 py-2 border border-border/40">{viewDescription}</p>
         </div>
       </div>
@@ -144,6 +176,23 @@ const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({ externa
             <div className="w-2 h-2 rounded-full bg-danger animate-pulse"></div>
             {error}
           </div>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="glass-card rounded-xl border border-accent/40 bg-accent-glow px-5 py-4 text-sm text-accent shadow-glow-sm flex items-start justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+            <span>{successMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuccessMessage(null)}
+            className="inline-flex items-center gap-1 rounded-lg border border-accent/40 px-3 py-1 text-xs font-medium text-accent hover:text-accent hover:border-accent/60 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+            Cerrar
+          </button>
         </div>
       )}
 
@@ -164,6 +213,7 @@ const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({ externa
           externalFocus={externalFocus}
           onConsumeExternalFocus={() => setExternalFocus(null)}
           onRequestViewChange={setViewMode}
+          readOnlyStatuses={['Entregado']}
         />
       )}
 
@@ -192,6 +242,12 @@ const ProductionControlPanel: React.FC<ProductionControlPanelProps> = ({ externa
           </div>
         </div>
       )}
+
+      <StockPlanningUploadModal
+        open={showStockUploader}
+        onClose={() => setShowStockUploader(false)}
+        onSuccess={handleStockUploadSuccess}
+      />
     </div>
   );
 };

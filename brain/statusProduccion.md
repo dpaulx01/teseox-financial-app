@@ -1,7 +1,7 @@
 Status Producción – Radiografía del Módulo
 ==========================================
 
-> Última revisión: 19-oct-2025 (supervisor: producción cerámica & acabados)
+> Última revisión: 24-oct-2025 (supervisor: producción cerámica & acabados, UX/PDF mejorado)
 
 Propósito y Alcance
 -------------------
@@ -13,7 +13,9 @@ El módulo **Status Producción** concentra toda la operación productiva poster
 
 Visión de Usuario
 -----------------
-1. **Ingreso de cotizaciones** (PDF/Excel) → extracción automática de productos, cantidades, valores, estatus iniciales y pagos asociados.
+1. **Ingreso de cotizaciones y pedidos stock**:
+   - Cotizaciones (PDF/Excel) → extracción automática de productos, cantidades, valores, estatus iniciales y pagos asociados.
+   - Pedidos de stock (Excel Contifico) → parseo asistido, confirmación operativa y generación de plan diario.
 2. **Panel de control** para ajustar fechas de entrega, registrar notas, reprogramar cargas diarias (manual o automática) y revisar documentos.
 3. **Dashboard 360°** con métricas vivas: pedidos atrasados, avance por cliente, capacidad (metros/unidades) y agenda operacional.
 4. **Archivo histórico** para auditar entregas y alimentar informes financieros.
@@ -51,11 +53,65 @@ Principalmente React 18 + Vite (archivo `src/pages/ProductionDashboard.tsx`). Se
 - **Edición en línea**:
   - Inputs con autoguardado (`useDebouncedEffect`) para fechas, estatus, notas.
   - Se integra con `financialAPI.updateProductionItem`.
-- **Carga de documentos**:
-  - Botón flotante abre `UploadCard` (drag & drop); delega a `POST /api/production/quotes`.
-- **Filtros globales**: texto libre, cliente, estatus, rango de entrega, ordenamiento.
+- **Carga rápida**:
+  - `Subir cotización`: abre `UploadCard` (drag & drop) y delega a `POST /api/production/quotes`.
+  - `Subir pedido stock`: abre `StockPlanningUploadModal`, que
+    - valida el Excel Contifico (`parseStockPlanning`);
+    - muestra PDI, rango, responsable, bodega sugerida y programación diaria;
+    - permite ajustar bodega/notas antes de confirmar (`confirmStockPlanning`).
+  - Tras confirmar, se refresca la grilla y se muestra banner de éxito contextual.
+- **Filtros globales**: texto libre, cliente, estatus, rango de entrega y selector de tipo (`Clientes`, `Stock`, `Todos`). En vistas combinadas se resaltan los pedidos stock con badges, bodega/responsable y período operativo.
+- **Visualización unificada**: `StatusTable` agrupa por cotización/cliente/producto incluyendo datos stock, muestra badges "Stock", metadatos de bodega/responsable, y mantiene métricas financieras solo para pedidos de clientes.
+- **Filtros inteligentes con feedback visual (oct-2025)**:
+  - Clic en **producto**, **cliente** o **cotización** aplica filtro automático
+  - Scroll suave hacia área de filtros + focus en input de búsqueda
+  - Efecto visual de highlight (anillo azul 1.5s) para confirmar acción
+  - Input de búsqueda se llena automáticamente con el valor filtrado
+  - Comportamiento consistente: producto/cotización → campo "Búsqueda general", cliente → campo "Cliente/contacto"
 
-### 3. Archivo Histórico
+### 3. Exportación PDF Profesional (oct-2025)
+El módulo incluye exportación a PDF moderna y adaptativa desde la vista "Por producto":
+
+**Características del PDF:**
+- **Header corporativo**: Fondo índigo con marca ARTYCO, título prominente, subtítulo y fecha completa
+- **4 cards de KPIs**: Items activos, productos únicos, metros totales, unidades totales (colores diferenciados)
+- **Banner de filtros aplicados**: Aparece solo si hay filtros activos, fondo amarillo con texto claro
+- **Tabla inteligente y adaptativa**:
+  - Oculta automáticamente columnas redundantes según filtros (ej: si filtra por cliente, oculta columna Cliente)
+  - Incluye columna **Progreso** con porcentaje de producción planificada (colores: verde ≥100%, amarillo ≥50%, rojo <50%)
+  - Incluye columna **Factura** (solo si existen facturas registradas, con resaltado cyan)
+  - Columna **Estatus** con fondos de color por estado (azul: en producción, verde: listo/bodega, gris: entregado, amarillo: en cola)
+  - Filtra automáticamente metadata (notas de tiempo de producción, ODC, etc.)
+  - Anchos de columna optimizados: producto se expande cuando se ocultan otras columnas
+- **Footer mejorado**: Línea decorativa, paginación centrada, info del sistema (izq) y timestamp (der)
+- **Nombre de archivo**: `Reporte_Produccion_YYYY-MM-DD.pdf`
+
+**Lógica de columnas inteligentes:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Columna      │ Aparece cuando...                            │
+├──────────────┼──────────────────────────────────────────────┤
+│ Producto     │ Siempre (negrita)                            │
+│ Cliente      │ NO hay filtro de cliente                     │
+│ Cotización   │ NO hay búsqueda específica o hay múltiples   │
+│ Ingreso      │ Siempre                                      │
+│ Cantidad     │ Siempre (alineada derecha)                   │
+│ Entrega      │ Siempre                                      │
+│ Progreso     │ Siempre (negrita, con colores)              │
+│ Estatus      │ NO hay filtro de estatus (con colores)       │
+│ Factura      │ Existe al menos una factura (con resaltado)  │
+└──────────────┴──────────────────────────────────────────────┘
+```
+
+**Paleta de colores moderna:**
+- Primary (Índigo): #6366F1
+- Secondary (Púrpura): #8B5CF6
+- Accent (Rosa): #EC4899
+- Success (Verde): #22C55E
+- Warning (Amarillo): #EAB308
+- Cyan (Facturas): #CFFAFE
+
+### 4. Archivo Histórico
 - Comparte backbone de `StatusTable` pero se alimenta con `/api/production/items/archive`.
 - No permite edición; se usa para auditoría y reconstrucción de reportería financiera.
 
@@ -65,8 +121,10 @@ Hooks y Servicios Frontend
   - Maneja la carga inicial y refrescos del Dashboard 360° (`financialAPI.getDashboardKpis()`).
   - Define utilidades de formato (números/moneda/fechas).
 - **`useProductionSchedule`**: consulta `/dashboard/schedule` para alimentar el tablero mensual (Panel → Agenda). Gestiona loading/error y normaliza datos.
+- **`useStockPlanningUpload`**: encapsula el wizard de carga de stock (fase upload → preview → confirm), maneja mensajes/errores y expone `parseFile` / `confirmPlan` para el modal.
 - **Servicios REST** (`services/api.ts`):
-  - `getDashboardKpis`, `getProductionSchedule`, `getActiveProductionItems`, `getArchivedProductionItems`, `updateProductionItem`, `get/saveProductionDailyPlan`, etc.
+  - `getDashboardKpis`, `getProductionSchedule`, `getActiveProductionItems`, `getArchivedProductionItems`, `updateProductionItem`, `get/saveProductionDailyPlan`.
+  - Nuevos helpers para stock: `parseStockPlanning(file)` y `confirmStockPlanning(payload)` (suben Excel, normalizan y persisten PDI).
   - Centraliza headers (incluye bearer token) y manejo de respuestas Axios.
 
 Backend – Endpoints Clave (`routes/production_status.py`)
@@ -77,7 +135,7 @@ Genera un `DashboardKpisResponse` con los bloques:
 - **kpi_cards**: totales de líneas activas, atrasados, próximos 7 días, valor activo, saldo por cobrar.
 - **production_load_chart**: suma metros + unidades por estatus activo.
 - **status_breakdown**: desglose con valor económico, porcentaje sobre total de líneas y cantidades.
-- **risk_alerts**: prioridad por severidad y días de atraso/entrega.
+- **risk_alerts**: prioridad por severidad y días de atraso/entrega. Los productos con estatus "En bodega" o "Entregado" NO generan alertas de atraso.
 - **workload_snapshot**: ingresos diarios/semanales, entregas de la semana, promedios de plazo y retraso.
 - **financial_summary**: sumatoria de valores en producción, valor de cotizaciones activas (distintas a la suma de productos), valor atrasado, listo para retiro y saldo por cobrar.
 - **top_clients**: top 5 clientes por metros luego unidades.
@@ -89,6 +147,9 @@ Genera un `DashboardKpisResponse` con los bloques:
 - Se respeta `min_allowed_date`: incluye producción manual o automática del mes en curso aunque sea previa a hoy.
 - Planes manuales usan el día ingresado; sólo ajustan a día hábil anterior si cae en fin de semana.
 - Entregas vencidas se reubican al último hábil disponible (no se "empujan" al futuro).
+- **Diferenciación stock vs. clientes**: pedidos de stock consideran la fecha de entrega como disponibilidad (mismo día hábil), mientras que cotizaciones de clientes terminan producción un día antes de la entrega.
+- **Nuevo estatus "En bodega"**: específico para productos de stock cuando están terminados y disponibles en inventario. "Entregado" se mantiene para productos de cliente.
+- **Badges visuales mejorados**: cada producto muestra "Stock" o "Cot." con colores más visibles (amber para stock, azul para cotizaciones). El botón "Control diario" también tiene mejor contraste.
 
 ### B. Agenda diaria (`GET /api/production/dashboard/schedule`)
 - Devuelve `DailyScheduleResponse` con días ordenados por fecha.
@@ -101,6 +162,9 @@ Genera un `DashboardKpisResponse` con los bloques:
 - **`GET /api/production/items/{id}/daily-plan`** y **`PUT .../daily-plan`**: gestionan el plan manual por producto (incluye flag `is_manually_edited`).
 - **`PUT /api/production/items/{id}`**: actualiza campos editables (estatus, fechas, notas, montos).
 - **`DELETE /api/production/quotes/{quote_id}`**: limpieza completa de una cotización.
+- **Stock planning** (nuevo oct-2025):
+  - `POST /api/production/stock-planning/parse`: interpreta el Excel Contifico, detecta PDI, rango operativo, responsable, bodega y productos; combina columnas «Sugerencia/Actual» para obtener las cantidades por día hábil.
+  - `POST /api/production/stock-planning/confirm`: crea o actualiza cotizaciones `tipo_produccion=stock`, guarda bodega/notas internas y genera el plan diario con los valores sugeridos.
 
 ### D. Carga de Cotizaciones (`POST /api/production/quotes`)
 - Procesa PDF/Excel, limpian metadatos (`_is_metadata_description`), detecta productos y cantidades (`_extract_quantity_info`), y persiste en base.
@@ -114,8 +178,11 @@ Lógica Operativa Destacada
 - **Calendario laboral**:
   - Festivos ecuatorianos vía `holidays` (con fallback en caso de error).
   - Funciones `_is_working_day`, `_next_working_day`, `_previous_working_day`, `_iter_working_days`.
-- **Distribución automática**: reparte cantidades uniformemente entre días hábiles desde `fecha_ingreso` (o hoy) hasta el día laboral previo a `fecha_entrega`.
+- **Distribución automática**:
+  - **Cotizaciones de clientes**: reparte cantidades uniformemente entre días hábiles desde `fecha_ingreso` (o hoy) hasta el día laboral **previo** a `fecha_entrega` (porque la producción debe completarse antes de la entrega al cliente).
+  - **Pedidos de stock**: reparte cantidades uniformemente desde `fecha_ingreso` hasta el **mismo día** de `fecha_entrega` (si es hábil), porque la fecha indica cuándo el producto estará disponible en inventario.
 - **Planes manuales**: prioridad sobre distribución automática; se respeta la fecha ingresada, se marca `manual=True` y alimenta tanto `daily_workload` como los tableros.
+- **Planes de stock**: los Excel de Contifico mantienen las cantidades sugeridas por día; si falta el valor «Actual» se usa la sugerencia y se asigna al día hábil correspondiente dentro del período cargado.
 - **Capacidad**: se suma metros + unidades por día y se limita el porcentaje a 999 para evitar overflow en cards.
 
 Base de Datos
@@ -154,6 +221,9 @@ Flujo de Datos
 4. **Planes manuales**:
    - Modal de planificación llama `get/saveProductionDailyPlan`.
    - Backend ordena entradas, recalcula `is_manually_edited` y las incluye en la agenda.
+5. **Pedidos de stock**:
+   - Excel Contifico → `parseStockPlanning` para validación/preview (PDI, rango, cantidades por día).
+   - Confirmación vía `confirmStockPlanning` → persiste cotización `tipo_produccion=stock`, bodega/notas y plan diario con las cantidades sugeridas.
 
 Integración con otras áreas
 ---------------------------
@@ -178,5 +248,6 @@ El módulo Status Producción ofrece:
 - **Control fino** vía panel con edición en caliente y agenda mensual inteligente.
 - **Procesamiento robusto** en backend (calendario laboral, planes manuales, métricas financieras).
 - **Integración** con la base de datos de cotizaciones/pagos y con el sistema de autenticación RBAC.
+- **Ingreso híbrido**: cotizaciones PDF/Excel + pedidos stock desde Excel Contifico, con filtros combinados y badges para cada tipo.
 
 Esta radiografía debe servir como base para onboarding, auditoría técnica y planificación de mejoras. Cualquier cambio estructural debe reflejarse aquí para mantener la documentación viva.***

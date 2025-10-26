@@ -9,6 +9,7 @@ import {
   ChevronDown,
   CreditCard,
   DollarSign,
+  FileDown,
   Info,
   Loader2,
   Plus,
@@ -19,6 +20,8 @@ import {
   LayoutGrid,
   List,
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 import type {
   DailyProductionPlanEntry,
@@ -46,7 +49,17 @@ type SortKey =
   | 'totalAbonado'
   | 'saldoPendiente';
 
+type ProductSortKey =
+  | 'producto'
+  | 'cliente'
+  | 'numeroCotizacion'
+  | 'fechaIngreso'
+  | 'cantidad'
+  | 'fechaEntrega'
+  | 'estatus';
+
 type ViewMode = 'quotes' | 'products' | 'clients' | 'calendar';
+type ProductionTypeFilter = 'all' | 'cliente' | 'stock';
 
 interface SortConfig {
   key: SortKey;
@@ -59,6 +72,7 @@ interface Filters {
   status: string;
   from: string;
   to: string;
+  productionType: ProductionTypeFilter;
 }
 
 type PaymentForm = {
@@ -77,6 +91,7 @@ interface RowFormState {
 }
 
 interface QuoteRowFormState {
+  fechaIngreso: string;
   factura: string;
   fechaVencimiento: string;
   pagos: PaymentForm[];
@@ -85,12 +100,18 @@ interface QuoteRowFormState {
 interface QuoteGroup {
   cotizacionId: number;
   numeroCotizacion: string;
+  tipoProduccion: 'cliente' | 'stock';
+  numeroPedidoStock: string | null;
   odc: string | null;
   cliente: string | null;
   contacto: string | null;
   proyecto: string | null;
   fechaIngreso: string | null;
   archivoOriginal: string | null;
+  bodega: string | null;
+  responsable: string | null;
+  fechaInicioPeriodo: string | null;
+  fechaFinPeriodo: string | null;
   fechaVencimiento: string | null;
   totalCotizacion: number | null;
   totalAbonado: number;
@@ -110,6 +131,7 @@ interface ProductViewRowModel {
   quote: QuoteGroup | undefined;
   saving: 'idle' | 'saving' | 'success' | 'error';
   colorClass: string;
+  readOnly: boolean;
   isHighlighted: boolean;
 }
 
@@ -129,6 +151,7 @@ interface ExternalFocusPayload {
   focusQuoteNumber?: string | null;
   viewMode?: ViewMode;
   searchQuery?: string | null;
+  productViewType?: 'summary' | 'detailed';
 }
 
 interface StatusTableProps {
@@ -141,6 +164,7 @@ interface StatusTableProps {
   externalFocus?: ExternalFocusPayload | null;
   onConsumeExternalFocus?: () => void;
   onRequestViewChange?: (viewMode: ViewMode) => void;
+  readOnlyStatuses?: string[];
 }
 
 interface ProgressInfo {
@@ -150,6 +174,7 @@ interface ProgressInfo {
   tooltip: string;
   producedEstimate: number | null;
   quantity: number | null;
+  quantityUnit: 'metros' | 'unidades';
 }
 
 const defaultFilters: Filters = {
@@ -158,14 +183,16 @@ const defaultFilters: Filters = {
   status: '',
   from: '',
   to: '',
+  productionType: 'all',
 };
 
 const statusBadgeVariants: Record<string, string> = {
-  'En cola': 'bg-slate-700 text-white border-transparent shadow-sm',
-  'En producción': 'bg-sky-600 text-white border-transparent shadow-sm',
-  'Producción parcial': 'bg-amber-500 text-slate-900 border-transparent shadow-sm',
-  'Listo para retiro': 'bg-emerald-500 text-white border-transparent shadow-sm',
-  Entregado: 'bg-emerald-700 text-white border-transparent shadow-sm',
+  'En cola': 'bg-dark-card/70 text-text-muted border border-border/40',
+  'En producción': 'bg-primary-glow text-primary border border-primary/30',
+  'Producción parcial': 'bg-warning-glow text-warning border border-warning/30',
+  'Listo para retiro': 'bg-accent-glow text-accent border border-accent/30',
+  'En bodega': 'bg-accent/20 text-accent border border-accent/40',
+  Entregado: 'bg-accent/20 text-accent border border-accent/40',
 };
 
 const metadataKeywords = [
@@ -181,6 +208,45 @@ const metadataKeywords = [
   'DESPACHO',
   'REFERENCIA TRANSPORTE',
 ];
+
+function resolveProductionType(item: ProductionItem): 'cliente' | 'stock' {
+  return (item.tipoProduccion ?? 'cliente') as 'cliente' | 'stock';
+}
+
+function getClientLabel(item: ProductionItem): string {
+  if (resolveProductionType(item) === 'stock') {
+    const parts: string[] = [];
+    if (item.numeroPedidoStock) {
+      parts.push(item.numeroPedidoStock);
+    }
+    if (item.bodega) {
+      parts.push(item.bodega);
+    }
+    if (item.responsable) {
+      parts.push(item.responsable);
+    }
+    const descriptor = parts.length > 0 ? parts.join(' • ') : item.numeroCotizacion;
+    return `Stock • ${descriptor}`;
+  }
+  return item.cliente?.trim() || 'Sin cliente';
+}
+
+function getSearchableFields(item: ProductionItem): Array<string | null | undefined> {
+  return [
+    item.numeroCotizacion,
+    item.producto,
+    item.cantidad,
+    item.cliente,
+    item.contacto,
+    item.proyecto,
+    item.odc,
+    item.factura,
+    item.notasEstatus,
+    item.numeroPedidoStock,
+    item.bodega,
+    item.responsable,
+  ];
+}
 
 const DAY_IN_MS = 86_400_000;
 
@@ -309,12 +375,12 @@ function parseQuantityFromString(value: string | null | undefined): number | nul
 const meterKeywords = ['m2', 'm3', 'metro', 'metros', 'mt', 'mts', 'ml'];
 const unitKeywords = ['unidad', 'unidades', 'und', 'unds', 'pieza', 'piezas', 'pza', 'pzas', 'pz', 'pzs', ' u'];
 const productColorPalette = [
-  'bg-emerald-500/10 border-l-4 border-emerald-500/60',
-  'bg-sky-500/10 border-l-4 border-sky-500/60',
-  'bg-amber-500/10 border-l-4 border-amber-500/60',
-  'bg-fuchsia-500/10 border-l-4 border-fuchsia-500/60',
-  'bg-rose-500/10 border-l-4 border-rose-500/60',
-  'bg-lime-500/10 border-l-4 border-lime-500/60',
+  'bg-accent/15 border border-accent/50 rounded-lg shadow-sm',
+  'bg-primary/15 border border-primary/50 rounded-lg shadow-sm',
+  'bg-warning/15 border border-warning/50 rounded-lg shadow-sm',
+  'bg-danger/15 border border-danger/50 rounded-lg shadow-sm',
+  'bg-accent/10 border border-accent/40 rounded-lg shadow-sm',
+  'bg-primary/10 border border-primary/40 rounded-lg shadow-sm',
 ];
 
 function getStatusProgressPercent(estatus: string | null | undefined): number {
@@ -336,11 +402,11 @@ function getStatusProgressPercent(estatus: string | null | undefined): number {
 }
 
 function progressColorFromPercent(percent: number): string {
-  if (percent >= 100) return 'bg-emerald-500';
-  if (percent > 85) return 'bg-emerald-500';
-  if (percent > 60) return 'bg-amber-500';
-  if (percent > 40) return 'bg-sky-500';
-  return 'bg-slate-500';
+  if (percent >= 100) return 'bg-accent';
+  if (percent > 85) return 'bg-accent';
+  if (percent > 60) return 'bg-warning';
+  if (percent > 40) return 'bg-primary';
+  return 'bg-dark-card border border-border';
 }
 
 function calculateWorkingDays(startDate: Date, endDate: Date): number {
@@ -417,6 +483,9 @@ function computeProgress(
   const tooltipParts: string[] = [];
   const percentFromStatus = getStatusProgressPercent(estatus);
   const quantity = parseQuantityFromString(item.cantidad);
+  const quantityInfo = extractQuantityInfo(item.cantidad);
+  const targetUnit = quantityInfo.unit;
+  const unitLabel = targetUnit === 'metros' ? 'm²' : 'u';
 
   if (estatus) {
     tooltipParts.push(`Estatus: ${estatus}`);
@@ -441,9 +510,6 @@ function computeProgress(
 
   // Si tenemos plan diario real, usarlo en lugar del cálculo estimado
   if (dailyPlan && dailyPlan.length > 0 && quantity !== null && quantity > 0) {
-    const quantityInfo = extractQuantityInfo(item.cantidad);
-    const targetField = quantityInfo.unit;
-    
     // Calcular producción real hasta hoy
     const producedSoFar = dailyPlan
       .filter(entry => {
@@ -451,12 +517,12 @@ function computeProgress(
         return entryDate && entryDate <= today;
       })
       .reduce((sum, entry) => {
-        return sum + (targetField === 'metros' ? entry.metros : entry.unidades);
+        return sum + (targetUnit === 'metros' ? entry.metros : entry.unidades);
       }, 0);
 
     // Calcular total planificado
     const totalPlanned = dailyPlan.reduce((sum, entry) => {
-      return sum + (targetField === 'metros' ? entry.metros : entry.unidades);
+      return sum + (targetUnit === 'metros' ? entry.metros : entry.unidades);
     }, 0);
 
     if (totalPlanned > 0) {
@@ -470,7 +536,7 @@ function computeProgress(
       }).length;
       
       tooltipParts.push(
-        `Plan real: ${Math.round(percentFromTime)}% (${formatNumber(producedSoFar)}/${formatNumber(totalPlanned)} ${targetField})`
+        `Plan real: ${Math.round(percentFromTime)}% (${formatNumber(producedSoFar)}/${formatNumber(totalPlanned)} ${unitLabel})`
       );
       tooltipParts.push(`Días completados: ${completedDays}/${totalDays}`);
     }
@@ -519,20 +585,32 @@ function computeProgress(
     tooltip: tooltipParts.join(' • '),
     producedEstimate,
     quantity,
+    quantityUnit: targetUnit,
   };
 }
 
 function matchesFilters(item: ProductionItem, filters: Filters): boolean {
+  const tipo = resolveProductionType(item);
+  if (filters.productionType !== 'all' && filters.productionType !== tipo) {
+    return false;
+  }
+
   if (filters.status && (item.estatus ?? '') !== filters.status) {
     return false;
   }
 
   if (filters.client) {
     const needle = normalizeText(filters.client);
-    const matchesClient =
-      includesNormalized(item.cliente, needle) ||
-      includesNormalized(item.contacto, needle) ||
-      includesNormalized(item.proyecto, needle);
+    const clientCandidates = [
+      item.cliente,
+      item.contacto,
+      item.proyecto,
+      item.numeroPedidoStock,
+      item.bodega,
+      item.responsable,
+      getClientLabel(item),
+    ];
+    const matchesClient = clientCandidates.some((value) => includesNormalized(value, needle));
     if (!matchesClient) {
       return false;
     }
@@ -540,17 +618,7 @@ function matchesFilters(item: ProductionItem, filters: Filters): boolean {
 
   if (filters.query) {
     const needle = normalizeText(filters.query);
-    const haystacks = [
-      item.numeroCotizacion,
-      item.producto,
-      item.cantidad,
-      item.cliente,
-      item.contacto,
-      item.proyecto,
-      item.odc,
-      item.factura,
-      item.notasEstatus,
-    ];
+    const haystacks = getSearchableFields(item);
     const matchesQuery =
       haystacks.some((value) => includesNormalized(value, needle)) ||
       includesNormalized(
@@ -597,12 +665,17 @@ const StatusTable: React.FC<StatusTableProps> = ({
   externalFocus,
   onConsumeExternalFocus,
   onRequestViewChange,
+  readOnlyStatuses,
 }) => {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [expandedQuotes, setExpandedQuotes] = useState<Record<number, boolean>>({});
   const [sortConfig, setSortConfig] = useState<SortConfig>({
     key: 'fechaIngreso',
     direction: 'desc',
+  });
+  const [productSortConfig, setProductSortConfig] = useState<{ key: ProductSortKey; direction: 'asc' | 'desc' }>({
+    key: 'fechaEntrega',
+    direction: 'asc',
   });
   const [forms, setForms] = useState<Record<number, RowFormState>>({});
   const [savingStatus, setSavingStatus] = useState<Record<number, 'idle' | 'saving' | 'success' | 'error'>>({});
@@ -613,9 +686,11 @@ const StatusTable: React.FC<StatusTableProps> = ({
   const [planModalError, setPlanModalError] = useState<string | null>(null);
   const [highlightedProductId, setHighlightedProductId] = useState<number | null>(null);
   const [highlightedQuoteId, setHighlightedQuoteId] = useState<number | null>(null);
-  const [productViewType, setProductViewType] = useState<'summary' | 'detailed'>('summary');
+  const [productViewType, setProductViewType] = useState<'summary' | 'detailed'>('detailed');
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [clientDrawerOpen, setClientDrawerOpen] = useState(false);
+  const previousViewModeRef = useRef<ViewMode>(viewMode);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const baseItems = useMemo(() => items.filter((item) => !item.esServicio), [items]);
   
   // Hook para obtener planes diarios
@@ -623,6 +698,32 @@ const StatusTable: React.FC<StatusTableProps> = ({
   
   // Estado para cachear planes diarios
   const [dailyPlans, setDailyPlans] = useState<Record<number, DailyProductionPlanEntry[]>>({});
+
+  const readOnlyStatusSet = useMemo(() => {
+    const statuses = readOnlyStatuses === undefined ? ['Entregado'] : readOnlyStatuses;
+    return new Set(statuses.map((status) => normalizeText(status)));
+  }, [readOnlyStatuses]);
+
+  const isStatusReadOnly = useCallback(
+    (status: string | null | undefined) => readOnlyStatusSet.has(normalizeText(status)),
+    [readOnlyStatusSet],
+  );
+
+  const isItemReadOnly = useCallback(
+    (item: ProductionItem, form?: RowFormState) => {
+      const effectiveStatus = form?.estatus ?? item.estatus ?? '';
+      return isStatusReadOnly(effectiveStatus);
+    },
+    [isStatusReadOnly],
+  );
+
+  // En la vista de productos, seleccionar la versión detallada la primera vez que llegamos desde otra pestaña
+  useEffect(() => {
+    if (viewMode === 'products' && previousViewModeRef.current !== 'products') {
+      setProductViewType('detailed');
+    }
+    previousViewModeRef.current = viewMode;
+  }, [viewMode]);
 
   // Initialize or update the forms state when the base items change
   useEffect(() => {
@@ -647,26 +748,19 @@ const StatusTable: React.FC<StatusTableProps> = ({
       const itemIds = baseItems
         .filter(item => !isMetadataDescription(item.producto))
         .map(item => item.id);
-      
-      const planPromises = itemIds.map(async (itemId) => {
-        try {
-          const plan = await getDailyPlan(itemId);
-          return { itemId, plan };
-        } catch (error) {
-          console.warn(`Failed to load daily plan for item ${itemId}:`, error);
-          return { itemId, plan: [] };
-        }
+
+      if (itemIds.length === 0) {
+        setDailyPlans({});
+        return;
+      }
+
+      const plans = await preloadPlans(itemIds);
+      const newDailyPlans: Record<number, DailyProductionPlanEntry[]> = {};
+
+      itemIds.forEach((itemId, index) => {
+        newDailyPlans[itemId] = plans[index] ?? [];
       });
 
-      const results = await Promise.allSettled(planPromises);
-      const newDailyPlans: Record<number, DailyProductionPlanEntry[]> = {};
-      
-      results.forEach((result) => {
-        if (result.status === 'fulfilled') {
-          newDailyPlans[result.value.itemId] = result.value.plan;
-        }
-      });
-      
       setDailyPlans(newDailyPlans);
     };
 
@@ -697,15 +791,25 @@ const StatusTable: React.FC<StatusTableProps> = ({
     return dirty;
   }, [baseItems, forms]);
 
-  const handleRowChange = (itemId: number, newFormData: RowFormState) => {
-    setForms(prev => ({
-      ...prev,
-      [itemId]: newFormData,
-    }));
-    setSavingStatus(prev => ({ ...prev, [itemId]: 'idle' }));
-  };
+  const handleRowChange = useCallback(
+    (itemId: number, newFormData: RowFormState) => {
+      const item = baseItems.find((entry) => entry.id === itemId);
+      if (item && isItemReadOnly(item, newFormData)) {
+        return;
+      }
+      setForms(prev => ({
+        ...prev,
+        [itemId]: newFormData,
+      }));
+      setSavingStatus(prev => ({ ...prev, [itemId]: 'idle' }));
+    },
+    [baseItems, isItemReadOnly],
+  );
 
   const handleOpenPlanModal = useCallback(async (item: ProductionItem) => {
+    if (isItemReadOnly(item, forms[item.id])) {
+      return;
+    }
     setPlanModalItem(item);
     setPlanModalLoading(true);
     setPlanModalError(null);
@@ -719,7 +823,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
     } finally {
       setPlanModalLoading(false);
     }
-  }, []);
+  }, [forms, isItemReadOnly]);
 
   const handleClosePlanModal = useCallback(() => {
     setPlanModalItem(null);
@@ -834,13 +938,65 @@ const StatusTable: React.FC<StatusTableProps> = ({
     setHighlightedQuoteId(null);
   }, []);
 
+  const handleFilterByClient = useCallback((client: string) => {
+    if (client) {
+      setFilters((prev) => ({ ...prev, client }));
+
+      // Hacer scroll al área de filtros
+      setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+  }, []);
+
+  const handleFilterByQuote = useCallback((quote: string) => {
+    if (quote) {
+      setFilters((prev) => ({ ...prev, query: quote }));
+
+      // Hacer scroll y focus al input de búsqueda
+      setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          searchInputRef.current.focus();
+          // Efecto visual de highlight
+          searchInputRef.current.classList.add('ring-2', 'ring-primary', 'ring-opacity-50');
+          setTimeout(() => {
+            searchInputRef.current?.classList.remove('ring-2', 'ring-primary', 'ring-opacity-50');
+          }, 1500);
+        }
+      }, 100);
+    }
+  }, []);
+
+  const handleFilterByProduct = useCallback((product: string) => {
+    if (product) {
+      setFilters((prev) => ({ ...prev, query: product }));
+
+      // Hacer scroll y focus al input de búsqueda
+      setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          searchInputRef.current.focus();
+          // Efecto visual de highlight
+          searchInputRef.current.classList.add('ring-2', 'ring-primary', 'ring-opacity-50');
+          setTimeout(() => {
+            searchInputRef.current?.classList.remove('ring-2', 'ring-primary', 'ring-opacity-50');
+          }, 1500);
+        }
+      }, 100);
+    }
+  }, []);
+
   const filteredItems = useMemo(() => {
     const hasFilters =
       filters.query.trim() ||
       filters.client.trim() ||
       filters.status ||
       filters.from ||
-      filters.to;
+      filters.to ||
+      filters.productionType !== 'all';
 
     if (!hasFilters) {
       return baseItems;
@@ -861,6 +1017,970 @@ const StatusTable: React.FC<StatusTableProps> = ({
 
     return baseItems.filter((item) => quoteMatches.get(item.cotizacionId) ?? evaluate(item));
   }, [baseItems, filters]);
+
+  const handleExportProductsPDF = () => {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // Colores modernos
+    const colors = {
+      primary: [99, 102, 241],      // Indigo
+      secondary: [139, 92, 246],    // Purple
+      accent: [236, 72, 153],       // Pink
+      success: [34, 197, 94],       // Green
+      warning: [234, 179, 8],       // Yellow
+      danger: [239, 68, 68],        // Red
+      dark: [15, 23, 42],           // Slate 900
+      muted: [100, 116, 139],       // Slate 500
+      light: [248, 250, 252],       // Slate 50
+      border: [226, 232, 240],      // Slate 200
+    };
+
+    // === HEADER MODERNO ===
+    // Fondo del header con gradiente simulado
+    doc.setFillColor(...colors.primary);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+
+    doc.setFillColor(99, 102, 241, 0.8);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+
+    // Título principal
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('REPORTE DE PRODUCCIÓN', 14, 15);
+
+    // Subtítulo
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Vista Por Producto', 14, 22);
+
+    // Fecha en el header
+    const fecha = new Date().toLocaleDateString('es-CO', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    doc.setFontSize(9);
+    doc.text(fecha.charAt(0).toUpperCase() + fecha.slice(1), 14, 28);
+
+    // Logo/marca placeholder en la derecha
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ARTYCO', pageWidth - 14, 18, { align: 'right' });
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Control de Producción', pageWidth - 14, 24, { align: 'right' });
+
+    // === MÉTRICAS RESUMEN ===
+    let yPos = 42;
+
+    // Filtrar metadata para las métricas también
+    const itemsSinMetadata = filteredItems.filter(item => !isMetadataDescription(item.producto));
+
+    const metrics = {
+      total: itemsSinMetadata.length,
+      metros: itemsSinMetadata.reduce((sum, item) => {
+        const qty = extractQuantityInfo(item.cantidad);
+        return sum + (qty.unit === 'metros' ? (qty.amount || 0) : 0);
+      }, 0),
+      unidades: itemsSinMetadata.reduce((sum, item) => {
+        const qty = extractQuantityInfo(item.cantidad);
+        return sum + (qty.unit === 'unidades' ? (qty.amount || 0) : 0);
+      }, 0),
+      productosUnicos: new Set(itemsSinMetadata.map(i => i.producto)).size,
+    };
+
+    // Cards de métricas
+    const cardWidth = (pageWidth - 28 - 9) / 4; // 4 cards con espaciado
+    const cardHeight = 18;
+    const cardY = yPos;
+
+    doc.setTextColor(...colors.dark);
+
+    // Card 1: Total Items
+    doc.setFillColor(...colors.light);
+    doc.setDrawColor(...colors.border);
+    doc.roundedRect(14, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+    doc.setFontSize(8);
+    doc.setTextColor(...colors.muted);
+    doc.text('ITEMS ACTIVOS', 14 + cardWidth/2, cardY + 6, { align: 'center' });
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...colors.primary);
+    doc.text(String(metrics.total), 14 + cardWidth/2, cardY + 14, { align: 'center' });
+
+    // Card 2: Productos Únicos
+    const card2X = 14 + cardWidth + 3;
+    doc.setFillColor(...colors.light);
+    doc.roundedRect(card2X, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...colors.muted);
+    doc.text('PRODUCTOS ÚNICOS', card2X + cardWidth/2, cardY + 6, { align: 'center' });
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...colors.secondary);
+    doc.text(String(metrics.productosUnicos), card2X + cardWidth/2, cardY + 14, { align: 'center' });
+
+    // Card 3: Metros
+    const card3X = card2X + cardWidth + 3;
+    doc.setFillColor(...colors.light);
+    doc.roundedRect(card3X, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...colors.muted);
+    doc.text('METROS TOTALES', card3X + cardWidth/2, cardY + 6, { align: 'center' });
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...colors.accent);
+    doc.text(formatNumber(metrics.metros), card3X + cardWidth/2, cardY + 14, { align: 'center' });
+
+    // Card 4: Unidades
+    const card4X = card3X + cardWidth + 3;
+    doc.setFillColor(...colors.light);
+    doc.roundedRect(card4X, cardY, cardWidth, cardHeight, 2, 2, 'FD');
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...colors.muted);
+    doc.text('UNIDADES TOTALES', card4X + cardWidth/2, cardY + 6, { align: 'center' });
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...colors.success);
+    doc.text(formatNumber(metrics.unidades), card4X + cardWidth/2, cardY + 14, { align: 'center' });
+
+    yPos = cardY + cardHeight + 8;
+
+    // === FILTROS APLICADOS ===
+    if (filters.query || filters.client || filters.status || filters.productionType !== 'all') {
+      doc.setFillColor(254, 249, 195); // Yellow-50
+      doc.setDrawColor(...colors.warning);
+      doc.roundedRect(14, yPos, pageWidth - 28, 15, 2, 2, 'FD');
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...colors.dark);
+      // Reemplazar emoji con texto simple
+      doc.text('FILTROS APLICADOS:', 18, yPos + 5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      let filterText = '';
+      if (filters.query) filterText += `Busqueda: "${filters.query}"  `;
+      if (filters.client) filterText += `Cliente: "${filters.client}"  `;
+      if (filters.status) filterText += `Estatus: ${filters.status}  `;
+      if (filters.productionType !== 'all') filterText += `Tipo: ${filters.productionType}`;
+
+      doc.text(filterText, 18, yPos + 10);
+      yPos += 18;
+    }
+
+    // === TABLA DE DATOS INTELIGENTE ===
+    // Determinar qué columnas mostrar según los filtros y datos
+    const showClientColumn = !filters.client; // Ocultar si hay filtro de cliente
+    const showStatusColumn = !filters.status; // Ocultar si hay filtro de estatus
+    const showCotizacionColumn = !filters.query || itemsSinMetadata.length > 1; // Ocultar si es búsqueda específica de una sola cotización
+    const showFacturaColumn = itemsSinMetadata.some(item => item.factura && item.factura.trim() !== ''); // Mostrar solo si hay facturas
+
+    // Construir headers dinámicamente
+    const tableHeaders: string[] = ['Producto'];
+    if (showClientColumn) tableHeaders.push('Cliente');
+    if (showCotizacionColumn) tableHeaders.push('Cotización');
+    tableHeaders.push('Ingreso', 'Cantidad', 'Entrega', 'Progreso');
+    if (showStatusColumn) tableHeaders.push('Estatus');
+    if (showFacturaColumn) tableHeaders.push('Factura');
+
+    // Mapear índices de columnas para los estilos
+    let colIndex = 0;
+    const colMap: Record<string, number> = {
+      producto: colIndex++,
+    };
+    if (showClientColumn) colMap.cliente = colIndex++;
+    if (showCotizacionColumn) colMap.cotizacion = colIndex++;
+    colMap.ingreso = colIndex++;
+    colMap.cantidad = colIndex++;
+    colMap.entrega = colIndex++;
+    colMap.progreso = colIndex++;
+    if (showStatusColumn) colMap.estatus = colIndex++;
+    if (showFacturaColumn) colMap.factura = colIndex++;
+
+    const tableData = itemsSinMetadata.map((item) => {
+      const quantity = extractQuantityInfo(item.cantidad);
+      const quantityText =
+        quantity.amount !== null
+          ? `${formatNumber(quantity.amount)} ${quantity.unit === 'metros' ? 'm²' : 'u'}`
+          : item.cantidad || '—';
+
+      const form = forms[item.id];
+      const progressInfo = computeProgress(
+        item,
+        form?.fechaEntrega ?? item.fechaEntrega,
+        form?.estatus ?? item.estatus,
+        dailyPlans[item.id],
+      );
+      const progressPercent = progressInfo ? Math.round(progressInfo.percent) : 0;
+      let progressText = `${progressPercent}%`;
+      if (progressInfo?.producedEstimate !== null && progressInfo.quantity !== null) {
+        progressText += ` (${formatNumberWithDash(progressInfo.producedEstimate)} / ${formatNumberWithDash(
+          progressInfo.quantity,
+        )}${progressInfo.quantityUnit === 'metros' ? ' m²' : ' u'})`;
+      } else if (progressInfo?.label) {
+        progressText += ` - ${progressInfo.label}`;
+      }
+
+      const row: (string | number)[] = [item.producto];
+      if (showClientColumn) row.push(item.cliente || item.bodega || '—');
+      if (showCotizacionColumn) row.push(item.numeroCotizacion);
+      row.push(
+        item.fechaIngreso ? new Date(item.fechaIngreso).toLocaleDateString('es-CO') : '—',
+        quantityText,
+        item.fechaEntrega ? new Date(item.fechaEntrega).toLocaleDateString('es-CO') : '—',
+        progressText
+      );
+      if (showStatusColumn) row.push(item.estatus || '—');
+      if (showFacturaColumn) row.push(item.factura || '—');
+
+      return row;
+    });
+
+    // Construir estilos de columna dinámicamente (sin cellWidth fijo, usar 'auto')
+    const columnStyles: any = {
+      [colMap.producto]: { fontStyle: 'bold' },
+    };
+    if (showClientColumn) columnStyles[colMap.cliente] = {};
+    if (showCotizacionColumn) columnStyles[colMap.cotizacion] = {};
+    columnStyles[colMap.ingreso] = { halign: 'center' };
+    columnStyles[colMap.cantidad] = { halign: 'right' };
+    columnStyles[colMap.entrega] = { halign: 'center' };
+    columnStyles[colMap.progreso] = { halign: 'center', fontStyle: 'bold' };
+    if (showStatusColumn) columnStyles[colMap.estatus] = { halign: 'center' };
+    if (showFacturaColumn) columnStyles[colMap.factura] = { halign: 'center', fontSize: 8 };
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [tableHeaders],
+      body: tableData,
+      tableWidth: 'auto',
+      styles: {
+        fontSize: 8,
+        cellPadding: 3,
+        lineColor: colors.border,
+        lineWidth: 0.1,
+        font: 'helvetica',
+      },
+      headStyles: {
+        fillColor: colors.dark,
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 9,
+        halign: 'left',
+        cellPadding: 4,
+      },
+      alternateRowStyles: {
+        fillColor: colors.light,
+      },
+      columnStyles,
+      margin: { left: 14, right: 14 },
+      didDrawPage: (data) => {
+        // Necesitamos redibujar el texto sobre los fondos de color
+        // Este es un workaround para jsPDF autoTable
+      },
+      willDrawCell: (data) => {
+        // Aplicar fondos de color ANTES del texto
+        if (data.section === 'body') {
+          // Columna de Progreso
+          if (data.column.index === colMap.progreso) {
+            const progressText = String(data.cell.raw);
+            const progressValue = parseInt(progressText);
+            let bgColor: number[] = [245, 247, 250]; // Default
+
+            if (progressValue >= 100) {
+              bgColor = [220, 252, 231]; // Green-100
+            } else if (progressValue >= 50) {
+              bgColor = [254, 249, 195]; // Yellow-100
+            } else if (progressValue > 0) {
+              bgColor = [254, 226, 226]; // Red-100
+            }
+
+            doc.setFillColor(...bgColor);
+            doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+          }
+
+          // Columna de Estatus (si existe)
+          if (showStatusColumn && data.column.index === colMap.estatus) {
+            const estatus = String(data.cell.raw);
+            let bgColor: number[] = [245, 247, 250]; // Default light gray
+
+            if (estatus.includes('producción') || estatus.includes('Producción')) {
+              bgColor = [224, 231, 255]; // Indigo-100
+            } else if (estatus.includes('Listo') || estatus.includes('bodega') || estatus.includes('Bodega')) {
+              bgColor = [220, 252, 231]; // Green-100
+            } else if (estatus.includes('Entregado')) {
+              bgColor = [241, 245, 249]; // Slate-100
+            } else if (estatus.includes('cola') || estatus.includes('Cola')) {
+              bgColor = [254, 249, 195]; // Yellow-100
+            }
+
+            doc.setFillColor(...bgColor);
+            doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+          }
+
+          // Columna de Factura (si existe) - resaltar con fondo cyan si tiene factura
+          if (showFacturaColumn && data.column.index === colMap.factura) {
+            const factura = String(data.cell.raw);
+            if (factura !== '—' && factura.trim() !== '') {
+              // Fondo cyan claro para facturas existentes
+              doc.setFillColor(207, 250, 254); // Cyan-100
+              doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+              // Texto en azul oscuro para mejor contraste
+              doc.setTextColor(8, 47, 73); // Cyan-900
+            }
+          }
+
+          // Asegurar que el texto sea visible (excepto facturas que ya tienen su color)
+          if (!showFacturaColumn || data.column.index !== colMap.factura) {
+            doc.setTextColor(...colors.dark);
+          }
+        }
+      },
+    });
+
+    // === FOOTER MEJORADO ===
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i += 1) {
+      doc.setPage(i);
+
+      // Línea decorativa
+      doc.setDrawColor(...colors.border);
+      doc.setLineWidth(0.5);
+      doc.line(14, pageHeight - 15, pageWidth - 14, pageHeight - 15);
+
+      // Número de página
+      doc.setFontSize(8);
+      doc.setTextColor(...colors.muted);
+      doc.setFont('helvetica', 'normal');
+      doc.text(
+        `Página ${i} de ${pageCount}`,
+        pageWidth / 2,
+        pageHeight - 8,
+        { align: 'center' },
+      );
+
+      // Info adicional en footer
+      doc.setFontSize(7);
+      doc.text('Artyco - Sistema de Control de Producción', 14, pageHeight - 8);
+      doc.text(
+        `Generado: ${new Date().toLocaleString('es-CO')}`,
+        pageWidth - 14,
+        pageHeight - 8,
+        { align: 'right' },
+      );
+    }
+
+    const fileName = `Reporte_Produccion_${new Date().toISOString().split('T')[0]}.pdf`;
+    doc.save(fileName);
+  };
+
+  const handleExportQuotesPDF = () => {
+    if (sortedQuotes.length === 0) {
+      window.alert('No hay cotizaciones para exportar con los filtros actuales.');
+      return;
+    }
+
+    const todayIso = new Date().toISOString().split('T')[0];
+
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const colors = {
+      primary: [99, 102, 241],
+      secondary: [139, 92, 246],
+      accent: [236, 72, 153],
+      success: [34, 197, 94],
+      warning: [234, 179, 8],
+      danger: [239, 68, 68],
+      dark: [15, 23, 42],
+      muted: [100, 116, 139],
+      light: [248, 250, 252],
+      border: [226, 232, 240],
+    } as const;
+
+    doc.setFillColor(...colors.primary);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+    doc.setFillColor(99, 102, 241, 0.8);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('REPORTE DE PRODUCCIÓN', 14, 15);
+
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Vista Por Cotización', 14, 22);
+
+    const fecha = new Date().toLocaleDateString('es-CO', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    doc.setFontSize(9);
+    doc.text(fecha.charAt(0).toUpperCase() + fecha.slice(1), 14, 28);
+
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ARTYCO', pageWidth - 14, 18, { align: 'right' });
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Control de Producción', pageWidth - 14, 24, { align: 'right' });
+
+    let cursor = 42;
+
+    if (
+      filters.query ||
+      filters.client ||
+      filters.status ||
+      filters.productionType !== 'all'
+    ) {
+      doc.setFillColor(254, 249, 195);
+      doc.setDrawColor(...colors.warning);
+      doc.roundedRect(14, cursor, pageWidth - 28, 15, 2, 2, 'FD');
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...colors.dark);
+      doc.text('Filtros aplicados:', 18, cursor + 5);
+
+      const lines: string[] = [];
+      if (filters.query) lines.push(`Búsqueda: "${filters.query}"`);
+      if (filters.client) lines.push(`Cliente/Contacto: "${filters.client}"`);
+      if (filters.status) lines.push(`Estatus: ${filters.status}`);
+      if (filters.productionType !== 'all') {
+        const typeLabel = filters.productionType === 'cliente' ? 'Clientes' : 'Stock';
+        lines.push(`Tipo de pedido: ${typeLabel}`);
+      }
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(lines.join('  •  '), 18, cursor + 10);
+      cursor += 18;
+    }
+
+    const totalCotizaciones = sortedQuotes.length;
+    const totalProductos = sortedQuotes.reduce((sum, group) => sum + group.items.length, 0);
+    const totalValor = sortedQuotes.reduce(
+      (sum, group) => sum + (group.totalCotizacion ?? 0),
+      0,
+    );
+    const totalSaldo = sortedQuotes.reduce(
+      (sum, group) => sum + (group.saldoPendiente ?? 0),
+      0,
+    );
+
+    const cardWidth = (pageWidth - 28 - 9) / 4;
+    const cardHeight = 18;
+    doc.setTextColor(...colors.dark);
+
+    const cards: Array<{ label: string; value: string; color: number[] }> = [
+      { label: 'Cotizaciones visibles', value: formatNumberWithDash(totalCotizaciones), color: colors.primary },
+      { label: 'Productos asociados', value: formatNumberWithDash(totalProductos), color: colors.secondary },
+      { label: 'Valor total', value: formatCurrency(totalValor), color: colors.accent },
+      { label: 'Saldo pendiente', value: formatCurrency(totalSaldo), color: colors.warning },
+    ];
+
+    cards.forEach((card, index) => {
+      const x = 14 + index * (cardWidth + 3);
+      doc.setFillColor(...colors.light);
+      doc.setDrawColor(...colors.border);
+      doc.roundedRect(x, cursor, cardWidth, cardHeight, 2, 2, 'FD');
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...colors.muted);
+      doc.text(card.label.toUpperCase(), x + cardWidth / 2, cursor + 6, { align: 'center' });
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...card.color);
+      doc.text(card.value, x + cardWidth / 2, cursor + 14, { align: 'center' });
+    });
+
+    cursor += cardHeight + 8;
+
+    const tableHeaders = [
+      'Cotización',
+      'Cliente / Destino',
+      'Ingreso',
+      'Productos',
+      'Valor',
+      'Saldo',
+      'Estatus',
+    ];
+
+    const tableData = sortedQuotes.map((group) => [
+      group.numeroCotizacion,
+      group.cliente || group.bodega || '—',
+      group.fechaIngreso ? formatDateLabel(group.fechaIngreso) : '—',
+      formatNumberWithDash(group.items.length),
+      group.totalCotizacion !== null ? formatCurrency(group.totalCotizacion) : '—',
+      group.saldoPendiente !== null ? formatCurrency(group.saldoPendiente) : '—',
+      group.estatusSummary.length > 0 ? group.estatusSummary.join(', ') : '—',
+    ]);
+
+    autoTable(doc, {
+      startY: cursor,
+      head: [tableHeaders],
+      body: tableData,
+      tableWidth: 'auto',
+      styles: {
+        fontSize: 8,
+        cellPadding: 3,
+        lineColor: colors.border,
+        lineWidth: 0.1,
+        font: 'helvetica',
+      },
+      headStyles: {
+        fillColor: colors.dark,
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 9,
+        halign: 'left',
+      },
+      alternateRowStyles: {
+        fillColor: colors.light,
+      },
+      columnStyles: {
+        0: { halign: 'left' },
+        1: { halign: 'left' },
+        2: { halign: 'center' },
+        3: { halign: 'center' },
+        4: { halign: 'right' },
+        5: { halign: 'right' },
+        6: { halign: 'left' },
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i += 1) {
+      doc.setPage(i);
+      doc.setDrawColor(...colors.border);
+      doc.setLineWidth(0.5);
+      doc.line(14, pageHeight - 15, pageWidth - 14, pageHeight - 15);
+      doc.setFontSize(8);
+      doc.setTextColor(...colors.muted);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Página ${i} de ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+      doc.setFontSize(7);
+      doc.text('Artyco - Sistema de Control de Producción', 14, pageHeight - 8);
+      doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, pageWidth - 14, pageHeight - 8, { align: 'right' });
+    }
+
+    const fileName = `Reporte_Cotizaciones_${todayIso}.pdf`;
+    doc.save(fileName);
+  };
+
+  const handleExportClientsPDF = () => {
+    if (clientViewData.length === 0) {
+      window.alert('No hay clientes para exportar con los filtros actuales.');
+      return;
+    }
+
+    const todayIso = new Date().toISOString().split('T')[0];
+
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const colors = {
+      primary: [99, 102, 241],
+      secondary: [139, 92, 246],
+      accent: [236, 72, 153],
+      success: [34, 197, 94],
+      warning: [234, 179, 8],
+      dark: [15, 23, 42],
+      muted: [100, 116, 139],
+      light: [248, 250, 252],
+      border: [226, 232, 240],
+    } as const;
+
+    doc.setFillColor(...colors.primary);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+    doc.setFillColor(99, 102, 241, 0.8);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('REPORTE DE PRODUCCIÓN', 14, 15);
+
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Vista Por Cliente', 14, 22);
+
+    const fecha = new Date().toLocaleDateString('es-CO', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    doc.setFontSize(9);
+    doc.text(fecha.charAt(0).toUpperCase() + fecha.slice(1), 14, 28);
+
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ARTYCO', pageWidth - 14, 18, { align: 'right' });
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Control de Producción', pageWidth - 14, 24, { align: 'right' });
+
+    let cursor = 42;
+
+    if (
+      filters.query ||
+      filters.client ||
+      filters.status ||
+      filters.productionType !== 'all'
+    ) {
+      doc.setFillColor(254, 249, 195);
+      doc.setDrawColor(...colors.warning);
+      doc.roundedRect(14, cursor, pageWidth - 28, 15, 2, 2, 'FD');
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...colors.dark);
+      doc.text('Filtros aplicados:', 18, cursor + 5);
+
+      const lines: string[] = [];
+      if (filters.query) lines.push(`Búsqueda: "${filters.query}"`);
+      if (filters.client) lines.push(`Cliente/Contacto: "${filters.client}"`);
+      if (filters.status) lines.push(`Estatus: ${filters.status}`);
+      if (filters.productionType !== 'all') {
+        const typeLabel = filters.productionType === 'cliente' ? 'Clientes' : 'Stock';
+        lines.push(`Tipo de pedido: ${typeLabel}`);
+      }
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(lines.join('  •  '), 18, cursor + 10);
+      cursor += 18;
+    }
+
+    const totalClientes = clientViewData.length;
+    const totalMetros = clientViewData.reduce((sum, row) => sum + row.metros, 0);
+    const totalUnidades = clientViewData.reduce((sum, row) => sum + row.unidades, 0);
+    const totalSaldo = clientViewData.reduce((sum, row) => sum + row.saldo, 0);
+
+    const cardWidth = (pageWidth - 28 - 9) / 4;
+    const cardHeight = 18;
+    const cards: Array<{ label: string; value: string; color: number[] }> = [
+      { label: 'Clientes visibles', value: formatNumberWithDash(totalClientes), color: colors.primary },
+      { label: 'Metros totales', value: `${formatNumberWithDash(totalMetros)} m²`, color: colors.accent },
+      { label: 'Unidades totales', value: formatNumberWithDash(totalUnidades), color: colors.secondary },
+      { label: 'Saldo acumulado', value: formatCurrency(totalSaldo), color: colors.warning },
+    ];
+
+    cards.forEach((card, index) => {
+      const x = 14 + index * (cardWidth + 3);
+      doc.setFillColor(...colors.light);
+      doc.setDrawColor(...colors.border);
+      doc.roundedRect(x, cursor, cardWidth, cardHeight, 2, 2, 'FD');
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...colors.muted);
+      doc.text(card.label.toUpperCase(), x + cardWidth / 2, cursor + 6, { align: 'center' });
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...card.color);
+      doc.text(card.value, x + cardWidth / 2, cursor + 14, { align: 'center' });
+    });
+
+    cursor += cardHeight + 8;
+
+    const headers = [
+      'Cliente',
+      'Cotizaciones',
+      'Productos',
+      'Metros',
+      'Unidades',
+      'Saldo',
+      'Próxima entrega',
+    ];
+
+    const body = clientViewData.map((row) => [
+      row.client,
+      formatNumberWithDash(row.cotizacionCount),
+      formatNumberWithDash(row.productoCount),
+      `${formatNumberWithDash(row.metros)} m²`,
+      formatNumberWithDash(row.unidades),
+      formatCurrency(row.saldo),
+      row.fechaProxima ? formatDateLabel(row.fechaProxima) : 'Sin programación',
+    ]);
+
+    autoTable(doc, {
+      startY: cursor,
+      head: [headers],
+      body,
+      tableWidth: 'auto',
+      styles: {
+        fontSize: 8,
+        cellPadding: 3,
+        lineColor: colors.border,
+        lineWidth: 0.1,
+        font: 'helvetica',
+      },
+      headStyles: {
+        fillColor: colors.dark,
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 9,
+        halign: 'left',
+      },
+      alternateRowStyles: {
+        fillColor: colors.light,
+      },
+      columnStyles: {
+        0: { halign: 'left' },
+        1: { halign: 'center' },
+        2: { halign: 'center' },
+        3: { halign: 'right' },
+        4: { halign: 'right' },
+        5: { halign: 'right' },
+        6: { halign: 'center' },
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i += 1) {
+      doc.setPage(i);
+      doc.setDrawColor(...colors.border);
+      doc.setLineWidth(0.5);
+      doc.line(14, pageHeight - 15, pageWidth - 14, pageHeight - 15);
+      doc.setFontSize(8);
+      doc.setTextColor(...colors.muted);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Página ${i} de ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+      doc.setFontSize(7);
+      doc.text('Artyco - Sistema de Control de Producción', 14, pageHeight - 8);
+      doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, pageWidth - 14, pageHeight - 8, { align: 'right' });
+    }
+
+    doc.save(`Reporte_Clientes_${todayIso}.pdf`);
+  };
+
+  const handleExportCalendarPDF = () => {
+    if (scheduleDays.length === 0) {
+      window.alert('No hay entregas programadas para exportar.');
+      return;
+    }
+
+    const todayIso = new Date().toISOString().split('T')[0];
+
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const colors = {
+      primary: [99, 102, 241],
+      secondary: [139, 92, 246],
+      accent: [236, 72, 153],
+      success: [34, 197, 94],
+      warning: [234, 179, 8],
+      dark: [15, 23, 42],
+      muted: [100, 116, 139],
+      light: [248, 250, 252],
+      border: [226, 232, 240],
+    } as const;
+
+    doc.setFillColor(...colors.primary);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+    doc.setFillColor(99, 102, 241, 0.8);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('REPORTE DE PRODUCCIÓN', 14, 15);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Calendario de entregas (7 días)', 14, 22);
+
+    const fecha = new Date().toLocaleDateString('es-CO', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    doc.setFontSize(9);
+    doc.text(fecha.charAt(0).toUpperCase() + fecha.slice(1), 14, 28);
+
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ARTYCO', pageWidth - 14, 18, { align: 'right' });
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Control de Producción', pageWidth - 14, 24, { align: 'right' });
+
+    let cursor = 42;
+
+    const totalMetros = scheduleDays.reduce((sum, day) => sum + day.metros, 0);
+    const totalUnidades = scheduleDays.reduce((sum, day) => sum + day.unidades, 0);
+    const totalItems = scheduleDays.reduce((sum, day) => sum + day.items.length, 0);
+
+    const cards: Array<{ label: string; value: string; color: number[] }> = [
+      { label: 'Días programados', value: formatNumberWithDash(scheduleDays.length), color: colors.primary },
+      { label: 'Metros planificados', value: `${formatNumberWithDash(totalMetros)} m²`, color: colors.accent },
+      { label: 'Unidades planificadas', value: formatNumberWithDash(totalUnidades), color: colors.secondary },
+      { label: 'Items programados', value: formatNumberWithDash(totalItems), color: colors.success },
+    ];
+
+    const cardWidth = (pageWidth - 28 - 9) / 4;
+    const cardHeight = 18;
+    doc.setTextColor(...colors.dark);
+    cards.forEach((card, index) => {
+      const x = 14 + index * (cardWidth + 3);
+      doc.setFillColor(...colors.light);
+      doc.setDrawColor(...colors.border);
+      doc.roundedRect(x, cursor, cardWidth, cardHeight, 2, 2, 'FD');
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...colors.muted);
+      doc.text(card.label.toUpperCase(), x + cardWidth / 2, cursor + 6, { align: 'center' });
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...card.color);
+      doc.text(card.value, x + cardWidth / 2, cursor + 14, { align: 'center' });
+    });
+
+    cursor += cardHeight + 8;
+
+    const summaryHeaders = ['Fecha', 'Metros', 'Unidades', 'Items', 'Modo'];
+    const summaryBody = scheduleDays.map((day) => [
+      formatDateLabel(day.fecha),
+      `${formatNumberWithDash(day.metros)} m²`,
+      formatNumberWithDash(day.unidades),
+      formatNumberWithDash(day.items.length),
+      day.manual ? 'Manual' : 'Automática',
+    ]);
+
+    autoTable(doc, {
+      startY: cursor,
+      head: [summaryHeaders],
+      body: summaryBody,
+      tableWidth: 'auto',
+      styles: {
+        fontSize: 8,
+        cellPadding: 3,
+        lineColor: colors.border,
+        lineWidth: 0.1,
+        font: 'helvetica',
+      },
+      headStyles: {
+        fillColor: colors.dark,
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 9,
+        halign: 'left',
+      },
+      alternateRowStyles: {
+        fillColor: colors.light,
+      },
+      columnStyles: {
+        0: { halign: 'left' },
+        1: { halign: 'right' },
+        2: { halign: 'right' },
+        3: { halign: 'center' },
+        4: { halign: 'center' },
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    const detailHeaders = ['Fecha', 'Producto', 'Cliente', 'Cotización', 'Metros', 'Unidades', 'Estatus'];
+    const detailBody = scheduleDays.flatMap((day) =>
+      day.items.map((item) => [
+        formatDateLabel(day.fecha),
+        item.descripcion,
+        item.cliente || '—',
+        item.numero_cotizacion || '—',
+        `${formatNumberWithDash(item.metros)} m²`,
+        formatNumberWithDash(item.unidades),
+        item.estatus || '—',
+      ]),
+    );
+
+    const lastTable = (doc as any).lastAutoTable;
+    const detailStart = lastTable ? lastTable.finalY + 8 : cursor + 8;
+
+    autoTable(doc, {
+      startY: detailStart,
+      head: [detailHeaders],
+      body: detailBody,
+      tableWidth: 'auto',
+      styles: {
+        fontSize: 8,
+        cellPadding: 3,
+        lineColor: colors.border,
+        lineWidth: 0.1,
+        font: 'helvetica',
+      },
+      headStyles: {
+        fillColor: colors.primary,
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 9,
+        halign: 'left',
+      },
+      alternateRowStyles: {
+        fillColor: colors.light,
+      },
+      columnStyles: {
+        0: { halign: 'left' },
+        1: { halign: 'left' },
+        2: { halign: 'left' },
+        3: { halign: 'left' },
+        4: { halign: 'right' },
+        5: { halign: 'right' },
+        6: { halign: 'left' },
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i += 1) {
+      doc.setPage(i);
+      doc.setDrawColor(...colors.border);
+      doc.setLineWidth(0.5);
+      doc.line(14, pageHeight - 15, pageWidth - 14, pageHeight - 15);
+      doc.setFontSize(8);
+      doc.setTextColor(...colors.muted);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Página ${i} de ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+      doc.setFontSize(7);
+      doc.text('Artyco - Sistema de Control de Producción', 14, pageHeight - 8);
+      doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, pageWidth - 14, pageHeight - 8, { align: 'right' });
+    }
+
+    doc.save(`Reporte_Calendario_${todayIso}.pdf`);
+  };
 
   // Callbacks para la vista resumida de productos
   const handleViewDetails = useCallback((itemIds: number[]) => {
@@ -998,12 +2118,18 @@ const StatusTable: React.FC<StatusTableProps> = ({
         group = {
           cotizacionId: item.cotizacionId,
           numeroCotizacion: item.numeroCotizacion,
+          tipoProduccion: resolveProductionType(item),
+          numeroPedidoStock: item.numeroPedidoStock ?? null,
           odc: item.odc,
           cliente: item.cliente,
           contacto: item.contacto,
           proyecto: item.proyecto,
           fechaIngreso: item.fechaIngreso,
           archivoOriginal: item.archivoOriginal,
+          bodega: item.bodega ?? null,
+          responsable: item.responsable ?? null,
+          fechaInicioPeriodo: item.fechaInicioPeriodo ?? null,
+          fechaFinPeriodo: item.fechaFinPeriodo ?? null,
           fechaVencimiento: item.fechaVencimiento ?? null,
           totalCotizacion: quoteTotal,
           totalAbonado,
@@ -1037,6 +2163,26 @@ const StatusTable: React.FC<StatusTableProps> = ({
       }
 
       group.items.push(item);
+      if (!group.numeroPedidoStock && item.numeroPedidoStock) {
+        group.numeroPedidoStock = item.numeroPedidoStock;
+      }
+      if (!group.bodega && item.bodega) {
+        group.bodega = item.bodega;
+      }
+      if (!group.responsable && item.responsable) {
+        group.responsable = item.responsable;
+      }
+      if (item.fechaInicioPeriodo) {
+        if (!group.fechaInicioPeriodo || item.fechaInicioPeriodo < group.fechaInicioPeriodo) {
+          group.fechaInicioPeriodo = item.fechaInicioPeriodo;
+        }
+      }
+      if (item.fechaFinPeriodo) {
+        if (!group.fechaFinPeriodo || item.fechaFinPeriodo > group.fechaFinPeriodo) {
+          group.fechaFinPeriodo = item.fechaFinPeriodo;
+        }
+      }
+
       if (item.estatus) {
         group.estatusSet.add(item.estatus);
       }
@@ -1095,6 +2241,12 @@ const StatusTable: React.FC<StatusTableProps> = ({
       return;
     }
 
+    if (externalFocus.productViewType) {
+      setProductViewType(externalFocus.productViewType);
+    } else if (externalFocus.viewMode === 'products') {
+      setProductViewType('detailed');
+    }
+
     if (typeof externalFocus.searchQuery === 'string') {
       setFilters((prev) =>
         prev.query === externalFocus.searchQuery
@@ -1140,6 +2292,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
   const productViewData = useMemo(() => {
     const rows: ProductViewRowModel[] = [];
     const uniqueProducts = new Set<string>();
+    const activeUniqueProducts = new Set<string>();
     const productColorMap = new Map<string, string>();
     let paletteIndex = 0;
     let totalMetros = 0;
@@ -1148,6 +2301,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
     let unidadesProximos7 = 0;
     let metrosHoy = 0;
     let unidadesHoy = 0;
+    let activeRowCount = 0;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1162,6 +2316,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
       const quantity = extractQuantityInfo(item.cantidad);
       const quote = quoteGroupMap.get(item.cotizacionId);
       const saving = savingStatus[item.id] || 'idle';
+      const readOnly = isItemReadOnly(item, form);
 
       const productKey = normalizeText(item.producto || '');
       uniqueProducts.add(productKey);
@@ -1172,33 +2327,38 @@ const StatusTable: React.FC<StatusTableProps> = ({
         paletteIndex += 1;
       }
 
-      if (quantity.amount !== null) {
-        if (quantity.unit === 'metros') {
-          totalMetros += quantity.amount;
-        } else {
-          totalUnidades += quantity.amount;
-        }
-      }
+      if (!readOnly) {
+        activeUniqueProducts.add(productKey);
+        activeRowCount += 1;
 
-      const entregaSource = form.fechaEntrega || item.fechaEntrega;
-      if (entregaSource) {
-        const entregaDate = new Date(entregaSource);
-        if (!Number.isNaN(entregaDate.getTime())) {
-          entregaDate.setHours(0, 0, 0, 0);
-          const diff = entregaDate.getTime() - today.getTime();
-          if (quantity.amount !== null) {
-            if (diff === 0) {
-              if (quantity.unit === 'metros') {
-                metrosHoy += quantity.amount;
-              } else {
-                unidadesHoy += quantity.amount;
+        if (quantity.amount !== null) {
+          if (quantity.unit === 'metros') {
+            totalMetros += quantity.amount;
+          } else {
+            totalUnidades += quantity.amount;
+          }
+        }
+
+        const entregaSource = form.fechaEntrega || item.fechaEntrega;
+        if (entregaSource) {
+          const entregaDate = new Date(entregaSource);
+          if (!Number.isNaN(entregaDate.getTime())) {
+            entregaDate.setHours(0, 0, 0, 0);
+            const diff = entregaDate.getTime() - today.getTime();
+            if (quantity.amount !== null) {
+              if (diff === 0) {
+                if (quantity.unit === 'metros') {
+                  metrosHoy += quantity.amount;
+                } else {
+                  unidadesHoy += quantity.amount;
+                }
               }
-            }
-            if (diff >= 0 && entregaDate.getTime() <= next7.getTime()) {
-              if (quantity.unit === 'metros') {
-                metrosProximos7 += quantity.amount;
-              } else {
-                unidadesProximos7 += quantity.amount;
+              if (diff >= 0 && entregaDate.getTime() <= next7.getTime()) {
+                if (quantity.unit === 'metros') {
+                  metrosProximos7 += quantity.amount;
+                } else {
+                  unidadesProximos7 += quantity.amount;
+                }
               }
             }
           }
@@ -1213,20 +2373,66 @@ const StatusTable: React.FC<StatusTableProps> = ({
         quote,
         saving,
         colorClass,
+        readOnly,
         isHighlighted: highlightedProductId === item.id,
       });
     }
 
+    // Ordenamiento dinámico basado en productSortConfig
     rows.sort((a, b) => {
-      const productCompare = normalizeText(a.item.producto).localeCompare(
-        normalizeText(b.item.producto),
-        'es',
-        { sensitivity: 'base' },
-      );
-      if (productCompare !== 0) return productCompare;
-      const fechaA = a.form.fechaEntrega || a.item.fechaEntrega || '';
-      const fechaB = b.form.fechaEntrega || b.item.fechaEntrega || '';
-      return fechaA.localeCompare(fechaB);
+      let result = 0;
+      switch (productSortConfig.key) {
+        case 'producto': {
+          result = normalizeText(a.item.producto).localeCompare(
+            normalizeText(b.item.producto),
+            'es',
+            { sensitivity: 'base' },
+          );
+          break;
+        }
+        case 'cliente': {
+          const clienteA = a.item.cliente || '';
+          const clienteB = b.item.cliente || '';
+          result = clienteA.localeCompare(clienteB, 'es', { sensitivity: 'base' });
+          break;
+        }
+        case 'numeroCotizacion': {
+          const cotizA = a.item.numeroCotizacion || '';
+          const cotizB = b.item.numeroCotizacion || '';
+          result = cotizA.localeCompare(cotizB);
+          break;
+        }
+        case 'fechaIngreso': {
+          const fechaA = a.item.fechaIngreso ? new Date(a.item.fechaIngreso).getTime() : 0;
+          const fechaB = b.item.fechaIngreso ? new Date(b.item.fechaIngreso).getTime() : 0;
+          result = fechaA - fechaB;
+          break;
+        }
+        case 'cantidad': {
+          const cantA = a.quantity.amount || 0;
+          const cantB = b.quantity.amount || 0;
+          result = cantA - cantB;
+          break;
+        }
+        case 'fechaEntrega': {
+          const fechaA = a.form.fechaEntrega || a.item.fechaEntrega || '';
+          const fechaB = b.form.fechaEntrega || b.item.fechaEntrega || '';
+          if (!fechaA && !fechaB) result = 0;
+          else if (!fechaA) result = 1;
+          else if (!fechaB) result = -1;
+          else result = fechaA.localeCompare(fechaB);
+          break;
+        }
+        case 'estatus': {
+          const estatusA = a.form.estatus || a.item.estatus || '';
+          const estatusB = b.form.estatus || b.item.estatus || '';
+          result = estatusA.localeCompare(estatusB, 'es', { sensitivity: 'base' });
+          break;
+        }
+        default:
+          result = 0;
+      }
+      return productSortConfig.direction === 'asc' ? result : -result;
     });
 
     return {
@@ -1238,13 +2444,13 @@ const StatusTable: React.FC<StatusTableProps> = ({
         unidadesProximos7,
         metrosHoy,
         unidadesHoy,
-        uniqueProducts: uniqueProducts.size,
-        totalItems: rows.length,
+        uniqueProducts: activeUniqueProducts.size,
+        totalItems: activeRowCount,
         metrosDiarios: metrosProximos7 / 7,
         unidadesDiarias: unidadesProximos7 / 7,
       },
     };
-  }, [filteredItems, forms, savingStatus, quoteGroupMap, dailyPlans, highlightedProductId]);
+  }, [filteredItems, forms, savingStatus, quoteGroupMap, dailyPlans, highlightedProductId, productSortConfig, isItemReadOnly]);
 
   const clientViewData = useMemo(() => {
     const aggregates = new Map<string, {
@@ -1261,7 +2467,12 @@ const StatusTable: React.FC<StatusTableProps> = ({
     today.setHours(0, 0, 0, 0);
 
     for (const item of filteredItems) {
-      const clientName = item.cliente?.trim() || 'Sin cliente';
+      const form = forms[item.id];
+      if (form && isItemReadOnly(item, form)) {
+        continue;
+      }
+
+      const clientName = getClientLabel(item);
       let entry = aggregates.get(clientName);
       if (!entry) {
         entry = {
@@ -1293,7 +2504,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
         entry.saldo += quote.saldoPendiente ?? 0;
       }
 
-      const entregaSource = forms[item.id]?.fechaEntrega || item.fechaEntrega;
+      const entregaSource = form?.fechaEntrega || item.fechaEntrega;
       if (entregaSource) {
         const entregaDate = new Date(entregaSource);
         if (!Number.isNaN(entregaDate.getTime())) {
@@ -1326,7 +2537,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
     rows.sort((a, b) => b.metros - a.metros || b.unidades - a.unidades || a.client.localeCompare(b.client, 'es', { sensitivity: 'base' }));
 
     return rows;
-  }, [filteredItems, forms, quoteGroupMap]);
+  }, [filteredItems, forms, quoteGroupMap, isItemReadOnly]);
 
   const sortedQuotes = useMemo(() => {
     const sortable = [...groupedQuotes];
@@ -1391,6 +2602,32 @@ const StatusTable: React.FC<StatusTableProps> = ({
     );
   };
 
+  const handleProductSort = (key: ProductSortKey) => {
+    setProductSortConfig((prev) => {
+      if (prev.key === key) {
+        return {
+          key,
+          direction: prev.direction === 'asc' ? 'desc' : 'asc',
+        };
+      }
+      return {
+        key,
+        direction: 'asc',
+      };
+    });
+  };
+
+  const productSortIndicator = (key: ProductSortKey) => {
+    if (productSortConfig.key !== key) {
+      return <ArrowUpDown className="w-3 h-3 opacity-40" />;
+    }
+    return (
+      <ArrowUpDown
+        className={`w-3 h-3 ${productSortConfig.direction === 'asc' ? 'rotate-180 text-primary' : 'text-primary'}`}
+      />
+    );
+  };
+
   const toggleQuote = (quoteId: number) => {
     setExpandedQuotes((prev) => ({
       ...prev,
@@ -1400,6 +2637,16 @@ const StatusTable: React.FC<StatusTableProps> = ({
 
   const renderQuoteView = () => (
     <div className="glass-panel rounded-2xl border border-border shadow-hologram overflow-hidden">
+      <div className="flex justify-end px-4 py-3 border-b border-border/60 bg-dark-card/50">
+        <button
+          type="button"
+          onClick={handleExportQuotesPDF}
+          className="inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/20 px-3 py-2 text-xs font-semibold text-accent hover:bg-accent/30 transition-colors"
+        >
+          <FileDown className="w-3.5 h-3.5" />
+          Exportar PDF
+        </button>
+      </div>
       <div className="overflow-x-auto">
         <table className="min-w-full border-collapse">
           <thead className="bg-dark-card/80 border-b border-border">
@@ -1407,9 +2654,9 @@ const StatusTable: React.FC<StatusTableProps> = ({
               {[
                 { key: undefined, label: '' },
                 { key: 'fechaIngreso' as SortKey, label: 'Ingreso' },
-                { key: 'odc' as SortKey, label: 'ODC' },
+                { key: 'odc' as SortKey, label: 'ODC / Pedido' },
                 { key: 'numeroCotizacion' as SortKey, label: 'Cotización' },
-                { key: 'cliente' as SortKey, label: 'Cliente / Proyecto' },
+                { key: 'cliente' as SortKey, label: 'Cliente / Destino' },
                 { key: undefined, label: 'Factura(s)' },
                 { key: 'saldoPendiente' as SortKey, label: 'Valor / saldo' },
                 { key: undefined, label: 'Estatus' },
@@ -1446,8 +2693,13 @@ const StatusTable: React.FC<StatusTableProps> = ({
               onRowChange={handleRowChange}
               savingStatus={savingStatus}
               dailyPlans={dailyPlans}
+              onOpenDailyPlan={handleOpenPlanModal}
+              isItemReadOnly={isItemReadOnly}
               highlightedItemId={highlightedProductId}
               highlightedQuoteId={highlightedQuoteId}
+              onFilterByClient={handleFilterByClient}
+              onFilterByQuote={handleFilterByQuote}
+              onFilterByProduct={handleFilterByProduct}
             />
             ))}
           </tbody>
@@ -1465,6 +2717,18 @@ const StatusTable: React.FC<StatusTableProps> = ({
         <div className="flex items-center justify-between p-3 bg-dark-card/40 rounded-xl border border-border/40">
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setProductViewType('detailed')}
+              className={`
+                flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
+                ${productViewType === 'detailed'
+                  ? 'bg-primary/20 border border-primary/40 text-primary shadow-lg'
+                  : 'bg-dark-bg/40 border border-border/30 text-text-secondary hover:bg-dark-bg/60 hover:border-border/50'}
+              `}
+            >
+              <List className="w-4 h-4" />
+              Vista Detallada
+            </button>
+            <button
               onClick={() => setProductViewType('summary')}
               className={`
                 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
@@ -1477,16 +2741,12 @@ const StatusTable: React.FC<StatusTableProps> = ({
               Vista Resumida
             </button>
             <button
-              onClick={() => setProductViewType('detailed')}
-              className={`
-                flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
-                ${productViewType === 'detailed'
-                  ? 'bg-primary/20 border border-primary/40 text-primary shadow-lg'
-                  : 'bg-dark-bg/40 border border-border/30 text-text-secondary hover:bg-dark-bg/60 hover:border-border/50'}
-              `}
+              onClick={handleExportProductsPDF}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all bg-accent/20 border border-accent/40 text-accent hover:bg-accent/30 hover:shadow-lg"
+              title="Exportar vista actual a PDF"
             >
-              <List className="w-4 h-4" />
-              Vista Detallada
+              <FileDown className="w-4 h-4" />
+              Exportar PDF
             </button>
           </div>
 
@@ -1539,18 +2799,81 @@ const StatusTable: React.FC<StatusTableProps> = ({
                 <div className="p-6 text-sm text-text-secondary">No hay productos activos para mostrar.</div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="min-w-full border-collapse">
+                  <table className="min-w-full border-separate" style={{ borderSpacing: '0 6px' }}>
                     <thead className="bg-dark-card/80 border-b border-border">
                       <tr className="text-xs uppercase tracking-wide text-text-muted">
                         <th className="px-4 py-3 text-left w-10"></th>
-                        <th className="px-4 py-3 text-left">Producto</th>
-                        <th className="px-4 py-3 text-left">Cliente</th>
-                        <th className="px-4 py-3 text-left">Cotización</th>
-                        <th className="px-4 py-3 text-left">Ingreso</th>
-                        <th className="px-4 py-3 text-left">Cantidad</th>
-                        <th className="px-4 py-3 text-left">Entrega</th>
+                        <th className="px-4 py-3 text-left">
+                          <button
+                            type="button"
+                            onClick={() => handleProductSort('producto')}
+                            className="inline-flex items-center gap-2 text-xs font-semibold text-text-primary hover:text-primary focus:outline-none"
+                          >
+                            <span>Producto</span>
+                            {productSortIndicator('producto')}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-left">
+                          <button
+                            type="button"
+                            onClick={() => handleProductSort('cliente')}
+                            className="inline-flex items-center gap-2 text-xs font-semibold text-text-primary hover:text-primary focus:outline-none"
+                          >
+                            <span>Cliente</span>
+                            {productSortIndicator('cliente')}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-left">
+                          <button
+                            type="button"
+                            onClick={() => handleProductSort('numeroCotizacion')}
+                            className="inline-flex items-center gap-2 text-xs font-semibold text-text-primary hover:text-primary focus:outline-none"
+                          >
+                            <span>Cotización</span>
+                            {productSortIndicator('numeroCotizacion')}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-left">
+                          <button
+                            type="button"
+                            onClick={() => handleProductSort('fechaIngreso')}
+                            className="inline-flex items-center gap-2 text-xs font-semibold text-text-primary hover:text-primary focus:outline-none"
+                          >
+                            <span>Ingreso</span>
+                            {productSortIndicator('fechaIngreso')}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-left">
+                          <button
+                            type="button"
+                            onClick={() => handleProductSort('cantidad')}
+                            className="inline-flex items-center gap-2 text-xs font-semibold text-text-primary hover:text-primary focus:outline-none"
+                          >
+                            <span>Cantidad</span>
+                            {productSortIndicator('cantidad')}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-left">
+                          <button
+                            type="button"
+                            onClick={() => handleProductSort('fechaEntrega')}
+                            className="inline-flex items-center gap-2 text-xs font-semibold text-text-primary hover:text-primary focus:outline-none"
+                          >
+                            <span>Entrega</span>
+                            {productSortIndicator('fechaEntrega')}
+                          </button>
+                        </th>
                         <th className="px-4 py-3 text-left">Progreso</th>
-                        <th className="px-4 py-3 text-left">Estatus</th>
+                        <th className="px-4 py-3 text-left">
+                          <button
+                            type="button"
+                            onClick={() => handleProductSort('estatus')}
+                            className="inline-flex items-center gap-2 text-xs font-semibold text-text-primary hover:text-primary focus:outline-none"
+                          >
+                            <span>Estatus</span>
+                            {productSortIndicator('estatus')}
+                          </button>
+                        </th>
                         <th className="px-4 py-3 text-left">Notas</th>
                       </tr>
                     </thead>
@@ -1562,6 +2885,9 @@ const StatusTable: React.FC<StatusTableProps> = ({
                           statusOptions={statusOptions}
                           onChange={handleRowChange}
                           onPlanClick={handleOpenPlanModal}
+                          onFilterByClient={handleFilterByClient}
+                          onFilterByQuote={handleFilterByQuote}
+                          onFilterByProduct={handleFilterByProduct}
                         />
                       ))}
                     </tbody>
@@ -1583,6 +2909,16 @@ const StatusTable: React.FC<StatusTableProps> = ({
 
     return (
       <div className="space-y-4">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={handleExportClientsPDF}
+            className="inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/20 px-3 py-2 text-xs font-semibold text-accent hover:bg-accent/30 transition-colors"
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            Exportar PDF
+          </button>
+        </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-border/60 bg-dark-card/60 p-4 shadow-inner">
             <span className="text-xs uppercase tracking-wide text-text-muted">Clientes activos</span>
@@ -1651,6 +2987,27 @@ const StatusTable: React.FC<StatusTableProps> = ({
     );
   };
 
+  const renderCalendarView = () => (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={handleExportCalendarPDF}
+          className="inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/20 px-3 py-2 text-xs font-semibold text-accent hover:bg-accent/30 transition-colors"
+        >
+          <FileDown className="w-3.5 h-3.5" />
+          Exportar PDF
+        </button>
+      </div>
+      <ProductionCalendarBoard
+        days={scheduleDays}
+        loading={scheduleLoading}
+        error={scheduleError}
+        onRefresh={refetchSchedule}
+      />
+    </div>
+  );
+
   if (baseItems.length === 0) {
     return (
       <>
@@ -1679,14 +3036,15 @@ const StatusTable: React.FC<StatusTableProps> = ({
       <section className="space-y-4">
       <div className="glass-panel rounded-2xl border border-border shadow-hologram p-4 lg:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 w-full">
             <label className="flex flex-col gap-1 text-xs text-text-muted">
               Búsqueda general
               <div className="relative flex items-center">
                 <Search className="w-4 h-4 absolute left-2 text-text-muted" />
                 <input
+                  ref={searchInputRef}
                   type="text"
-                  className="w-full bg-dark-card/70 border border-border rounded-lg pl-8 pr-3 py-2 text-sm text-text-primary focus:border-primary outline-none"
+                  className="w-full bg-dark-card/70 border border-border rounded-lg pl-8 pr-3 py-2 text-sm text-text-primary focus:border-primary outline-none transition-all"
                   placeholder="Cotización, producto, código..."
                   value={filters.query}
                   onChange={(event) => handleFilterChange('query', event.target.value)}
@@ -1704,6 +3062,20 @@ const StatusTable: React.FC<StatusTableProps> = ({
               />
             </label>
             <label className="flex flex-col gap-1 text-xs text-text-muted">
+              Tipo de pedido
+              <select
+                className="w-full bg-dark-card/70 border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-primary outline-none"
+                value={filters.productionType}
+                onChange={(event) =>
+                  handleFilterChange('productionType', event.target.value as ProductionTypeFilter)
+                }
+              >
+                <option value="all">Todos</option>
+                <option value="cliente">Clientes</option>
+                <option value="stock">Stock</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-text-muted">
               Estatus
               <select
                 className="w-full bg-dark-card/70 border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-primary outline-none"
@@ -1718,7 +3090,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
                 ))}
               </select>
             </label>
-            <div className="grid grid-cols-2 gap-2 text-xs text-text-muted">
+            <div className="grid grid-cols-2 gap-2 text-xs text-text-muted lg:col-span-2">
               <label className="flex flex-col gap-1">
                 Desde
                 <input
@@ -1757,14 +3129,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
         : viewMode === 'clients'
         ? renderClientView()
         : viewMode === 'calendar'
-        ? (
-            <ProductionCalendarBoard
-              days={scheduleDays}
-              loading={scheduleLoading}
-              error={scheduleError}
-              onRefresh={refetchSchedule}
-            />
-          )
+        ? renderCalendarView()
         : renderQuoteView()}
       </section>
       {planModalItem && (
@@ -1783,7 +3148,11 @@ const StatusTable: React.FC<StatusTableProps> = ({
       {/* Drawer de detalle de cliente */}
       <ClientDetailDrawer
         clientName={selectedClient || ''}
-        items={selectedClient ? filteredItems.filter(item => item.cliente === selectedClient) : []}
+        items={
+          selectedClient
+            ? filteredItems.filter((item) => getClientLabel(item) === selectedClient)
+            : []
+        }
         open={clientDrawerOpen}
         onClose={handleCloseClientDrawer}
         onViewProduct={handleViewProductFromClient}
@@ -1804,8 +3173,13 @@ const QuoteRow: React.FC<{
   onRowChange: (itemId: number, newFormData: RowFormState) => void;
   savingStatus: Record<number, 'idle' | 'saving' | 'success' | 'error'>;
   dailyPlans: Record<number, DailyProductionPlanEntry[]>;
+  onOpenDailyPlan: (item: ProductionItem) => void;
+  isItemReadOnly: (item: ProductionItem, form?: RowFormState) => boolean;
   highlightedItemId?: number | null;
   highlightedQuoteId?: number | null;
+  onFilterByClient: (client: string) => void;
+  onFilterByQuote: (quote: string) => void;
+  onFilterByProduct: (product: string) => void;
 }> = ({
   group,
   expanded,
@@ -1818,11 +3192,17 @@ const QuoteRow: React.FC<{
   onRowChange,
   savingStatus,
   dailyPlans,
+  onOpenDailyPlan,
+  isItemReadOnly,
   highlightedItemId,
   highlightedQuoteId,
+  onFilterByClient,
+  onFilterByQuote,
+  onFilterByProduct,
 }) => {
   const fileUrl = buildQuoteFileUrl(group.archivoOriginal);
   const [quoteForm, setQuoteForm] = useState<QuoteRowFormState>(() => ({
+    fechaIngreso: group.fechaIngreso ? group.fechaIngreso.substring(0, 10) : '',
     factura: group.facturas[0] ?? '',
     fechaVencimiento: group.fechaVencimiento ?? '',
     pagos: normalizePaymentsToForm(group.pagos),
@@ -1831,7 +3211,25 @@ const QuoteRow: React.FC<{
   const [showMetadataNotes, setShowMetadataNotes] = useState(false);
   const [showPaymentsModal, setShowPaymentsModal] = useState(false);
   const [showFinancialModal, setShowFinancialModal] = useState(false);
+  const [showFechaIngresoConfirm, setShowFechaIngresoConfirm] = useState(false);
+  const [pendingFechaIngreso, setPendingFechaIngreso] = useState<string | null>(null);
   const headerRef = useRef<HTMLTableRowElement>(null);
+  const isStock = group.tipoProduccion === 'stock';
+  const periodLabel = useMemo(() => {
+    if (!group.fechaInicioPeriodo && !group.fechaFinPeriodo) {
+      return '';
+    }
+    if (group.fechaInicioPeriodo && group.fechaFinPeriodo) {
+      return `${formatDateLabel(group.fechaInicioPeriodo)} - ${formatDateLabel(group.fechaFinPeriodo)}`;
+    }
+    if (group.fechaInicioPeriodo) {
+      return `Desde ${formatDateLabel(group.fechaInicioPeriodo)}`;
+    }
+    if (group.fechaFinPeriodo) {
+      return `Hasta ${formatDateLabel(group.fechaFinPeriodo)}`;
+    }
+    return '';
+  }, [group.fechaInicioPeriodo, group.fechaFinPeriodo]);
   const isHighlightedQuote = useMemo(() => {
     if (highlightedQuoteId !== null && highlightedQuoteId !== undefined) {
       return highlightedQuoteId === group.cotizacionId;
@@ -1841,6 +3239,16 @@ const QuoteRow: React.FC<{
     }
     return false;
   }, [group.cotizacionId, group.items, highlightedItemId, highlightedQuoteId]);
+
+  const quoteReadOnly = useMemo(() => {
+    return group.items.every((item) => {
+      const form = forms[item.id];
+      if (!form) {
+        return true;
+      }
+      return isItemReadOnly(item, form);
+    });
+  }, [group.items, forms, isItemReadOnly]);
 
   useEffect(() => {
     if (isHighlightedQuote && headerRef.current) {
@@ -1981,7 +3389,72 @@ const QuoteRow: React.FC<{
     setQuoteForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleFechaIngresoChange = (newFecha: string) => {
+    if (quoteReadOnly) {
+      return;
+    }
+    if (!newFecha) {
+      return;
+    }
+
+    // Comparar solo la parte de fecha (ignorar hora)
+    const originalDate = group.fechaIngreso ? group.fechaIngreso.substring(0, 10) : '';
+    if (newFecha === originalDate) {
+      return;
+    }
+
+    // Mostrar modal de confirmación
+    setPendingFechaIngreso(newFecha);
+    setShowFechaIngresoConfirm(true);
+  };
+
+  const confirmFechaIngresoChange = async () => {
+    if (!pendingFechaIngreso) return;
+
+    setShowFechaIngresoConfirm(false);
+    setIsSavingQuote(true);
+
+    try {
+      await Promise.all(
+        group.items.map((item) =>
+          onSave(item.id, {
+            fechaIngreso: pendingFechaIngreso,
+            fechaEntrega: item.fechaEntrega || null,
+            estatus: item.estatus || null,
+            notasEstatus: item.notasEstatus || null,
+            factura: item.factura || null,
+            fechaVencimiento: group.fechaVencimiento,
+            valorTotal: group.totalCotizacion,
+            pagos: [],
+          }),
+        ),
+      );
+      // Actualizar el form state con el nuevo valor
+      setQuoteForm((prev) => ({ ...prev, fechaIngreso: pendingFechaIngreso }));
+      setPendingFechaIngreso(null);
+    } catch (error) {
+      console.error('Error al actualizar fecha de ingreso:', error);
+      // Revertir en caso de error
+      const originalDate = group.fechaIngreso ? group.fechaIngreso.substring(0, 10) : '';
+      setQuoteForm((prev) => ({ ...prev, fechaIngreso: originalDate }));
+      alert('Error al guardar la fecha de ingreso. Por favor intente nuevamente.');
+    } finally {
+      setIsSavingQuote(false);
+    }
+  };
+
+  const cancelFechaIngresoChange = () => {
+    // Revertir al valor original
+    const originalDate = group.fechaIngreso ? group.fechaIngreso.substring(0, 10) : '';
+    setQuoteForm((prev) => ({ ...prev, fechaIngreso: originalDate }));
+    setPendingFechaIngreso(null);
+    setShowFechaIngresoConfirm(false);
+  };
+
   const updateQuotePayment = (index: number, field: keyof PaymentForm, value: string) => {
+    if (quoteReadOnly) {
+      return;
+    }
     setQuoteForm((prev) => ({
       ...prev,
       pagos: prev.pagos.map((pago, idx) => (idx === index ? { ...pago, [field]: value } : pago)),
@@ -1989,6 +3462,9 @@ const QuoteRow: React.FC<{
   };
 
   const addQuotePayment = () => {
+    if (quoteReadOnly) {
+      return;
+    }
     setQuoteForm((prev) => ({
       ...prev,
       pagos: [...prev.pagos, { monto: '', fecha_pago: '', descripcion: '' }],
@@ -1996,6 +3472,9 @@ const QuoteRow: React.FC<{
   };
 
   const removeQuotePayment = (index: number) => {
+    if (quoteReadOnly) {
+      return;
+    }
     setQuoteForm((prev) => ({
       ...prev,
       pagos: prev.pagos.filter((_, idx) => idx !== index),
@@ -2005,6 +3484,9 @@ const QuoteRow: React.FC<{
   const isAnyItemSaving = useMemo(() => group.items.some((item) => isSaving(item.id)), [group.items, isSaving]);
 
   const handleQuoteSave = async () => {
+    if (quoteReadOnly) {
+      return;
+    }
     const pagos = quoteForm.pagos
       .map((pago) => ({
         monto: Number.parseFloat(pago.monto),
@@ -2015,36 +3497,42 @@ const QuoteRow: React.FC<{
 
     const facturaValue = quoteForm.factura.trim();
     const fechaVenc = quoteForm.fechaVencimiento ? quoteForm.fechaVencimiento : null;
+    const fechaIng = quoteForm.fechaIngreso ? quoteForm.fechaIngreso : null;
 
-  setIsSavingQuote(true);
-  try {
-    await Promise.all(
-      group.items.map((item) =>
-        onSave(item.id, {
+    setIsSavingQuote(true);
+    try {
+      await Promise.all(
+        group.items.map((item) =>
+          onSave(item.id, {
+            fechaIngreso: fechaIng,
             fechaEntrega: item.fechaEntrega || null,
             estatus: item.estatus || null,
             notasEstatus: item.notasEstatus || null,
             factura: facturaValue || null,
             fechaVencimiento: fechaVenc,
             valorTotal: group.totalCotizacion,
-          pagos,
-        }),
-      ),
-    );
-    setShowPaymentsModal(false);
-  } finally {
-    setIsSavingQuote(false);
-  }
-};
+            pagos,
+          }),
+        ),
+      );
+      setShowPaymentsModal(false);
+    } finally {
+      setIsSavingQuote(false);
+    }
+  };
 
-  const canSave = !isSavingQuote && !isAnyItemSaving;
+  const canSave = !isSavingQuote && !isAnyItemSaving && !quoteReadOnly;
 
   return (
     <>
       <tr
         ref={headerRef}
-        className={`border-b border-border/60 bg-dark-card/30 hover:bg-dark-card/40 transition-colors ${
-          isHighlightedQuote ? 'ring-2 ring-primary/40 bg-primary/10' : ''
+        className={`border-b border-border/60 transition-colors ${
+          isHighlightedQuote
+            ? 'ring-2 ring-primary/40 bg-primary/10'
+            : isStock
+            ? 'bg-amber-500/10 hover:bg-amber-500/15'
+            : 'bg-dark-card/30 hover:bg-dark-card/40'
         }`}
       >
         <td className="align-top px-2 py-3">
@@ -2060,7 +3548,8 @@ const QuoteRow: React.FC<{
             <button
               type="button"
               onClick={handleDeleteQuote}
-              className="inline-flex items-center justify-center rounded-lg border border-red-500/40 px-2 py-1 text-[11px] font-medium text-red-400 hover:text-red-200 hover:border-red-400 transition-colors"
+              className="inline-flex items-center justify-center rounded-lg border border-red-500/40 px-2 py-1 text-[11px] font-medium text-red-400 hover:text-red-200 hover:border-red-400 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={quoteReadOnly}
               title="Eliminar cotización"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -2068,10 +3557,23 @@ const QuoteRow: React.FC<{
           </div>
         </td>
         <td className="align-top px-4 py-3">
-          <span className="font-medium text-text-primary">{formatDateLabel(group.fechaIngreso)}</span>
+          <input
+            type="date"
+            className="bg-dark-card/70 border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+            value={quoteForm.fechaIngreso}
+            onChange={(event) => handleFechaIngresoChange(event.target.value)}
+            disabled={isSavingQuote || quoteReadOnly}
+          />
         </td>
         <td className="align-top px-4 py-3">
-          {group.odc ? (
+          {isStock ? (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs uppercase tracking-wide text-text-muted">Pedido stock</span>
+              <span className="text-sm font-semibold text-text-primary">
+                {group.numeroPedidoStock || 'Sin número'}
+              </span>
+            </div>
+          ) : group.odc ? (
             <button
               type="button"
               onClick={openQuoteFile}
@@ -2086,21 +3588,74 @@ const QuoteRow: React.FC<{
         </td>
         <td className="align-top px-4 py-3">
           <div className="flex flex-col gap-1">
-            <button
-              type="button"
-              onClick={openQuoteFile}
-              className="text-left text-sm font-semibold text-primary hover:underline disabled:text-text-muted"
-              disabled={!fileUrl}
-            >
-              {group.numeroCotizacion}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onFilterByQuote(group.numeroCotizacion)}
+                className="text-left text-sm font-semibold text-primary hover:underline cursor-pointer transition-colors"
+                title="Clic para filtrar por esta cotización"
+              >
+                {group.numeroCotizacion}
+              </button>
+              {fileUrl && (
+                <button
+                  type="button"
+                  onClick={openQuoteFile}
+                  className="inline-flex items-center justify-center w-5 h-5 rounded text-text-secondary hover:text-primary transition-colors"
+                  title="Abrir archivo de cotización"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            {isStock ? (
+              <span className="inline-flex w-max items-center gap-1 rounded-full border-2 border-warning bg-warning/30 px-2 py-0.5 text-[11px] font-bold text-warning shadow-sm">
+                Stock
+              </span>
+            ) : (
+              <span className="inline-flex w-max items-center gap-1 rounded-full border-2 border-primary bg-primary/30 px-2 py-0.5 text-[11px] font-bold text-primary shadow-sm">
+                Cot.
+              </span>
+            )}
           </div>
         </td>
         <td className="align-top px-4 py-3">
           <div className="flex flex-col gap-1 relative">
-            <span className="font-medium text-text-primary">{group.cliente || '—'}</span>
-            {group.contacto && <span className="text-xs text-text-muted">Atención: {group.contacto}</span>}
-            {group.proyecto && <span className="text-xs text-text-muted">Proyecto: {group.proyecto}</span>}
+            {isStock ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onFilterByClient(group.bodega || '')}
+                  className="font-medium text-text-primary hover:text-primary hover:underline cursor-pointer text-left transition-colors"
+                  title="Clic para filtrar por esta bodega"
+                >
+                  {group.bodega || 'Stock sin bodega asignada'}
+                </button>
+                {group.responsable && (
+                  <span className="text-xs text-text-muted">Responsable: {group.responsable}</span>
+                )}
+                {periodLabel && (
+                  <span className="text-xs text-text-secondary">{periodLabel}</span>
+                )}
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onFilterByClient(group.cliente || '')}
+                  className="font-medium text-text-primary hover:text-primary hover:underline cursor-pointer text-left transition-colors"
+                  title="Clic para filtrar por este cliente"
+                >
+                  {group.cliente || '—'}
+                </button>
+                {group.contacto && (
+                  <span className="text-xs text-text-muted">Atención: {group.contacto}</span>
+                )}
+                {group.proyecto && (
+                  <span className="text-xs text-text-muted">Proyecto: {group.proyecto}</span>
+                )}
+              </>
+            )}
             <span className="text-xs text-text-secondary">
               {group.items.length} {group.items.length === 1 ? 'producto' : 'productos'}
             </span>
@@ -2251,7 +3806,10 @@ const QuoteRow: React.FC<{
                           quoteTotal={group.totalCotizacion}
                           saveStatus={savingStatus[item.id] || 'idle'}
                           dailyPlan={dailyPlans[item.id]}
+                          onPlanClick={onOpenDailyPlan}
+                          readOnly={isItemReadOnly(item, forms[item.id])}
                           highlighted={item.id === highlightedItemId}
+                          onFilterByProduct={onFilterByProduct}
                         />
                       ) : null,
                     )}
@@ -2264,9 +3822,9 @@ const QuoteRow: React.FC<{
       )}
       {showPaymentsModal && typeof document !== 'undefined' &&
         createPortal(
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur px-4">
-            <div className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-border/60 bg-dark-card/95 shadow-[0_40px_80px_rgba(0,0,0,0.4)]">
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-transparent opacity-80" />
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+            <div className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-border/40 bg-white text-slate-900 shadow-[0_40px_80px_rgba(0,0,0,0.35)] dark:border-border/60 dark:bg-dark-card dark:text-text-primary">
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/70 via-white/30 to-transparent opacity-70 dark:from-primary/20 dark:via-transparent dark:to-transparent dark:opacity-80" />
               <div className="relative px-6 py-7 space-y-6">
                 <button
                   type="button"
@@ -2322,19 +3880,21 @@ const QuoteRow: React.FC<{
                     Factura
                     <input
                       type="text"
-                      className="bg-dark-card/70 border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-primary outline-none"
+                      className="bg-dark-card/70 border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                       placeholder="Asignar factura"
                       value={quoteForm.factura}
                       onChange={(event) => updateQuoteField('factura', event.target.value)}
+                      disabled={quoteReadOnly}
                     />
                   </label>
                   <label className="flex flex-col gap-2 text-xs text-text-muted">
                     Fecha de vencimiento
                     <input
                       type="date"
-                      className={`bg-dark-card/70 border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-primary outline-none ${dueDateBorderClass}`}
+                      className={`bg-dark-card/70 border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed ${dueDateBorderClass}`}
                       value={quoteForm.fechaVencimiento}
                       onChange={(event) => updateQuoteField('fechaVencimiento', event.target.value)}
+                      disabled={quoteReadOnly}
                     />
                     <span className={`text-[11px] ${dueDateHintClass}`}>{dueDateStatus.message}</span>
                   </label>
@@ -2345,7 +3905,8 @@ const QuoteRow: React.FC<{
                     <button
                       type="button"
                       onClick={addQuotePayment}
-                      className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-text-secondary hover:text-primary hover:border-primary transition-colors"
+                      className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-text-secondary hover:text-primary hover:border-primary transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                      disabled={quoteReadOnly}
                     >
                       <Plus className="w-3 h-3" />
                       Añadir pago
@@ -2364,7 +3925,8 @@ const QuoteRow: React.FC<{
                             <button
                               type="button"
                               onClick={() => removeQuotePayment(index)}
-                              className="text-red-400 hover:text-red-300"
+                              className="text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                              disabled={quoteReadOnly}
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
@@ -2373,22 +3935,25 @@ const QuoteRow: React.FC<{
                             <input
                               type="number"
                               placeholder="Monto"
-                              className="bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-sm text-text-primary focus:border-primary outline-none"
+                              className="bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                               value={pago.monto}
                               onChange={(event) => updateQuotePayment(index, 'monto', event.target.value)}
+                              disabled={quoteReadOnly}
                             />
                             <input
                               type="date"
-                              className="bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-sm text-text-primary focus:border-primary outline-none"
+                              className="bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                               value={pago.fecha_pago}
                               onChange={(event) => updateQuotePayment(index, 'fecha_pago', event.target.value)}
+                              disabled={quoteReadOnly}
                             />
                             <input
                               type="text"
                               placeholder="Descripción"
-                              className="bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-sm text-text-primary focus:border-primary outline-none"
+                              className="bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                               value={pago.descripcion}
                               onChange={(event) => updateQuotePayment(index, 'descripcion', event.target.value)}
+                              disabled={quoteReadOnly}
                             />
                           </div>
                         </div>
@@ -2434,6 +3999,88 @@ const QuoteRow: React.FC<{
           />,
           document.body
         )}
+
+      {/* Modal de confirmación para cambio de fecha de ingreso */}
+      {showFechaIngresoConfirm && pendingFechaIngreso &&
+        createPortal(
+          <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-dark-bg/90 backdrop-blur-md px-4">
+            <div className="w-full max-w-md glass-panel rounded-2xl border border-amber-500/40 bg-dark-card/95 shadow-hologram overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center gap-3 border-b border-amber-500/30 bg-amber-500/10 px-6 py-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/20 border border-amber-500/40">
+                  <AlertCircle className="h-5 w-5 text-amber-400" />
+                </div>
+                <h3 className="text-lg font-bold text-text-primary">Confirmar cambio de fecha</h3>
+              </div>
+
+              {/* Body */}
+              <div className="px-6 py-5 space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-text-muted">Fecha actual:</span>
+                    <span className="font-semibold text-text-primary">
+                      {group.fechaIngreso ? formatDateLabel(group.fechaIngreso.substring(0, 10)) : 'Sin fecha'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-center">
+                    <ArrowUpDown className="h-4 w-4 text-primary rotate-90" />
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-text-muted">Nueva fecha:</span>
+                    <span className="font-semibold text-primary">
+                      {formatDateLabel(pendingFechaIngreso)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+                  <div className="flex gap-3">
+                    <AlertCircle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-amber-200">Advertencia importante</p>
+                      <p className="text-xs text-text-secondary leading-relaxed">
+                        Este cambio recalculará automáticamente la distribución de producción para todos los{' '}
+                        <span className="font-semibold text-text-primary">{group.items.length} producto(s)</span> de esta cotización.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex gap-3 border-t border-border/40 bg-dark-card/40 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={cancelFechaIngresoChange}
+                  disabled={isSavingQuote}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-text-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <X className="w-4 h-4" />
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmFechaIngresoChange}
+                  disabled={isSavingQuote}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border border-primary bg-primary/10 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSavingQuote ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      Confirmar cambio
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   );
 };
@@ -2443,8 +4090,28 @@ const ProductViewRow: React.FC<{
   statusOptions: string[];
   onChange: (itemId: number, newFormData: RowFormState) => void;
   onPlanClick: (item: ProductionItem) => void;
-}> = ({ data, statusOptions, onChange, onPlanClick }) => {
-  const { item, form, progress, quantity, saving } = data;
+  onFilterByClient: (client: string) => void;
+  onFilterByQuote: (quote: string) => void;
+  onFilterByProduct: (product: string) => void;
+}> = ({ data, statusOptions, onChange, onPlanClick, onFilterByClient, onFilterByQuote, onFilterByProduct }) => {
+  const { item, form, progress, quantity, saving, readOnly } = data;
+  const isStock = resolveProductionType(item) === 'stock';
+  const clientLabel = getClientLabel(item);
+  const stockPeriodLabel = useMemo(() => {
+    if (!item.fechaInicioPeriodo && !item.fechaFinPeriodo) {
+      return '';
+    }
+    if (item.fechaInicioPeriodo && item.fechaFinPeriodo) {
+      return `${formatDateLabel(item.fechaInicioPeriodo)} - ${formatDateLabel(item.fechaFinPeriodo)}`;
+    }
+    if (item.fechaInicioPeriodo) {
+      return `Desde ${formatDateLabel(item.fechaInicioPeriodo)}`;
+    }
+    if (item.fechaFinPeriodo) {
+      return `Hasta ${formatDateLabel(item.fechaFinPeriodo)}`;
+    }
+    return '';
+  }, [item.fechaInicioPeriodo, item.fechaFinPeriodo]);
   const rowRef = useRef<HTMLTableRowElement>(null);
 
   useEffect(() => {
@@ -2454,7 +4121,24 @@ const ProductViewRow: React.FC<{
   }, [data.isHighlighted]);
 
   const updateField = (key: keyof RowFormState, value: string) => {
-    onChange(item.id, { ...form, [key]: value });
+    if (readOnly) {
+      return;
+    }
+    const updatedForm = { ...form, [key]: value };
+
+    // Si se asigna fecha de entrega, cambiar automáticamente el estatus a "En producción"
+    if (key === 'fechaEntrega' && value && (!form.estatus || form.estatus === 'En cola')) {
+      updatedForm.estatus = 'En producción';
+    }
+
+    onChange(item.id, updatedForm);
+  };
+
+  const handlePlanClick = () => {
+    if (readOnly) {
+      return;
+    }
+    onPlanClick(item);
   };
 
   const fechaIngresoLabel = item.fechaIngreso ? formatDateLabel(item.fechaIngreso) : '—';
@@ -2464,79 +4148,116 @@ const ProductViewRow: React.FC<{
   return (
     <tr
       ref={rowRef}
-      className={`border-b border-border/40 transition-colors ${data.colorClass} ${highlightClasses} hover:brightness-[1.08]`}
+      className={`transition-colors ${data.colorClass} ${highlightClasses} hover:brightness-110`}
     >
-      <td className="px-4 py-3 text-center align-top w-12">
+      <td className="px-4 py-2 text-center align-top w-12 first:rounded-l-lg last:rounded-r-lg">
         {saving === 'saving' && <Loader2 className="w-4 h-4 animate-spin text-primary mx-auto" />}
         {saving === 'success' && <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" />}
         {saving === 'error' && <AlertCircle className="w-4 h-4 text-red-500 mx-auto" />}
       </td>
-      <td className="px-4 py-3 align-top min-w-[220px]">
-        <p className="font-semibold text-text-primary">{item.producto}</p>
-        {item.proyecto && <p className="text-[11px] text-text-secondary">Proyecto: {item.proyecto}</p>}
-        {data.quote?.saldoPendiente !== null && data.quote?.saldoPendiente !== undefined && (
-          <p className="text-[11px] text-text-secondary">Saldo: {formatCurrency(data.quote.saldoPendiente)}</p>
-        )}
+      <td className="px-4 py-2 align-top min-w-[220px]">
         <button
           type="button"
-          onClick={() => onPlanClick(item)}
-          className="mt-2 inline-flex items-center gap-2 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-[11px] font-semibold text-indigo-200 hover:bg-indigo-500/20 transition-colors"
+          onClick={() => onFilterByProduct(item.producto)}
+          className="font-semibold text-text-primary hover:text-primary hover:underline cursor-pointer text-left transition-colors"
+          title="Clic para filtrar por este producto"
         >
-          <CalendarDays className="h-3.5 w-3.5" />
-          Control diario
+          {item.producto}
         </button>
+        {item.proyecto && <p className="text-[11px] text-text-secondary mt-1">Proyecto: {item.proyecto}</p>}
       </td>
-      <td className="px-4 py-3 align-top min-w-[180px]">
-        <p className="text-sm text-text-primary font-medium">{item.cliente || 'Sin cliente'}</p>
-        {item.contacto && <p className="text-[11px] text-text-secondary">Atención: {item.contacto}</p>}
+      <td className="px-4 py-2 align-top min-w-[180px]" title={clientLabel}>
+        <button
+          type="button"
+          onClick={() => onFilterByClient(isStock ? (item.bodega || '') : (item.cliente || ''))}
+          className="text-sm text-text-primary font-medium hover:text-primary hover:underline cursor-pointer text-left transition-colors"
+          title="Clic para filtrar por este cliente"
+        >
+          {isStock ? (item.bodega || 'Stock sin bodega') : item.cliente || 'Sin cliente'}
+        </button>
+        {isStock ? (
+          <>
+            {item.responsable && (
+              <p className="text-[11px] text-text-secondary">Responsable: {item.responsable}</p>
+            )}
+            {stockPeriodLabel && (
+              <p className="text-[11px] text-text-secondary">{stockPeriodLabel}</p>
+            )}
+          </>
+        ) : (
+          item.contacto && <p className="text-[11px] text-text-secondary">Atención: {item.contacto}</p>
+        )}
       </td>
-      <td className="px-4 py-3 align-top">
-        <p className="text-sm font-medium text-primary">{item.numeroCotizacion}</p>
-        {item.odc && <p className="text-[11px] text-text-secondary">ODC: {item.odc}</p>}
+      <td className="px-4 py-2 align-top">
+        <button
+          type="button"
+          onClick={() => onFilterByQuote(item.numeroCotizacion)}
+          className="text-sm font-medium text-primary hover:text-accent hover:underline cursor-pointer text-left transition-colors"
+          title="Clic para filtrar por esta cotización"
+        >
+          {item.numeroCotizacion}
+        </button>
+        {isStock ? (
+          <p className="text-[11px] text-text-secondary">Pedido: {item.numeroPedidoStock || '—'}</p>
+        ) : (
+          item.odc && <p className="text-[11px] text-text-secondary">ODC: {item.odc}</p>
+        )}
       </td>
-      <td className="px-4 py-3 align-top whitespace-nowrap text-sm text-text-secondary">{fechaIngresoLabel}</td>
-      <td className="px-4 py-3 align-top min-w-[120px]">
+      <td className="px-4 py-2 align-top whitespace-nowrap text-sm text-text-secondary">{fechaIngresoLabel}</td>
+      <td className="px-4 py-2 align-top min-w-[120px]">
         <span className="text-sm text-text-primary">{item.cantidad || '—'}</span>
         {quantity.amount !== null && (
           <p className="text-[11px] text-text-secondary">
-            {formatNumberWithDash(quantity.amount)} {quantity.unit === 'metros' ? 'm' : 'u'}
+            {formatNumberWithDash(quantity.amount)} {quantity.unit === 'metros' ? 'm²' : 'u'}
           </p>
         )}
       </td>
-      <td className="px-4 py-3 align-top">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-text-muted" />
-            <input
-              type="date"
-              className="bg-dark-card/70 border border-border rounded-lg px-2 py-1 text-text-primary focus-border-primary outline-none"
-              value={form.fechaEntrega}
-              onChange={(event) => updateField('fechaEntrega', event.target.value)}
-            />
-          </div>
-          <div className="text-xs text-text-muted">{fechaEntregaLabel}</div>
+      <td className="px-4 py-2 align-top">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-text-muted" />
+          <input
+            type="date"
+            className="bg-dark-card/70 border border-border rounded-lg px-2 py-1 text-text-primary focus-border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+            value={form.fechaEntrega}
+            onChange={(event) => updateField('fechaEntrega', event.target.value)}
+            disabled={readOnly}
+          />
         </div>
       </td>
-      <td className="px-4 py-3 align-top">
-        {progress ? (
-          <div className="min-w-[140px]" title={progress.tooltip}>
-            <div className="h-2 rounded-full bg-border overflow-hidden">
-              <div
-                className={`h-2 rounded-full transition-all duration-300 ${progress.color}`}
-                style={{ width: `${progress.percent}%` }}
-              />
-            </div>
-            <p className="text-[11px] text-text-secondary mt-1">{progress.label}</p>
+      <td className="px-4 py-2 align-top">
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            {progress ? (
+              <div className="min-w-[120px]" title={progress.tooltip}>
+                <div className="h-2 rounded-full bg-border overflow-hidden">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-300 ${progress.color}`}
+                    style={{ width: `${progress.percent}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-text-secondary mt-1">{progress.label}</p>
+              </div>
+            ) : (
+              <span className="text-xs text-text-muted">Sin fecha objetivo</span>
+            )}
           </div>
-        ) : (
-          <span className="text-xs text-text-muted">Sin fecha objetivo</span>
-        )}
+          <button
+            type="button"
+            onClick={handlePlanClick}
+            className="inline-flex items-center gap-1 rounded-md border border-accent/50 bg-accent/20 px-2 py-1 text-[10px] font-semibold text-accent hover:bg-accent/30 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Control diario"
+            disabled={readOnly}
+          >
+            <CalendarDays className="h-3 w-3" />
+          </button>
+        </div>
       </td>
-      <td className="px-4 py-3 align-top">
+      <td className="px-4 py-2 align-top">
         <select
-          className="w-full bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-text-primary focus-border-primary outline-none"
+          className="w-full bg-dark-card/70 border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus-border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
           value={form.estatus}
           onChange={(event) => updateField('estatus', event.target.value)}
+          disabled={readOnly}
         >
           <option value="">Seleccionar...</option>
           {statusOptions.map((option) => (
@@ -2546,12 +4267,13 @@ const ProductViewRow: React.FC<{
           ))}
         </select>
       </td>
-      <td className="px-4 py-3 align-top">
+      <td className="px-4 py-2 align-top">
         <textarea
-          className="w-full min-h-[80px] bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-xs text-text-primary focus-border-primary outline-none"
+          className="w-full min-h-[60px] bg-dark-card/70 border border-border rounded-lg px-2 py-1.5 text-xs text-text-primary focus-border-primary outline-none resize-none disabled:opacity-60 disabled:cursor-not-allowed"
           placeholder="Notas de producción"
           value={form.notasEstatus}
           onChange={(event) => updateField('notasEstatus', event.target.value)}
+          disabled={readOnly}
         />
       </td>
     </tr>
@@ -2566,8 +4288,23 @@ const ProductionRow: React.FC<{
   quoteTotal: number | null;
   saveStatus: 'idle' | 'saving' | 'success' | 'error';
   dailyPlan?: DailyProductionPlanEntry[];
+  onPlanClick: (item: ProductionItem) => void;
+  readOnly: boolean;
   highlighted?: boolean;
-}> = ({ item, form, statusOptions, onChange, quoteTotal, saveStatus, dailyPlan, highlighted = false }) => {
+  onFilterByProduct?: (product: string) => void;
+}> = ({
+  item,
+  form,
+  statusOptions,
+  onChange,
+  quoteTotal,
+  saveStatus,
+  dailyPlan,
+  onPlanClick,
+  readOnly,
+  highlighted = false,
+  onFilterByProduct,
+}) => {
   const totalCotizacion = useMemo(() => {
     if (quoteTotal !== null && quoteTotal !== undefined) {
       return quoteTotal;
@@ -2592,7 +4329,24 @@ const ProductionRow: React.FC<{
   const progress = computeProgress(item, form.fechaEntrega, form.estatus, dailyPlan);
 
   const updateField = (key: keyof RowFormState, value: string) => {
-    onChange({ ...form, [key]: value });
+    if (readOnly) {
+      return;
+    }
+    const updatedForm = { ...form, [key]: value };
+
+    // Si se asigna fecha de entrega, cambiar automáticamente el estatus a "En producción"
+    if (key === 'fechaEntrega' && value && (!form.estatus || form.estatus === 'En cola')) {
+      updatedForm.estatus = 'En producción';
+    }
+
+    onChange(updatedForm);
+  };
+
+  const handlePlanClick = () => {
+    if (readOnly) {
+      return;
+    }
+    onPlanClick(item);
   };
 
   const rowRef = useRef<HTMLTableRowElement>(null);
@@ -2616,7 +4370,18 @@ const ProductionRow: React.FC<{
         {saveStatus === 'error' && <AlertCircle className="w-4 h-4 text-red-500 mx-auto" />}
       </td>
       <td className="align-top px-4 py-4 max-w-md">
-        <p className="font-medium text-text-primary">{item.producto}</p>
+        {onFilterByProduct ? (
+          <button
+            type="button"
+            onClick={() => onFilterByProduct(item.producto)}
+            className="font-medium text-text-primary hover:text-primary hover:underline cursor-pointer text-left transition-colors"
+            title="Clic para filtrar por este producto"
+          >
+            {item.producto}
+          </button>
+        ) : (
+          <p className="font-medium text-text-primary">{item.producto}</p>
+        )}
       </td>
       <td className="align-top px-4 py-4 whitespace-nowrap">{item.cantidad || '—'}</td>
       <td className="align-top px-4 py-4">
@@ -2636,33 +4401,48 @@ const ProductionRow: React.FC<{
         </div>
       </td>
       <td className="align-top px-4 py-4">
-        {progress ? (
-          <div className="min-w-[160px]" title={progress.tooltip}>
-            <div className="h-2 rounded-full bg-border overflow-hidden">
-              <div
-                className={`h-2 rounded-full transition-all duration-300 ${progress.color}`}
-                style={{ width: `${progress.percent}%` }}
-              />
-            </div>
-            <p className="text-xs text-text-muted mt-1">
-              {progress.label}
-              {progress.producedEstimate !== null && progress.quantity !== null && (
-                <span className="block text-[11px] text-text-secondary">
-                  Estimado: {formatNumberWithDash(progress.producedEstimate)} / {formatNumberWithDash(progress.quantity)} u.
-                </span>
-              )}
-            </p>
+        <div className="flex items-center gap-2">
+          <div className="min-w-[160px] flex-1">
+            {progress ? (
+              <div title={progress.tooltip}>
+                <div className="h-2 rounded-full bg-border overflow-hidden">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-300 ${progress.color}`}
+                    style={{ width: `${progress.percent}%` }}
+                  />
+                </div>
+                <p className="text-xs text-text-muted mt-1">
+                  {progress.label}
+                  {progress.producedEstimate !== null && progress.quantity !== null && (
+                    <span className="block text-[11px] text-text-secondary">
+                      Estimado: {formatNumberWithDash(progress.producedEstimate)} / {formatNumberWithDash(progress.quantity)}
+                      {progress.quantityUnit === 'metros' ? ' m²' : ' u.'}
+                    </span>
+                  )}
+                </p>
+              </div>
+            ) : (
+              <span className="text-xs text-text-muted">Sin fecha objetivo</span>
+            )}
           </div>
-        ) : (
-          <span className="text-xs text-text-muted">Sin fecha objetivo</span>
-        )}
+          <button
+            type="button"
+            onClick={handlePlanClick}
+            className="inline-flex items-center gap-1 rounded-md border border-accent/50 bg-accent/20 px-2 py-1 text-[10px] font-semibold text-accent hover:bg-accent/30 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Control diario"
+            disabled={readOnly}
+          >
+            <CalendarDays className="h-3 w-3" />
+          </button>
+        </div>
       </td>
       <td className="align-top px-4 py-4">
         <div className="space-y-2 min-w-[180px]">
           <select
-            className="w-full bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-text-primary focus-border-primary outline-none"
+            className="w-full bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-text-primary focus-border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
             value={form.estatus}
             onChange={(event) => updateField('estatus', event.target.value)}
+            disabled={readOnly}
           >
             <option value="">Seleccionar...</option>
             {statusOptions.map((option) => (
@@ -2685,10 +4465,11 @@ const ProductionRow: React.FC<{
       </td>
       <td className="align-top px-4 py-4">
         <textarea
-          className="w-full min-h-[80px] bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-xs text-text-primary focus-border-primary outline-none"
+          className="w-full min-h-[80px] bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-xs text-text-primary focus-border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
           placeholder="Notas de produccion o entregas parciales"
           value={form.notasEstatus}
           onChange={(event) => updateField('notasEstatus', event.target.value)}
+          disabled={readOnly}
         />
       </td>
     </tr>

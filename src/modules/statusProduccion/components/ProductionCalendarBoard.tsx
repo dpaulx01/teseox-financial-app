@@ -209,64 +209,58 @@ const DayDetailModal: React.FC<DayDetailModalProps> = ({ day, onClose }) => {
   }, [day.items]);
 
   return (
-    <div className="fixed inset-0 z-[1200] flex items-start justify-center bg-dark-bg/90 backdrop-blur-md px-4 py-4">
-      <div className="w-full max-w-6xl h-[90vh] glass-panel rounded-2xl border border-border/60 bg-dark-card/95 shadow-hologram animate-scale-in flex flex-col">
-        <div className="flex items-center justify-between border-b border-border/40 px-6 py-5 relative overflow-hidden">
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-dark-bg/90 backdrop-blur-md px-4 py-8">
+      <div className="w-full max-w-5xl max-h-[85vh] glass-panel rounded-2xl border border-border/60 bg-dark-card/95 shadow-hologram animate-scale-in flex flex-col">
+        <div className="flex items-center justify-between border-b border-border/40 px-5 py-3 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-accent/5" />
           <div className="relative z-10">
-            <h3 className="text-2xl font-bold text-text-primary neon-text">Carga programada</h3>
-            <p className="text-sm text-text-muted font-medium mt-1">{dateLabel}</p>
+            <h3 className="text-lg font-bold text-text-primary">{dateLabel}</h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="relative z-10 cyber-button-sm bg-dark-card/80 border-border/60 text-text-secondary hover:text-danger hover:border-danger/40 transition-all duration-200"
+            className="relative z-10 text-sm px-3 py-1 rounded-lg bg-dark-card/80 border border-border/60 text-text-secondary hover:text-danger hover:border-danger/40 transition-all duration-200"
           >
             Cerrar
           </button>
         </div>
-        <div className="flex-1 px-6 py-6 space-y-6 overflow-y-auto min-h-0">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <div className="glass-card rounded-xl border border-primary/30 bg-primary-glow p-6 shadow-glow-sm hover:shadow-glow-md transition-all duration-300">
-              <p className="text-sm uppercase tracking-wider text-text-muted font-semibold">Metros totales</p>
-              <p className="mt-3 text-4xl font-bold text-primary data-display">{formatNumber(day.metros)}</p>
+        <div className="flex-1 px-5 py-4 space-y-4 overflow-y-auto min-h-0">
+          <div className="flex gap-3">
+            <div className="flex-1 glass-card rounded-lg border border-primary/30 bg-primary-glow px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-text-muted font-medium">Metros</p>
+              <p className="mt-1 text-2xl font-bold text-primary">{formatNumber(day.metros)}</p>
             </div>
-            <div className="glass-card rounded-xl border border-accent/30 bg-accent-glow p-6 shadow-glow-sm hover:shadow-glow-md transition-all duration-300">
-              <p className="text-sm uppercase tracking-wider text-text-muted font-semibold">Unidades totales</p>
-              <p className="mt-3 text-4xl font-bold text-accent data-display">{formatNumber(day.unidades)}</p>
+            <div className="flex-1 glass-card rounded-lg border border-accent/30 bg-accent-glow px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-text-muted font-medium">Unidades</p>
+              <p className="mt-1 text-2xl font-bold text-accent">{formatNumber(day.unidades)}</p>
             </div>
-            <div className="glass-card rounded-xl border border-border/60 bg-dark-card/80 p-6 hover:bg-dark-card/90 transition-all duration-300">
-              <p className="text-sm uppercase tracking-wider text-text-muted font-semibold">Productos únicos</p>
-              <p className="mt-3 text-4xl font-bold text-text-primary">{groupedByProduct.length}</p>
-              {day.manual ? (
-                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-glow border border-accent/30">
-                  <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
-                  <p className="text-xs text-accent font-semibold">Plan manual registrado</p>
-                </div>
-              ) : null}
+            <div className="flex-1 glass-card rounded-lg border border-border/60 bg-dark-card/80 px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-text-muted font-medium">Productos</p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-2xl font-bold text-text-primary">{groupedByProduct.length}</p>
+                {day.manual && (
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/20 border border-accent/40">
+                    <div className="w-1.5 h-1.5 rounded-full bg-accent"></div>
+                    <p className="text-[10px] text-accent font-semibold">Manual</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {groupedByProduct.length === 0 ? (
-            <div className="glass-card rounded-2xl border border-dashed border-border/60 bg-dark-card/30 px-6 py-8 text-center">
-              <div className="space-y-3">
-                <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
-                  <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-dashed"></div>
-                </div>
-                <p className="text-base font-medium text-text-muted">No hay productos asignados</p>
-                <p className="text-sm text-text-dim">Este día no tiene carga de producción programada</p>
-              </div>
+            <div className="glass-card rounded-lg border border-dashed border-border/60 bg-dark-card/30 px-4 py-6 text-center">
+              <p className="text-sm font-medium text-text-muted">No hay productos asignados</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 pb-2 border-b border-border/20">
-                <div className="w-1 h-8 bg-gradient-to-b from-primary to-accent rounded-full"></div>
-                <h4 className="text-xl font-bold text-text-primary">Programación de productos</h4>
-                <span className="text-sm text-text-muted bg-dark-card/60 px-3 py-1 rounded-full border border-border/40">
-                  {groupedByProduct.length} {groupedByProduct.length === 1 ? 'producto' : 'productos'} únicos
+            <div className="space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-border/20">
+                <h4 className="text-sm font-bold text-text-primary">Productos programados</h4>
+                <span className="text-xs text-text-muted bg-dark-card/60 px-2 py-1 rounded-full border border-border/40">
+                  {groupedByProduct.length} {groupedByProduct.length === 1 ? 'producto' : 'productos'}
                 </span>
               </div>
-              <div className="grid gap-3">
+              <div className="space-y-2">
                 {groupedByProduct.map((product, index) => {
                   const isMetrosProduct = product.totalMetros > 0;
                   const mainQuantity = isMetrosProduct ? product.totalMetros : product.totalUnidades;
@@ -275,87 +269,48 @@ const DayDetailModal: React.FC<DayDetailModalProps> = ({ day, onClose }) => {
                   return (
                     <div
                       key={`${product.descripcion}-${index}`}
-                      className="glass-card rounded-2xl border border-border/60 bg-dark-card/70 overflow-hidden hover:bg-dark-card/80 transition-all duration-300"
+                      className="glass-card rounded-lg border border-border/60 bg-dark-card/70 px-3 py-2.5 hover:bg-dark-card/80 transition-all"
                     >
-                      <div className="px-5 py-4">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1">
-                            <h5 className="font-bold text-text-primary text-base leading-tight mb-3">
-                              {product.descripcion}
-                            </h5>
-                            
-                            <div className="flex items-center gap-4 mb-3">
-                              <div className={`inline-flex items-center gap-3 px-3 py-2 rounded-lg border ${
-                                isMetrosProduct 
-                                  ? 'border-primary/40 bg-primary-glow' 
-                                  : 'border-accent/40 bg-accent-glow'
-                              }`}>
-                                <div className={`w-3 h-3 rounded-full ${
-                                  isMetrosProduct ? 'bg-primary' : 'bg-accent'
-                                }`}></div>
-                                <div>
-                                  <p className="text-xs uppercase tracking-wider text-text-muted font-semibold">
-                                    {mainUnit}
-                                  </p>
-                                  <p className={`text-xl font-bold ${
-                                    isMetrosProduct ? 'text-primary' : 'text-accent'
-                                  } data-display`}>
-                                    {formatNumber(mainQuantity)}
-                                  </p>
-                                </div>
-                              </div>
-                              
-                              {/* Mostrar la cantidad complementaria si existe */}
-                              {((isMetrosProduct && product.totalUnidades > 0) || (!isMetrosProduct && product.totalMetros > 0)) && (
-                                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border/40 bg-dark-card/60">
-                                  <div className={`w-3 h-3 rounded-full ${
-                                    !isMetrosProduct ? 'bg-primary' : 'bg-accent'
-                                  }`}></div>
-                                  <span className="text-sm text-text-muted">
-                                    {!isMetrosProduct ? 'Metros' : 'Unidades'}:
-                                  </span>
-                                  <span className={`font-semibold ${
-                                    !isMetrosProduct ? 'text-primary' : 'text-accent'
-                                  }`}>
-                                    {formatNumber(!isMetrosProduct ? product.totalMetros : product.totalUnidades)}
-                                  </span>
-                                </div>
-                              )}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <h5 className="font-semibold text-text-primary text-sm leading-tight mb-1.5 truncate" title={product.descripcion}>
+                            {product.descripcion}
+                          </h5>
+
+                          <div className="flex items-center gap-2 text-xs">
+                            <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border ${
+                              isMetrosProduct
+                                ? 'border-primary/30 bg-primary/10'
+                                : 'border-accent/30 bg-accent/10'
+                            }`}>
+                              <span className={`font-bold ${isMetrosProduct ? 'text-primary' : 'text-accent'}`}>
+                                {formatNumber(mainQuantity)}
+                              </span>
+                              <span className="text-text-muted">{mainUnit === 'metros' ? 'm²' : 'u'}</span>
                             </div>
 
-                            <div className="flex items-center gap-3 text-xs">
-                              {product.cotizaciones.size > 0 && (
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-text-secondary"></div>
-                                  <span className="text-text-muted">
-                                    {product.cotizaciones.size} {product.cotizaciones.size === 1 ? 'cotización' : 'cotizaciones'}
-                                  </span>
-                                </div>
-                              )}
-                              {product.clientes.size > 0 && (
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-accent"></div>
-                                  <span className="text-text-muted">
-                                    {product.clientes.size} {product.clientes.size === 1 ? 'cliente' : 'clientes'}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div className="flex-shrink-0">
-                            {product.hasManual ? (
-                              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-accent-glow border border-accent/40 shadow-glow-accent">
-                                <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
-                                <span className="text-xs font-bold text-accent uppercase tracking-wide">Manual</span>
-                              </div>
-                            ) : (
-                              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-dark-card/60 border border-border/40">
-                                <div className="w-2 h-2 rounded-full bg-primary"></div>
-                                <span className="text-xs font-medium text-text-muted uppercase tracking-wide">Auto</span>
+                            {((isMetrosProduct && product.totalUnidades > 0) || (!isMetrosProduct && product.totalMetros > 0)) && (
+                              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-border/30 bg-dark-card/60">
+                                <span className={`font-semibold ${!isMetrosProduct ? 'text-primary' : 'text-accent'}`}>
+                                  {formatNumber(!isMetrosProduct ? product.totalMetros : product.totalUnidades)}
+                                </span>
+                                <span className="text-text-muted">{!isMetrosProduct ? 'm²' : 'u'}</span>
                               </div>
                             )}
+
+                            {product.cotizaciones.size > 1 && (
+                              <span className="text-text-muted">• {product.cotizaciones.size} cot.</span>
+                            )}
                           </div>
+                        </div>
+
+                        <div className="flex-shrink-0">
+                          {product.hasManual && (
+                            <div className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-accent/20 border border-accent/40">
+                              <div className="w-1.5 h-1.5 rounded-full bg-accent"></div>
+                              <span className="text-[10px] font-semibold text-accent">M</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

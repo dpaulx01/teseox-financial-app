@@ -17,6 +17,8 @@
     "chartjs-adapter-date-fns": "^3.0.0",
     "decimal.js-light": "^2.5.1",
     "framer-motion": "^12.23.12",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
     "lucide-react": "0.320.0",
     "papaparse": "^5.5.3",
     "postcss": "^8.5.6",

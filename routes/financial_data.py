@@ -73,23 +73,90 @@ async def upload_csv(
         
         # Limpiar BOM (como en PHP original)
         content_str = re.sub(r'^\ufeff', '', content_str)
-        lines = content_str.split('\n')
-        
-        if len(lines) < 2:
-            raise HTTPException(status_code=400, detail="El archivo CSV está vacío o mal formateado")
-        
-        # Procesar headers (primera línea) - exacto como PHP original
         import csv as csv_module
         from io import StringIO
-        
-        csv_reader = csv_module.reader(StringIO(lines[0]), delimiter=';')
-        headers = next(csv_reader)
-        
-        months = []
-        for i in range(2, len(headers)):
-            if headers[i].strip():
-                months.append(headers[i].strip())
-        
+
+        csv_reader = csv_module.reader(StringIO(content_str), delimiter=';')
+        raw_rows = []
+        for row in csv_reader:
+            cleaned = [cell.strip() for cell in row]
+            if any(cell for cell in cleaned):
+                raw_rows.append(cleaned)
+
+        if not raw_rows:
+            raise HTTPException(status_code=400, detail="El archivo CSV está vacío o mal formateado")
+
+        # Detectar si la primera fila es encabezado o datos reales
+        def clean_cell(value: str) -> str:
+            return value.replace('\ufeff', '').strip()
+
+        def is_header(row: list[str]) -> bool:
+            first = clean_cell(row[0]).lower() if row else ''
+            second = row[1].strip().lower() if len(row) > 1 else ''
+            first_raw = clean_cell(row[0]) if row else ''
+            looks_numeric = bool(re.match(r'^[0-9]+(\.[0-9]+)*$', first_raw)) if first_raw else False
+            return (
+                first in {'cod', 'código', 'codigo', 'cuenta', 'cuentas'} or
+                second in {'cuenta', 'descripcion', 'descripción', 'detalle'} or
+                not looks_numeric
+            )
+
+        month_labels: list[str] = []
+        if is_header(raw_rows[0]):
+            header_row = raw_rows.pop(0)
+            month_labels = [clean_cell(col) for col in header_row[2:] if clean_cell(col)]
+
+        if not raw_rows:
+            raise HTTPException(status_code=400, detail="No se encontraron filas de datos en el CSV")
+
+        def detect_months(row: list[str]) -> int:
+            last_index = 0
+            for idx, value in enumerate(row[2:], start=1):
+                if value.strip() != '':
+                    last_index = idx
+            return last_index
+
+        months_count = 0
+        for row in raw_rows:
+            months_count = max(months_count, detect_months(row))
+
+        # Si todas las columnas restantes están vacías, intenta al menos usar la longitud bruta
+        if months_count == 0:
+            months_count = max(0, max((len(row) for row in raw_rows), default=0) - 2)
+
+        default_month_names = [
+            'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+        ]
+
+        if month_labels and len(month_labels) > months_count:
+            month_labels = month_labels[:months_count]
+
+        if not month_labels:
+            month_labels = default_month_names[:months_count]
+        elif len(month_labels) < months_count:
+            remaining = months_count - len(month_labels)
+            month_labels.extend(default_month_names[len(month_labels):len(month_labels) + remaining])
+
+        # Preparar filas de cuenta para cálculos posteriores
+        account_rows: list[tuple[str, str, list[str]]] = []
+        account_codes: list[str] = []
+        for row in raw_rows:
+            if len(row) < 2:
+                continue
+            account_code_raw = clean_cell(row[0])
+            account_code = re.sub(r'[^\d\.]', '', account_code_raw)
+            if not account_code:
+                continue
+            account_name = clean_cell(row[1])
+            account_rows.append((account_code, account_name, row))
+            account_codes.append(account_code)
+
+        if not account_rows:
+            raise HTTPException(status_code=400, detail="No se encontraron cuentas válidas en el CSV")
+
+        account_code_set = set(account_codes)
+
         # Comenzar transacción (como PHP original)
         try:
             # Limpiar datos existentes (como PHP original)
@@ -122,37 +189,14 @@ async def upload_csv(
             total_accounts = 0
             account_codes = set()
             
-            # Procesar líneas de datos (como PHP original)
-            for line_num in range(1, len(lines)):
-                line = lines[line_num].strip()
-                if not line:
-                    continue
-                
-                csv_reader = csv_module.reader(StringIO(line), delimiter=';')
-                try:
-                    fields = next(csv_reader)
-                except:
-                    continue
-                
-                if len(fields) < 2:
-                    continue
-                
-                account_code = fields[0].strip()
-                # Limpiar código de cuenta (como PHP original)
-                account_code = re.sub(r'[^\d\.]', '', account_code)
-                
-                if not account_code:
-                    continue
-                
-                account_name = fields[1].strip()
-                account_codes.add(account_code)
-                
+            # Procesar líneas de datos (como PHP original adaptado)
+            for account_code, account_name, row in account_rows:
                 # Procesar valores por mes
-                for month_index in range(len(months)):
-                    if month_index + 2 >= len(fields):
+                for month_index in range(months_count):
+                    col_idx = month_index + 2
+                    if col_idx >= len(row):
                         continue
-                    
-                    value = fields[month_index + 2].strip()
+                    value = row[col_idx].strip()
                     if not value or value == '0':
                         continue
                     
@@ -183,15 +227,37 @@ async def upload_csv(
                     })
                     
                     # Sumar ingresos (cuenta 4) como PHP original
-                    if account_code.startswith('4'):
+                    has_child = any(
+                        other_code != account_code and other_code.startswith(f"{account_code}.")
+                        for other_code in account_code_set
+                    )
+                    if account_code.startswith('4') and not has_child:
                         total_revenue += amount
             
-            total_accounts = len(account_codes)
+            total_accounts = len(account_code_set)
             
             # Procesar datos financieros agregados: columnas dinámicas según esquema
             def add_column(target_col: str, expr: str):
                 insert_columns.append(target_col)
                 select_expressions.append(f"{expr} AS {target_col}")
+
+            def leaf_sum(prefix: str) -> str:
+                return (
+                    "SUM(CASE WHEN r.account_code LIKE '{prefix}%' AND NOT EXISTS ("
+                    "SELECT 1 FROM raw_account_data r2 "
+                    "WHERE r2.company_id = r.company_id "
+                    "AND r2.period_year = r.period_year "
+                    "AND r2.period_month = r.period_month "
+                    "AND r2.account_code <> r.account_code "
+                    "AND r2.account_code LIKE CONCAT(r.account_code, '.%')"
+                    ") THEN r.amount ELSE 0 END)".format(prefix=prefix)
+                )
+
+            ingresos_expr = leaf_sum('4')
+            costo_ventas_expr = leaf_sum('5.1')
+            gastos_ventas_expr = leaf_sum('5.2')
+            gastos_admin_expr = leaf_sum('5.3')
+            costos_total_expr = leaf_sum('5')
 
             insert_columns = []
             select_expressions = []
@@ -217,46 +283,43 @@ async def upload_csv(
                 add_column("data_type", "'monthly'")
 
             # Columnas numéricas clave (utilizamos alias existentes)
-            add_column("ingresos", "SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END)")
+            add_column("ingresos", ingresos_expr)
 
             if "costo_ventas_total" in fin_cols:
-                add_column("costo_ventas_total", "SUM(CASE WHEN account_code LIKE '5.1%' THEN amount ELSE 0 END)")
+                add_column("costo_ventas_total", costo_ventas_expr)
             elif "costo_ventas" in fin_cols:
-                add_column("costo_ventas", "SUM(CASE WHEN account_code LIKE '5.1%' THEN amount ELSE 0 END)")
+                add_column("costo_ventas", costo_ventas_expr)
 
             if "gastos_admin_total" in fin_cols:
-                add_column("gastos_admin_total", "SUM(CASE WHEN account_code LIKE '5.3%' THEN amount ELSE 0 END)")
+                add_column("gastos_admin_total", gastos_admin_expr)
             elif "gastos_administrativos" in fin_cols:
-                add_column("gastos_administrativos", "SUM(CASE WHEN account_code LIKE '5.3%' THEN amount ELSE 0 END)")
+                add_column("gastos_administrativos", gastos_admin_expr)
 
             if "gastos_ventas_total" in fin_cols:
-                add_column("gastos_ventas_total", "SUM(CASE WHEN account_code LIKE '5.2%' THEN amount ELSE 0 END)")
+                add_column("gastos_ventas_total", gastos_ventas_expr)
             elif "gastos_ventas" in fin_cols:
-                add_column("gastos_ventas", "SUM(CASE WHEN account_code LIKE '5.2%' THEN amount ELSE 0 END)")
+                add_column("gastos_ventas", gastos_ventas_expr)
 
             add_column(
                 "utilidad_bruta",
-                "SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END) - "
-                "SUM(CASE WHEN account_code LIKE '5.1%' THEN amount ELSE 0 END)",
+                f"{ingresos_expr} - {costo_ventas_expr}",
             )
             add_column(
                 "ebitda",
-                "SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END) - "
-                "SUM(CASE WHEN account_code LIKE '5%' THEN amount ELSE 0 END)",
+                f"{ingresos_expr} - {costos_total_expr}",
             )
             add_column(
                 "utilidad_neta",
-                "SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END) - "
-                "SUM(CASE WHEN account_code LIKE '5%' THEN amount ELSE 0 END)",
+                f"{ingresos_expr} - {costos_total_expr}",
             )
 
             insert_sql = f"""
                 INSERT INTO financial_data ({', '.join(insert_columns)})
                 SELECT 
                     {', '.join(select_expressions)}
-                FROM raw_account_data
-                WHERE company_id = :company_id2 AND period_year = :year2
-                GROUP BY period_month
+                FROM raw_account_data r
+                WHERE r.company_id = :company_id2 AND r.period_year = :year2
+                GROUP BY r.period_month
             """
             db.execute(text(insert_sql), {
                 "company_id": company_id,
@@ -271,7 +334,7 @@ async def upload_csv(
             return {
                 'success': True,
                 'year': year,
-                'months': months,
+                'months': month_labels,
                 'totalAccounts': total_accounts,
                 'totalRevenue': total_revenue,
                 'message': 'CSV procesado exitosamente'
@@ -471,20 +534,44 @@ async def save_production_data(
     try:
         company_id = 1
         
-        # Insertar o actualizar datos de producción
-        db.execute(text("""
+        # Detectar columnas disponibles para soportar esquemas antiguos/nuevos
+        columns = set()
+        try:
+            col_result = db.execute(text("SHOW COLUMNS FROM production_data"))
+            for col in col_result:
+                field_name = None
+                try:
+                    field_name = col[0]
+                except Exception:
+                    field_name = getattr(col, "Field", None)
+                if field_name:
+                    columns.add(field_name)
+        except Exception:
+            columns = set()
+
+        year_col = "year" if "year" in columns else ("period_year" if "period_year" in columns else None)
+        month_col = "month" if "month" in columns else ("period_month" if "period_month" in columns else None)
+        metros_col = "metros_producidos" if "metros_producidos" in columns else ("unidades_producidas" if "unidades_producidas" in columns else None)
+        vendidos_col = "metros_vendidos" if "metros_vendidos" in columns else ("unidades_vendidas" if "unidades_vendidas" in columns else None)
+
+        if not year_col or not month_col or not metros_col or not vendidos_col:
+            raise HTTPException(status_code=500, detail="Schema de production_data incompatible: faltan columnas requeridas")
+
+        insert_sql = f"""
             INSERT INTO production_data 
-            (company_id, year, month, metros_producidos, metros_vendidos)
+            (company_id, {year_col}, {month_col}, {metros_col}, {vendidos_col})
             VALUES (:company_id, :year, :month, :metros_producidos, :metros_vendidos)
             ON DUPLICATE KEY UPDATE
-            metros_producidos = VALUES(metros_producidos),
-            metros_vendidos = VALUES(metros_vendidos)
-        """), {
+            {metros_col} = VALUES({metros_col}),
+            {vendidos_col} = VALUES({vendidos_col})
+        """
+
+        db.execute(text(insert_sql), {
             "company_id": company_id,
             "year": production_data.get("year"),
             "month": production_data.get("month"),
-            "metros_producidos": production_data.get("metros_producidos", 0),
-            "metros_vendidos": production_data.get("metros_vendidos", 0)
+            "metros_producidos": production_data.get("metros_producidos", production_data.get("unidades_producidas", 0)),
+            "metros_vendidos": production_data.get("metros_vendidos", production_data.get("unidades_vendidas", 0))
         })
         
         db.commit()
@@ -519,13 +606,65 @@ async def get_production_data(
         
         prod_result = db.execute(text(prod_query), prod_params)
         
-        # Formatear datos mensualmente
+        # Formatear datos mensualmente (exponiendo snake_case y camelCase para compatibilidad)
         monthly = {}
         for row in prod_result:
-            key = f"{row.year}-{row.month:02d}"
+            # SQLAlchemy 1.4/2.0 Row puede exponer columnas vía _mapping o atributos
+            if hasattr(row, "_mapping"):
+                mapping = row._mapping
+            else:
+                mapping = {
+                    "year": getattr(row, "year", None),
+                    "month": getattr(row, "month", None),
+                    "period_year": getattr(row, "period_year", None),
+                    "period_month": getattr(row, "period_month", None),
+                    "metros_producidos": getattr(row, "metros_producidos", None),
+                    "metros_vendidos": getattr(row, "metros_vendidos", None),
+                    "unidades_producidas": getattr(row, "unidades_producidas", None),
+                    "unidades_vendidas": getattr(row, "unidades_vendidas", None),
+                }
+
+            year_val = mapping.get("year")
+            if year_val is None:
+                year_val = mapping.get("period_year")
+            month_val = mapping.get("month")
+            if month_val is None:
+                month_val = mapping.get("period_month")
+
+            metros_prod = mapping.get("metros_producidos")
+            if metros_prod is None:
+                metros_prod = mapping.get("unidades_producidas")
+            metros_vend = mapping.get("metros_vendidos")
+            if metros_vend is None:
+                metros_vend = mapping.get("unidades_vendidas")
+
+            unidades_prod = mapping.get("unidades_producidas")
+            if unidades_prod is None:
+                unidades_prod = mapping.get("metros_producidos")
+            unidades_vend = mapping.get("unidades_vendidas")
+            if unidades_vend is None:
+                unidades_vend = mapping.get("metros_vendidos")
+
+            metros_prod = float(metros_prod or 0)
+            metros_vend = float(metros_vend or 0)
+            unidades_prod = float(unidades_prod or 0)
+            unidades_vend = float(unidades_vend or 0)
+
+            if year_val is None or month_val is None:
+                # Si faltan columnas críticas, continuar al siguiente registro
+                continue
+
+            key = f"{int(year_val)}-{int(month_val):02d}"
             monthly[key] = {
-                "metrosProducidos": float(row.metros_producidos) if row.metros_producidos else 0,
-                "metrosVendidos": float(row.metros_vendidos) if row.metros_vendidos else 0,
+                "metros_producidos": metros_prod,
+                "metros_vendidos": metros_vend,
+                "unidades_producidas": unidades_prod,
+                "unidades_vendidas": unidades_vend,
+                # Mantener camelCase para consumidores anteriores
+                "metrosProducidos": metros_prod,
+                "metrosVendidos": metros_vend,
+                "unidadesProducidas": unidades_prod,
+                "unidadesVendidas": unidades_vend,
             }
         
         return {
@@ -617,8 +756,26 @@ async def clear_financial_data(
             # Limpiar datos de un año específico
             db.execute(text("DELETE FROM raw_account_data WHERE company_id = :company_id AND period_year = :year"), 
                       {"company_id": company_id, "year": year})
-            db.execute(text("DELETE FROM financial_data WHERE company_id = :company_id AND year = :year"), 
-                      {"company_id": company_id, "year": year})
+            fin_cols = set()
+            try:
+                cols_result = db.execute(text("SHOW COLUMNS FROM financial_data"))
+                for r in cols_result:
+                    try:
+                        colname = r[0]
+                    except Exception:
+                        colname = getattr(r, 'Field', None)
+                    if colname:
+                        fin_cols.add(colname)
+            except Exception:
+                fin_cols = set()
+
+            year_col = 'year' if 'year' in fin_cols else ('period_year' if 'period_year' in fin_cols else None)
+            if year_col:
+                db.execute(text(f"DELETE FROM financial_data WHERE company_id = :company_id AND {year_col} = :year"), 
+                          {"company_id": company_id, "year": year})
+            else:
+                db.execute(text("DELETE FROM financial_data WHERE company_id = :company_id"), 
+                          {"company_id": company_id})
             db.execute(text("DELETE FROM production_data WHERE company_id = :company_id AND year = :year"), 
                       {"company_id": company_id, "year": year})
             
@@ -688,16 +845,31 @@ async def get_available_years(
         # Query para obtener estadísticas por año
         query = text("""
             SELECT 
-                period_year as year,
-                COUNT(*) as total_records,
-                COUNT(DISTINCT account_code) as unique_accounts,
-                MIN(period_month) as min_month,
-                MAX(period_month) as max_month,
-                SUM(CASE WHEN account_code LIKE '4%' THEN amount ELSE 0 END) as total_revenue
-            FROM raw_account_data 
-            WHERE company_id = :company_id 
-            GROUP BY period_year 
-            ORDER BY period_year DESC
+                rad.period_year AS year,
+                COUNT(*) AS total_records,
+                COUNT(DISTINCT rad.account_code) AS unique_accounts,
+                MIN(rad.period_month) AS min_month,
+                MAX(rad.period_month) AS max_month,
+                SUM(
+                    CASE 
+                        WHEN rad.account_code LIKE '4%'
+                             AND NOT EXISTS (
+                                 SELECT 1 
+                                 FROM raw_account_data r2
+                                 WHERE r2.company_id = rad.company_id
+                                   AND r2.period_year = rad.period_year
+                                   AND r2.period_month = rad.period_month
+                                   AND r2.account_code <> rad.account_code
+                                   AND r2.account_code LIKE CONCAT(rad.account_code, '.%')
+                             )
+                        THEN rad.amount 
+                        ELSE 0 
+                    END
+                ) AS total_revenue
+            FROM raw_account_data rad
+            WHERE rad.company_id = :company_id 
+            GROUP BY rad.period_year 
+            ORDER BY rad.period_year DESC
         """)
         
         result = db.execute(query, {"company_id": company_id})

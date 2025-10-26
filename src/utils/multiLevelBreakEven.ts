@@ -426,6 +426,34 @@ function generateRandomNormal(mean: number, stdDev: number): number {
 }
 
 /**
+ * Genera un número aleatorio con distribución uniforme.
+ * @param min Valor mínimo
+ * @param max Valor máximo
+ * @returns Número aleatorio entre min y max
+ */
+function generateRandomUniform(min: number, max: number): number {
+  return min + Math.random() * (max - min);
+}
+
+/**
+ * Genera un número aleatorio con distribución triangular.
+ * @param min Valor mínimo
+ * @param max Valor máximo
+ * @param mode Valor más probable (moda)
+ * @returns Número aleatorio con distribución triangular
+ */
+function generateRandomTriangular(min: number, max: number, mode: number): number {
+  const u = Math.random();
+  const fc = (mode - min) / (max - min);
+
+  if (u < fc) {
+    return min + Math.sqrt(u * (max - min) * (mode - min));
+  } else {
+    return max - Math.sqrt((1 - u) * (max - min) * (max - mode));
+  }
+}
+
+/**
  * Calcula estadísticas de un array de números.
  * @param values Array de números.
  * @returns Objeto con media, mediana, desviación estándar, min, max y percentiles.
@@ -447,112 +475,129 @@ function calculateSimulationStatistics(values: number[]) {
   return { mean, median, stdDev, min, max, p10, p90 };
 }
 
-// Función sobrecargada para compatibilidad con UI actual
+// Definición de tipos para los parámetros de simulación
+type SimpleSimulationParams = {
+  priceChange: number;
+  fixedCostChange: number;
+  variableCostRateChange: number;
+};
+
+type MonteCarloDistribution = {
+  distribution: 'normal' | 'triangular' | 'uniform';
+  mean: number;
+  stdDev: number;
+  min: number;
+  max: number;
+  mode: number; // Solo para triangular
+};
+
+type MonteCarloSimulationParams = {
+  numIterations: number;
+  priceChange: MonteCarloDistribution;
+  fixedCostChange: MonteCarloDistribution;
+  variableCostRateChange: MonteCarloDistribution; // Monte Carlo aún opera sobre la tasa para simplicidad
+};
+
+// Sobrecargas de la función
 export function simulateBreakEvenLevel(
   type: BreakEvenAnalysisType,
   baseResult: BreakEvenResult,
-  priceChange: number,
-  fixedCostChange: number,
-  variableCostRateChange: number
+  params: SimpleSimulationParams
 ): BreakEvenResult;
+
 export function simulateBreakEvenLevel(
   type: BreakEvenAnalysisType,
   baseResult: BreakEvenResult,
-  simulationParams: {
-    numIterations: number;
-    priceChange: { mean: number; stdDev: number; };
-    fixedCostChange: { mean: number; stdDev: number; };
-    variableCostRateChange: { mean: number; stdDev: number; };
-  }
+  params: MonteCarloSimulationParams
 ): {
   puntoEquilibrio: ReturnType<typeof calculateSimulationStatistics>;
   margenContribucionPorc: ReturnType<typeof calculateSimulationStatistics>;
   utilidadNeta: ReturnType<typeof calculateSimulationStatistics>;
   ebitda: ReturnType<typeof calculateSimulationStatistics>;
 };
+
+// Implementación de la función
 export function simulateBreakEvenLevel(
   type: BreakEvenAnalysisType,
   baseResult: BreakEvenResult,
-  priceChangeOrParams: number | {
-    numIterations: number;
-    priceChange: { mean: number; stdDev: number; };
-    fixedCostChange: { mean: number; stdDev: number; };
-    variableCostRateChange: { mean: number; stdDev: number; };
-  },
-  fixedCostChange?: number,
-  variableCostRateChange?: number
+  params: SimpleSimulationParams | MonteCarloSimulationParams
 ): any {
-  // Si es la versión simple (compatibilidad)
-  if (typeof priceChangeOrParams === 'number') {
-    const priceChange = priceChangeOrParams;
-    const ingresos = baseResult.ingresos * (1 + priceChange / 100);
-    const costosFijos = baseResult.costosFijos + (fixedCostChange || 0);
-    const originalVariableCostRate = baseResult.ingresos > 0 
-      ? baseResult.costosVariables / baseResult.ingresos 
-      : 0;
-    const newVariableCostRate = originalVariableCostRate * (1 + (variableCostRateChange || 0) / 100);
-    const costosVariables = ingresos * newVariableCostRate;
-    const margenContribucion = ingresos - costosVariables;
-    const margenContribucionPorc = ingresos > 0 ? margenContribucion / ingresos : 0;
-    const puntoEquilibrio = margenContribucionPorc > 0 ? costosFijos / margenContribucionPorc : 0;
-    const utilidadNeta = ingresos - costosVariables - costosFijos;
-    const ebitda = ingresos - costosVariables - (costosFijos - baseResult.depreciacion);
-    
+  // Comprobar si es simulación Monte Carlo
+  if ('numIterations' in params) {
+    const simulationParams = params as MonteCarloSimulationParams;
+    const peResults: number[] = [];
+    const mcPercResults: number[] = [];
+    const netProfitResults: number[] = [];
+    const ebitdaResults: number[] = [];
+
+    const getRandomValue = (p: MonteCarloDistribution) => {
+      switch (p.distribution) {
+        case 'triangular':
+          return generateRandomTriangular(p.min, p.max, p.mode);
+        case 'uniform':
+          return generateRandomUniform(p.min, p.max);
+        case 'normal':
+        default:
+          return generateRandomNormal(p.mean, p.stdDev);
+      }
+    };
+
+    for (let i = 0; i < simulationParams.numIterations; i++) {
+      const currentPriceChange = getRandomValue(simulationParams.priceChange);
+      const currentFixedCostChange = getRandomValue(simulationParams.fixedCostChange);
+      const currentVariableCostRateChange = getRandomValue(simulationParams.variableCostRateChange);
+
+      const simulatedIngresos = baseResult.ingresos * (1 + currentPriceChange / 100);
+      const simulatedCostosFijos = baseResult.costosFijos + currentFixedCostChange;
+      
+      const originalVariableCostRate = baseResult.ingresos > 0 ? baseResult.costosVariables / baseResult.ingresos : 0;
+      const newVariableCostRate = originalVariableCostRate * (1 + currentVariableCostRateChange / 100);
+      const simulatedCostosVariablesActuales = simulatedIngresos * newVariableCostRate;
+
+      const margenContribucion = simulatedIngresos - simulatedCostosVariablesActuales;
+      const margenContribucionPorc = simulatedIngresos > 0 ? margenContribucion / simulatedIngresos : 0;
+      const puntoEquilibrio = margenContribucionPorc > 0 ? simulatedCostosFijos / margenContribucionPorc : 0;
+      const utilidadNeta = simulatedIngresos - simulatedCostosVariablesActuales - simulatedCostosFijos;
+      const ebitda = simulatedIngresos - simulatedCostosVariablesActuales - (simulatedCostosFijos - baseResult.depreciacion);
+
+      peResults.push(puntoEquilibrio);
+      mcPercResults.push(margenContribucionPorc);
+      netProfitResults.push(utilidadNeta);
+      ebitdaResults.push(ebitda);
+    }
+
     return {
-      ...baseResult,
-      ingresos,
-      costosFijos,
-      costosVariables,
-      margenContribucion,
-      margenContribucionPorc,
-      puntoEquilibrio,
-      utilidadNeta,
-      ebitda
+      puntoEquilibrio: calculateSimulationStatistics(peResults),
+      margenContribucionPorc: calculateSimulationStatistics(mcPercResults),
+      utilidadNeta: calculateSimulationStatistics(netProfitResults),
+      ebitda: calculateSimulationStatistics(ebitdaResults),
     };
   }
-  
-  // Si es la versión Monte Carlo
-  const simulationParams = priceChangeOrParams;
-  
-  const peResults: number[] = [];
-  const mcPercResults: number[] = [];
-  const netProfitResults: number[] = [];
-  const ebitdaResults: number[] = [];
 
-  for (let i = 0; i < simulationParams.numIterations; i++) {
-    const currentPriceChange = generateRandomNormal(simulationParams.priceChange.mean, simulationParams.priceChange.stdDev);
-    const currentFixedCostChange = generateRandomNormal(simulationParams.fixedCostChange.mean, simulationParams.fixedCostChange.stdDev);
-    const currentVariableCostRateChange = generateRandomNormal(simulationParams.variableCostRateChange.mean, simulationParams.variableCostRateChange.stdDev);
+  // Simulación Simple
+  const simpleParams = params as SimpleSimulationParams;
+  const ingresos = baseResult.ingresos * (1 + simpleParams.priceChange / 100);
+  const costosFijos = baseResult.costosFijos + simpleParams.fixedCostChange;
 
-    const simulatedIngresos = baseResult.ingresos * (1 + currentPriceChange / 100);
-    const simulatedCostosFijos = baseResult.costosFijos + currentFixedCostChange;
-    
-    const originalVariableCostRate = baseResult.ingresos > 0 
-      ? baseResult.costosVariables / baseResult.ingresos 
-      : 0;
-    const newVariableCostRate = originalVariableCostRate * (1 + currentVariableCostRateChange / 100);
-    
-    const simulatedCostosVariablesActuales = simulatedIngresos * newVariableCostRate;
+  const originalVariableCostRate = baseResult.ingresos > 0 ? baseResult.costosVariables / baseResult.ingresos : 0;
+  const newVariableCostRate = originalVariableCostRate * (1 + simpleParams.variableCostRateChange / 100);
+  const costosVariables = ingresos * newVariableCostRate;
 
-    const margenContribucion = simulatedIngresos - simulatedCostosVariablesActuales;
-    const margenContribucionPorc = simulatedIngresos > 0 ? margenContribucion / simulatedIngresos : 0;
-    
-    const puntoEquilibrio = margenContribucionPorc > 0 ? simulatedCostosFijos / margenContribucionPorc : 0;
-    
-    const utilidadNeta = simulatedIngresos - simulatedCostosVariablesActuales - simulatedCostosFijos;
-
-    const ebitda = simulatedIngresos - simulatedCostosVariablesActuales - (simulatedCostosFijos - baseResult.depreciacion);
-
-    peResults.push(puntoEquilibrio);
-    mcPercResults.push(margenContribucionPorc);
-    netProfitResults.push(utilidadNeta);
-    ebitdaResults.push(ebitda);
-  }
+  const margenContribucion = ingresos - costosVariables;
+  const margenContribucionPorc = ingresos > 0 ? margenContribucion / ingresos : 0;
+  const puntoEquilibrio = margenContribucionPorc > 0 ? costosFijos / margenContribucionPorc : 0;
+  const utilidadNeta = ingresos - costosVariables - costosFijos;
+  const ebitda = ingresos - costosVariables - (costosFijos - baseResult.depreciacion);
 
   return {
-    puntoEquilibrio: calculateSimulationStatistics(peResults),
-    margenContribucionPorc: calculateSimulationStatistics(mcPercResults),
-    utilidadNeta: calculateSimulationStatistics(netProfitResults),
-    ebitda: calculateSimulationStatistics(ebitdaResults),
+    ...baseResult,
+    ingresos,
+    costosFijos,
+    costosVariables,
+    margenContribucion,
+    margenContribucionPorc,
+    puntoEquilibrio,
+    utilidadNeta,
+    ebitda,
   };
 }

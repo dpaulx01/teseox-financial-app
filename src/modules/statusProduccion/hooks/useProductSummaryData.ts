@@ -5,6 +5,25 @@ import { normalizeText, isMetadataDescription } from '../utils/textUtils';
 
 const DAY_IN_MS = 86400000;
 
+const getClientDisplay = (item: ProductionItem): string => {
+  const tipo = (item.tipoProduccion ?? 'cliente') as 'cliente' | 'stock';
+  if (tipo === 'stock') {
+    const parts: string[] = [];
+    if (item.numeroPedidoStock) {
+      parts.push(item.numeroPedidoStock);
+    }
+    if (item.bodega) {
+      parts.push(item.bodega);
+    }
+    if (item.responsable) {
+      parts.push(item.responsable);
+    }
+    const descriptor = parts.length > 0 ? parts.join(' • ') : item.numeroCotizacion;
+    return `Stock • ${descriptor}`;
+  }
+  return item.cliente || 'Sin cliente';
+};
+
 export interface DeliverySummary {
   itemId: number;
   cliente: string;
@@ -161,7 +180,7 @@ export function useProductSummaryData(
 
           const delivery: DeliverySummary = {
             itemId: item.id,
-            cliente: item.cliente || 'Sin cliente',
+            cliente: getClientDisplay(item),
             cantidad: item.cantidad || '',
             fecha: isoDate, // Usar formato ISO normalizado (YYYY-MM-DD)
             estatus: item.estatus,

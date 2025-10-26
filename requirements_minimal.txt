@@ -23,7 +23,7 @@ passlib[bcrypt]>=1.7.4  # Password hashing
 openpyxl>=3.1.0
 xlrd>=2.0.1
 pandas>=2.2.0
-bcrypt>=4.1.2,<5.0  # Ensure compiled bcrypt backend is available for passlib
+bcrypt==3.2.0  # Compatible version with passlib
 
 # ================================
 # UTILITIES

@@ -9,6 +9,8 @@ export interface ProductionItem {
   id: number;
   cotizacionId: number;
   numeroCotizacion: string;
+  tipoProduccion: 'cliente' | 'stock';
+  numeroPedidoStock?: string | null;
   cliente: string | null;
   contacto: string | null;
   proyecto: string | null;
@@ -29,6 +31,10 @@ export interface ProductionItem {
   totalAbonado: number;
   saldoPendiente: number | null;
   esServicio?: boolean;
+  bodega?: string | null;
+  responsable?: string | null;
+  fechaInicioPeriodo?: string | null;
+  fechaFinPeriodo?: string | null;
 }
 
 export interface ProductionUploadResult {
@@ -59,6 +65,7 @@ export interface ProductionPaymentPayload {
 }
 
 export interface ProductionUpdatePayload {
+  fechaIngreso?: string | null;
   fechaEntrega: string | null;
   estatus: string | null;
   notasEstatus: string | null;
@@ -74,6 +81,8 @@ export interface DailyProductionPlanEntry {
   unidades: number;
   notas?: string | null;
 }
+
+export type DailyPlan = DailyProductionPlanEntry;
 
 export interface DailyProductionPlanResponse {
   item_id: number;
@@ -102,6 +111,48 @@ export interface DailyScheduleDay {
 
 export interface DailyScheduleResponse {
   days: DailyScheduleDay[];
+}
+
+export interface StockDailyProgrammingEntry {
+  fecha: string;
+  cantidad: number;
+}
+
+export interface StockPlanningProduct {
+  nombre: string;
+  categoria?: string | null;
+  unidad?: string | null;
+  programacion_diaria: StockDailyProgrammingEntry[];
+}
+
+export interface StockPlanningParsedData {
+  numero_pedido: string;
+  responsable?: string | null;
+  local?: string | null;
+  fecha_inicio: string;
+  fecha_fin: string;
+  productos: StockPlanningProduct[];
+}
+
+export interface StockPlanningParseResponse {
+  parsed_data: StockPlanningParsedData;
+  message: string;
+}
+
+export interface StockPlanningConfirmPayload {
+  parsed_data: StockPlanningParsedData;
+  bodega: string;
+  notas?: string | null;
+}
+
+export interface StockPlanningConfirmResponse {
+  message: string;
+  numero_pedido: string;
+  cotizacion_id: number;
+  numero_cotizacion: string;
+  productos_creados: number;
+  planes_diarios_creados: number;
+  bodega: string;
 }
 
 // Types for Production Dashboard

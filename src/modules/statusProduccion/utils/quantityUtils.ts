@@ -68,7 +68,13 @@ export const extractQuantityInfo = (
   if (!match) {
     return { amount: null, unit: normalizeQuantityUnit(value) };
   }
-  const normalized = match[0].replace(/\./g, '').replace(',', '.');
+  const rawNumber = match[0];
+  let normalized: string;
+  if (rawNumber.includes(',')) {
+    normalized = rawNumber.replace(/\./g, '').replace(',', '.');
+  } else {
+    normalized = rawNumber;
+  }
   const amount = Number.parseFloat(normalized);
   if (!Number.isFinite(amount)) {
     return { amount: null, unit: normalizeQuantityUnit(value) };

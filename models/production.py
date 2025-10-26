@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    JSON,
 )
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 
@@ -31,7 +32,14 @@ class ProductionStatusEnum(str, enum.Enum):
     EN_PRODUCCION = "En producción"
     PRODUCCION_PARCIAL = "Producción parcial"
     LISTO_PARA_RETIRO = "Listo para retiro"
-    ENTREGADO = "Entregado"
+    EN_BODEGA = "En bodega"  # Para productos de stock
+    ENTREGADO = "Entregado"  # Para productos de cliente
+
+
+class ProductionTypeEnum(str, enum.Enum):
+    """Tipo de producción: cliente (cotización) o stock (inventario)"""
+    CLIENTE = "cliente"
+    STOCK = "stock"
 
 
 class ProductionQuote(Base):
@@ -39,12 +47,23 @@ class ProductionQuote(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     numero_cotizacion: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    tipo_produccion: Mapped[ProductionTypeEnum] = mapped_column(
+        Enum(ProductionTypeEnum),
+        default=ProductionTypeEnum.CLIENTE,
+        nullable=False,
+        index=True
+    )
+    numero_pedido_stock: Mapped[Optional[str]] = mapped_column(String(50), index=True)
     cliente: Mapped[Optional[str]] = mapped_column(String(255))
+    bodega: Mapped[Optional[str]] = mapped_column(String(100))
+    responsable: Mapped[Optional[str]] = mapped_column(String(100))
     contacto: Mapped[Optional[str]] = mapped_column(String(255))
     proyecto: Mapped[Optional[str]] = mapped_column(String(255))
     odc: Mapped[Optional[str]] = mapped_column(String(128))
     valor_total: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
     fecha_ingreso: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    fecha_inicio_periodo: Mapped[Optional[date]] = mapped_column(Date)
+    fecha_fin_periodo: Mapped[Optional[date]] = mapped_column(Date)
     fecha_vencimiento: Mapped[Optional[date]] = mapped_column(Date)
     nombre_archivo_pdf: Mapped[Optional[str]] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
@@ -106,8 +125,11 @@ class ProductionDailyPlan(Base):
     fecha: Mapped[date] = mapped_column(Date, nullable=False)
     metros: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
     unidades: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
+    cantidad_sugerida: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
     notas: Mapped[Optional[str]] = mapped_column(Text)
     is_manually_edited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    completado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    fecha_completado: Mapped[Optional[datetime]] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -133,3 +155,71 @@ class ProductionPayment(Base):
 
     def __repr__(self) -> str:
         return f"<ProductionPayment monto={self.monto}>"
+
+
+class ProductionMonthlyData(Base):
+    """
+    Representa los registros agregados de producción mensual.
+    """
+
+    __tablename__ = "production_data"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    year: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    month: Mapped[Optional[int]] = mapped_column(Integer)
+    period_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    metros_producidos: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"))
+    metros_vendidos: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"))
+    unidades_producidas: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"))
+    unidades_vendidas: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"))
+    capacidad_instalada: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<ProductionMonthlyData year={self.year or self.period_year} month={self.month or self.period_month}>"
+
+
+class ProductionConfigModel(Base):
+    """
+    Configuración operativa para análisis de producción por año y empresa.
+    """
+
+    __tablename__ = "production_config"
+    __table_args__ = (
+        UniqueConstraint("company_id", "year", name="uq_production_config_company_year"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1, index=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    capacidad_maxima_mensual: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"), nullable=False)
+    costo_fijo_produccion: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"), nullable=False)
+    meta_precio_promedio: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"), nullable=False)
+    meta_margen_minimo: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
+    last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<ProductionConfig company_id={self.company_id} year={self.year}>"
+
+
+class ProductionCombinedData(Base):
+    """
+    Almacena el dataset combinado (financiero + producción + métricas) en formato JSON.
+    """
+
+    __tablename__ = "production_combined_data"
+    __table_args__ = (
+        UniqueConstraint("company_id", "year", name="uq_prod_combined_company_year"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1, index=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<ProductionCombinedData company_id={self.company_id} year={self.year}>"

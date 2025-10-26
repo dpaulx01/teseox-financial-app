@@ -72,8 +72,7 @@ export function useDailyPlans() {
 
   const preloadPlans = useCallback(async (itemIds: number[]) => {
     const promises = itemIds.map(itemId => getDailyPlan(itemId));
-    const results = await Promise.allSettled(promises);
-    return results.map(result => (result.status === 'fulfilled' ? result.value : []));
+    await Promise.allSettled(promises);
   }, [getDailyPlan]);
 
   // Limpiar caché expirado periódicamente

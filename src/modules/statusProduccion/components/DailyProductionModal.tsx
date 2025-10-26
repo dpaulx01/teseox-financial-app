@@ -58,9 +58,11 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
     const ingreso = item.fechaIngreso ? parseISODate(item.fechaIngreso) : null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    if (ingreso && ingreso > today) {
+
+    if (ingreso) {
       return nextWorkingDay(ingreso);
     }
+
     return nextWorkingDay(today);
   }, [item.fechaIngreso]);
 
@@ -386,16 +388,16 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm px-4">
-      <div className="w-full max-w-4xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-800 px-6 py-4">
+    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-dark-bg/90 backdrop-blur-sm px-4">
+      <div className="w-full max-w-4xl rounded-2xl border border-border bg-dark-card shadow-2xl">
+        <div className="flex items-start justify-between border-b border-border px-6 py-4">
           <div>
-            <h2 className="text-xl font-semibold text-white">Plan diario de producción</h2>
-            <p className="text-xs text-slate-400">
+            <h2 className="text-xl font-semibold text-text-primary">Plan diario de producción</h2>
+            <p className="text-xs text-text-secondary">
               {item.producto} — {item.cliente || 'Cliente sin registrar'}
             </p>
             {item.fechaEntrega && (
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-text-muted">
                 Entrega comprometida: {formatDisplayDate(item.fechaEntrega)}
               </p>
             )}
@@ -403,7 +405,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-slate-700 bg-slate-800/70 p-2 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+            className="rounded-full border border-border bg-dark-card/70 p-2 text-text-secondary hover:bg-dark-bg hover:text-text-primary transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -422,30 +424,30 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
               return (
                 <>
                   <div className={`rounded-xl border p-4 ${
-                    isBalanced 
-                      ? 'border-green-500/40 bg-green-500/10' 
-                      : isOver 
-                        ? 'border-red-500/40 bg-red-500/10'
-                        : 'border-orange-500/40 bg-orange-500/10'
+                    isBalanced
+                      ? 'border-accent/40 bg-accent-glow'
+                      : isOver
+                        ? 'border-danger/40 bg-danger-glow'
+                        : 'border-warning/40 bg-warning-glow'
                   }`}>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                    <p className="text-xs uppercase tracking-wide text-text-muted">
                       {quantityInfo.unit === 'metros' ? 'Metros planificados' : 'Unidades planificadas'}
                     </p>
                     <div className="mt-2 flex items-center justify-between">
                       <p className={`text-2xl font-semibold ${
-                        isBalanced 
-                          ? 'text-green-400' 
-                          : isOver 
-                            ? 'text-red-400'
-                            : 'text-orange-400'
+                        isBalanced
+                          ? 'text-accent'
+                          : isOver
+                            ? 'text-danger'
+                            : 'text-warning'
                       }`}>
                         {formatNumber(currentTotal)}
                       </p>
                       <div className="text-right">
-                        <p className="text-xs text-slate-400">Objetivo: {formatNumber(targetAmount)}</p>
+                        <p className="text-xs text-text-secondary">Objetivo: {formatNumber(targetAmount)}</p>
                         {!isBalanced && (
                           <p className={`text-xs font-semibold ${
-                            isOver ? 'text-red-400' : 'text-orange-400'
+                            isOver ? 'text-danger' : 'text-warning'
                           }`}>
                             {isOver ? '+' : ''}{formatNumber(difference)}
                           </p>
@@ -453,23 +455,23 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                       </div>
                     </div>
                     {isBalanced && (
-                      <p className="mt-1 text-xs text-green-400">✓ Balanceado automáticamente</p>
+                      <p className="mt-1 text-xs text-accent">✓ Balanceado automáticamente</p>
                     )}
                   </div>
-                  
-                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">
+
+                  <div className="rounded-xl border border-border bg-dark-card/60 p-4">
+                    <p className="text-xs uppercase tracking-wide text-text-muted">
                       {quantityInfo.unit === 'metros' ? 'Unidades' : 'Metros'} planificados
                     </p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-300">
+                    <p className="mt-2 text-2xl font-semibold text-text-primary">
                       {formatNumber(quantityInfo.unit === 'metros' ? totals.unidades : totals.metros)}
                     </p>
                   </div>
-                  
-                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Días laborables</p>
-                    <p className="mt-2 text-2xl font-semibold text-indigo-300">{rows.length}</p>
-                    <p className="mt-1 text-xs text-slate-400">Excluye fines de semana</p>
+
+                  <div className="rounded-xl border border-border bg-dark-card/60 p-4">
+                    <p className="text-xs uppercase tracking-wide text-text-muted">Días laborables</p>
+                    <p className="mt-2 text-2xl font-semibold text-primary">{rows.length}</p>
+                    <p className="mt-1 text-xs text-text-secondary">Excluye fines de semana</p>
                   </div>
                 </>
               );
@@ -477,22 +479,22 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
           </div>
 
           {(error || localError) && (
-            <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            <div className="rounded-xl border border-danger/40 bg-danger-glow px-4 py-3 text-sm text-danger">
               {error || localError}
             </div>
           )}
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60">
-            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-                <CalendarDays className="h-4 w-4 text-indigo-400" />
+          <div className="rounded-2xl border border-border bg-dark-card/60">
+            <div className="flex items-center justify-between border-b border-border px-5 py-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+                <CalendarDays className="h-4 w-4 text-primary" />
                 Programación hábil
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleResetToDefault}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition-colors"
+                  className="inline-flex items-center gap-2 rounded-lg border border-border bg-dark-card/70 px-3 py-2 text-xs font-semibold text-text-primary hover:bg-dark-bg transition-colors"
                 >
                   Restaurar promedio
                 </button>
@@ -500,12 +502,12 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                   type="date"
                   value={customDate}
                   onChange={(event) => setCustomDate(event.target.value)}
-                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 focus:border-indigo-400 focus:ring-0"
+                  className="rounded-lg border border-border bg-dark-card px-3 py-2 text-xs text-text-primary focus:border-primary focus:ring-0"
                 />
                 <button
                   type="button"
                   onClick={handleAddCustomDate}
-                  className="inline-flex items-center gap-2 rounded-lg border border-indigo-500 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/20 transition-colors"
+                  className="inline-flex items-center gap-2 rounded-lg border border-primary bg-primary-glow px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
                 >
                   <Plus className="h-3 w-3" />
                   Agregar fecha
@@ -515,7 +517,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
 
             <div className="max-h-[40vh] overflow-y-auto">
               <table className="min-w-full border-collapse">
-                <thead className="bg-slate-900/80 text-xs uppercase tracking-wide text-slate-500">
+                <thead className="bg-dark-card/80 text-xs uppercase tracking-wide text-text-muted">
                   <tr>
                     <th className="px-4 py-3 text-left">Fecha</th>
                     <th className="px-4 py-3 text-left w-32">Metros</th>
@@ -524,30 +526,30 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                     <th className="px-4 py-3 text-left w-10" />
                   </tr>
                 </thead>
-                <tbody className="text-sm text-slate-200">
+                <tbody className="text-sm text-text-primary">
                   {loading ? (
                     <tr>
                       <td colSpan={5} className="px-4 py-6 text-center">
-                        <Loader2 className="mx-auto h-5 w-5 animate-spin text-indigo-400" />
+                        <Loader2 className="mx-auto h-5 w-5 animate-spin text-primary" />
                       </td>
                     </tr>
                   ) : rows.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                      <td colSpan={5} className="px-4 py-6 text-center text-text-secondary">
                         No hay fechas programadas. Agrega al menos un día hábil.
                       </td>
                     </tr>
                   ) : (
                     rows.map((row, index) => (
-                      <tr key={row.fecha} className="border-t border-slate-800/60">
-                        <td className="px-4 py-3 text-xs text-slate-300">
+                      <tr key={row.fecha} className="border-t border-border/60">
+                        <td className="px-4 py-3 text-xs text-text-secondary">
                           <div className="flex items-center gap-2">
                             <div>
-                              <div className="font-medium text-slate-100">{formatDisplayDate(row.fecha)}</div>
-                              <div className="text-[11px] text-slate-500">{row.fecha}</div>
+                              <div className="font-medium text-text-primary">{formatDisplayDate(row.fecha)}</div>
+                              <div className="text-[11px] text-text-muted">{row.fecha}</div>
                             </div>
                             {(manuallyEditedDates.has(row.fecha) || row.isManuallyEdited) && (
-                              <div className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-indigo-500/20 text-indigo-300 rounded-full">
+                              <div className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-primary-glow text-primary rounded-full border border-primary/30">
                                 📌 Manual
                               </div>
                             )}
@@ -560,7 +562,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                             step="0.01"
                             value={row.metros}
                             onChange={(event) => handleChange(index, 'metros', event.target.value)}
-                            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-100 focus:border-sky-400 focus:ring-0"
+                            className="w-full rounded-lg border border-border bg-dark-card px-2 py-2 text-sm text-text-primary focus:border-primary focus:ring-0"
                             placeholder="0"
                           />
                         </td>
@@ -571,7 +573,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                             step="0.01"
                             value={row.unidades}
                             onChange={(event) => handleChange(index, 'unidades', event.target.value)}
-                            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-100 focus:border-emerald-400 focus:ring-0"
+                            className="w-full rounded-lg border border-border bg-dark-card px-2 py-2 text-sm text-text-primary focus:border-accent focus:ring-0"
                             placeholder="0"
                           />
                         </td>
@@ -579,7 +581,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                           <textarea
                             value={row.notas}
                             onChange={(event) => handleChange(index, 'notas', event.target.value)}
-                            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-slate-100 focus:border-indigo-400 focus:ring-0"
+                            className="w-full rounded-lg border border-border bg-dark-card px-2 py-2 text-xs text-text-primary focus:border-primary focus:ring-0"
                             placeholder="Detalle de actividades, capacidades, turnos..."
                             rows={2}
                           />
@@ -588,7 +590,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleRemove(index)}
-                            className="rounded-full border border-slate-700 bg-slate-800/60 p-2 text-slate-400 hover:text-red-300 hover:border-red-400 transition-colors"
+                            className="rounded-full border border-border bg-dark-card/60 p-2 text-text-secondary hover:text-danger hover:border-danger transition-colors"
                             title="Eliminar fecha"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -603,8 +605,8 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-slate-800 px-6 py-4">
-          <div className="text-xs text-slate-500 space-y-1">
+        <div className="flex items-center justify-between border-t border-border px-6 py-4">
+          <div className="text-xs text-text-muted space-y-1">
             <p>Solo se permiten días hábiles ecuatorianos. Las fechas se sincronizan con el dashboard gerencial.</p>
             <p>
               Guarda para que el plan manual reemplace la distribución automática en la agenda de producción.
@@ -614,7 +616,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:text-white hover:border-slate-500 transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-border/50 transition-colors"
             >
               Cerrar
             </button>
@@ -622,7 +624,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="inline-flex items-center gap-2 rounded-lg border border-indigo-500 bg-indigo-500/10 px-4 py-2 text-sm font-semibold text-indigo-200 hover:bg-indigo-500/20 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg border border-primary bg-primary-glow px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/20 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
               Guardar agenda

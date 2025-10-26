@@ -56,37 +56,85 @@ export const YearProvider: React.FC<YearProviderProps> = ({ children }) => {
         throw new Error('No authentication token found');
       }
 
-      const response = await fetch('http://localhost:8001/api/financial/years', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+      const [financialResponse, productionResponse] = await Promise.allSettled([
+        fetch('http://localhost:8001/api/financial/years', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        }),
+        fetch('http://localhost:8001/api/production/years', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        })
+      ]);
+
+      let financialYears: YearInfo[] = [];
+      if (financialResponse.status === 'fulfilled') {
+        if (!financialResponse.value.ok) {
+          throw new Error(`Failed to fetch years: ${financialResponse.value.statusText}`);
+        }
+        const data = await financialResponse.value.json();
+        if (data.success && Array.isArray(data.years)) {
+          financialYears = data.years;
+        }
+      }
+
+      const productionYears: number[] = [];
+      if (productionResponse.status === 'fulfilled') {
+        if (productionResponse.value.ok) {
+          const productionData = await productionResponse.value.json();
+          if (productionData.success && Array.isArray(productionData.years)) {
+            productionYears.push(...productionData.years);
+          }
+        }
+      }
+
+      const productionYearsSet = new Set<number>(productionYears);
+      const mergedYearsMap = new Map<number, YearInfo>();
+
+      financialYears.forEach((info) => {
+        const hasProductionData = productionYearsSet.has(info.year);
+        mergedYearsMap.set(info.year, {
+          ...info,
+          has_data: info.has_data || hasProductionData
+        });
+      });
+
+      productionYearsSet.forEach((year) => {
+        if (!mergedYearsMap.has(year)) {
+          mergedYearsMap.set(year, {
+            year,
+            records: 0,
+            accounts: 0,
+            months: 0,
+            month_range: '',
+            total_revenue: 0,
+            has_data: true
+          });
         }
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch years: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const mergedYears = Array.from(mergedYearsMap.values()).sort((a, b) => a.year - b.year);
+      setAvailableYears(mergedYears);
       
-      if (data.success && data.years) {
-        setAvailableYears(data.years);
-        
-        // Auto-seleccionar el año más reciente con datos si no hay ninguno seleccionado
-        if (!selectedYear && data.years.length > 0) {
-          const latestYearWithData = data.years.find((y: YearInfo) => y.has_data);
-          if (latestYearWithData) {
-            setSelectedYearState(latestYearWithData.year);
-          }
+      if (!selectedYear && mergedYears.length > 0) {
+        const latestYearWithData = [...mergedYears]
+          .filter((y) => y.has_data)
+          .sort((a, b) => b.year - a.year)[0];
+        if (latestYearWithData) {
+          setSelectedYearState(latestYearWithData.year);
         }
-      } else {
-        setAvailableYears([]);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error loading years';
       setError(errorMessage);
       console.error('Error loading available years:', err);
+      setAvailableYears([]);
     } finally {
       setIsLoading(false);
     }

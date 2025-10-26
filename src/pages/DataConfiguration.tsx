@@ -89,6 +89,13 @@ const DataConfiguration: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'financial' | 'production' | 'config' | 'analysis'>('financial');
   const [errors, setErrors] = useState<string[]>([]);
   const [success, setSuccess] = useState<string>('');
+  const [storageSummary, setStorageSummary] = useState<{
+    hasProductionData: boolean;
+    hasConfig: boolean;
+    hasCombinedData: boolean;
+    lastUpdated: string | null;
+    totalRecords: number;
+  } | null>(null);
   
   // Estados para configuración de análisis
   const [selectedAnalysis, setSelectedAnalysis] = useState<string>('operativo');
@@ -106,7 +113,7 @@ const DataConfiguration: React.FC = () => {
   const [showIntelligentPanel, setShowIntelligentPanel] = useState(false);
   const [testAccount, setTestAccount] = useState('');
   const [testResults, setTestResults] = useState<any>(null);
-  
+
   // Estados para formulario de producción
   const [newProduction, setNewProduction] = useState<Partial<ProductionData>>({
     month: '',
@@ -114,44 +121,68 @@ const DataConfiguration: React.FC = () => {
     metrosVendidos: 0
   });
 
+  const getEffectiveYear = useCallback(
+    (override?: number) => override ?? selectedYear ?? new Date().getFullYear(),
+    [selectedYear]
+  );
+
+  const refreshProductionSummary = useCallback(
+    async (targetYear?: number) => {
+      try {
+        const summary = await getStorageSummary(getEffectiveYear(targetYear));
+        setStorageSummary(summary);
+      } catch (error) {
+        console.error('Error loading production summary:', error);
+        setStorageSummary(null);
+      }
+    },
+    [getEffectiveYear]
+  );
+
   // Cargar datos al iniciar
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Cargar datos de producción para el año seleccionado
-        const savedProduction = await loadProductionData(selectedYear);
-        const savedConfig = await loadProductionConfig();
-        
-        if (savedProduction && savedProduction.length > 0) {
-          setProductionData(savedProduction);
-        }
-        
+        const yearToLoad = getEffectiveYear();
+
+        const [savedProduction, savedConfig] = await Promise.all([
+          loadProductionData(yearToLoad),
+          loadProductionConfig(yearToLoad)
+        ]);
+
+        setProductionData(savedProduction || []);
+
         if (savedConfig) {
           setProductionConfig(savedConfig);
         }
 
-        // Cargar patrones de exclusión para CRUD
         if (analysisConfig?.accountPatterns) {
           setPatterns(analysisConfig.accountPatterns);
         }
-        
-        // Los datos financieros se manejan en App.tsx
-        // No necesitamos cargarlos aquí
+
+        await refreshProductionSummary(yearToLoad);
       } catch (error) {
-        // console.error('Error cargando datos:', error);
         setErrors(['Error cargando datos guardados']);
       }
     };
 
     loadData();
-  }, [financialData, analysisConfig]);
+  }, [analysisConfig, financialData, getEffectiveYear, refreshProductionSummary]);
 
   // Recargar datos cuando cambie el año seleccionado
   useEffect(() => {
     const loadProductionForYear = async () => {
       try {
-        const savedProduction = await loadProductionData(selectedYear);
+        const yearToLoad = getEffectiveYear();
+        const [savedProduction, savedConfig] = await Promise.all([
+          loadProductionData(yearToLoad),
+          loadProductionConfig(yearToLoad)
+        ]);
         setProductionData(savedProduction || []);
+        if (savedConfig) {
+          setProductionConfig(savedConfig);
+        }
+        await refreshProductionSummary(yearToLoad);
       } catch (error) {
         console.error('Error loading production data for year:', selectedYear, error);
         setProductionData([]);
@@ -159,7 +190,7 @@ const DataConfiguration: React.FC = () => {
     };
 
     loadProductionForYear();
-  }, [selectedYear]);
+  }, [selectedYear, getEffectiveYear, refreshProductionSummary]);
 
   // Lista de meses disponibles
   const availableMonths = financialData ? Object.keys(financialData.monthly) : [];
@@ -229,8 +260,10 @@ const DataConfiguration: React.FC = () => {
       return monthOrder.indexOf(a.month) - monthOrder.indexOf(b.month);
     });
 
+    const yearToUse = getEffectiveYear();
     setProductionData(updatedData);
-    await saveProductionData(updatedData, selectedYear);
+    await saveProductionData(updatedData, yearToUse);
+    await refreshProductionSummary(yearToUse);
     
     // Limpiar formulario
     setNewProduction({ month: '', metrosProducidos: 0, metrosVendidos: 0 });
@@ -240,8 +273,10 @@ const DataConfiguration: React.FC = () => {
 
   const handleDeleteProduction = async (month: string) => {
     const updatedData = productionData.filter(p => p.month !== month);
+    const yearToUse = getEffectiveYear();
     setProductionData(updatedData);
-    await saveProductionData(updatedData, selectedYear);
+    await saveProductionData(updatedData, yearToUse);
+    await refreshProductionSummary(yearToUse);
     setSuccess(`✅ Datos de ${month} eliminados`);
     setTimeout(() => setSuccess(''), 3000);
   };
@@ -253,13 +288,15 @@ const DataConfiguration: React.FC = () => {
       return;
     }
 
-    await saveProductionConfig(productionConfig);
+    const yearToUse = getEffectiveYear();
+    await saveProductionConfig(productionConfig, yearToUse);
+    await refreshProductionSummary(yearToUse);
     setSuccess('✅ Configuración guardada correctamente');
     setErrors([]);
     setTimeout(() => setSuccess(''), 3000);
   };
 
-  const handleGenerateCombinedData = () => {
+  const handleGenerateCombinedData = async () => {
     if (!financialData || productionData.length === 0) {
       setErrors(['Se requieren datos financieros y de producción']);
       return;
@@ -282,7 +319,9 @@ const DataConfiguration: React.FC = () => {
         lastUpdated: new Date().toISOString()
       };
 
-      saveCombinedData(combinedData);
+      const yearToUse = getEffectiveYear();
+      await saveCombinedData(combinedData, yearToUse);
+      await refreshProductionSummary(yearToUse);
       setSuccess('✅ Datos combinados y métricas calculadas correctamente');
       setErrors([]);
     } catch (error) {
@@ -332,22 +371,30 @@ const DataConfiguration: React.FC = () => {
     }
   };
 
-  const handleClearConfig = () => {
+  const handleClearConfig = async () => {
     if (window.confirm('¿Estás seguro de que quieres restablecer la configuración operativa a valores por defecto?')) {
-      setProductionConfig({
+      const defaultConfig: ProductionConfig = {
         capacidadMaximaMensual: 1000,
         costoFijoProduccion: 50000,
         metaPrecioPromedio: 180,
         metaMargenMinimo: 25
-      });
-      // Limpiar solo la configuración guardada, mantener datos de producción
-      localStorage.removeItem('artyco-production-config');
+      };
+      const yearToUse = getEffectiveYear();
+      setProductionConfig(defaultConfig);
+      await saveProductionConfig(defaultConfig, yearToUse);
+      await refreshProductionSummary(yearToUse);
       setSuccess('✅ Configuración operativa restablecida a valores por defecto');
       setTimeout(() => setSuccess(''), 3000);
     }
   };
 
-  const storageSummary = getStorageSummary();
+  const summary = storageSummary || {
+    hasProductionData: false,
+    hasConfig: false,
+    hasCombinedData: false,
+    lastUpdated: null,
+    totalRecords: 0
+  };
 
   // Limpiar cache al montar el componente para asegurar datos frescos
   useEffect(() => {
@@ -740,8 +787,16 @@ const DataConfiguration: React.FC = () => {
                     <button
                       onClick={async () => {
                         if (window.confirm(`¿Estás seguro de que quieres eliminar todos los datos de producción del año ${selectedYear}?`)) {
-                          await clearAllProductionData(selectedYear);
+                          const yearToUse = getEffectiveYear();
+                          await clearAllProductionData(yearToUse);
                           setProductionData([]);
+                          setProductionConfig({
+                            capacidadMaximaMensual: 1000,
+                            costoFijoProduccion: 50000,
+                            metaPrecioPromedio: 180,
+                            metaMargenMinimo: 25
+                          });
+                          await refreshProductionSummary(yearToUse);
                           setSuccess(`✅ Datos de producción del año ${selectedYear} eliminados`);
                           setTimeout(() => setSuccess(''), 3000);
                         }
@@ -1020,29 +1075,29 @@ const DataConfiguration: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-mono">
                 <div className="text-center">
-                  <p className={storageSummary.hasProductionData ? 'text-accent' : 'text-text-muted'}>
-                    {storageSummary.hasProductionData ? '✅' : '❌'} Datos Producción
+                  <p className={summary.hasProductionData ? 'text-accent' : 'text-text-muted'}>
+                    {summary.hasProductionData ? '✅' : '❌'} Datos Producción
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className={storageSummary.hasConfig ? 'text-accent' : 'text-text-muted'}>
-                    {storageSummary.hasConfig ? '✅' : '❌'} Configuración
+                  <p className={summary.hasConfig ? 'text-accent' : 'text-text-muted'}>
+                    {summary.hasConfig ? '✅' : '❌'} Configuración
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className={storageSummary.hasCombinedData ? 'text-accent' : 'text-text-muted'}>
-                    {storageSummary.hasCombinedData ? '✅' : '❌'} Datos Combinados
+                  <p className={summary.hasCombinedData ? 'text-accent' : 'text-text-muted'}>
+                    {summary.hasCombinedData ? '✅' : '❌'} Datos Combinados
                   </p>
                 </div>
                 <div className="text-center">
                   <p className="text-text-secondary">
-                    📊 {storageSummary.totalRecords} registros
+                    📊 {summary.totalRecords} registros
                   </p>
                 </div>
               </div>
-              {storageSummary.lastUpdated && (
+              {summary.lastUpdated && (
                 <p className="text-xs text-text-dim mt-2 text-center">
-                  Última actualización: {new Date(storageSummary.lastUpdated).toLocaleDateString('es-EC')}
+                  Última actualización: {new Date(summary.lastUpdated).toLocaleDateString('es-EC')}
                 </p>
               )}
             </div>

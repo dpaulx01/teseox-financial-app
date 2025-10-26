@@ -3,21 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler } from 'chart.js';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
-
 import { useFinancialData } from '../contexts/DataContext';
 import { useMixedCosts } from '../contexts/MixedCostContext';
 import { formatCurrency } from '../utils/formatters';
-import { BreakEvenAnalysisType, MultiLevelBreakEvenData, BreakEvenResult, ProductBreakEven, MultiProductBreakEvenData, MixedCost, MixedCostAnalysis } from '../types';
+import { BreakEvenAnalysisType, MultiLevelBreakEvenData, BreakEvenResult, ProductBreakEven, MultiProductBreakEvenData, MixedCost, MixedCostAnalysis, CombinedData } from '../types';
 import { Target, TrendingUp, DollarSign, Activity, Zap, BarChart3, BookOpen, HelpCircle, X, Settings } from 'lucide-react';
 import AccountClassificationPanel from '../components/breakeven/AccountClassificationPanel';
 import AnalysisTypeSelector from '../components/breakeven/AnalysisTypeSelector';
@@ -32,6 +21,20 @@ import { ANALYSIS_VISUAL_CONFIG } from '../constants/breakEvenConfig';
 import { useSimpleInsights } from '../hooks/useSimpleInsights';
 import InsightWrapper from '../components/insights/InsightWrapper';
 import { validateDataIntegrity, generateIntegrityReport, DataIntegrityResult } from '../utils/dataIntegrityValidator';
+import { MonteCarloControls } from '../components/breakeven/MonteCarloControls';
+import { SimpleSimulationControls } from '../components/breakeven/SimpleSimulationControls';
+import { useYear } from '../contexts/YearContext';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 interface SliderControlProps {
   label: string;
@@ -55,63 +58,108 @@ const SliderControl: React.FC<SliderControlProps> = ({
   icon
 }) => {
   const [isAnimating, setIsAnimating] = useState(false);
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [manualValue, setManualValue] = useState(value.toString());
   const percentage = ((value - min) / (max - min)) * 100;
-  
+
   const handleChange = (newValue: number) => {
     setIsAnimating(true);
     onChange(newValue);
     setTimeout(() => setIsAnimating(false), 300);
   };
 
+  const handleManualInputChange = (inputValue: string) => {
+    setManualValue(inputValue);
+  };
+
+  const handleManualInputBlur = () => {
+    const numValue = parseFloat(manualValue);
+    if (!isNaN(numValue)) {
+      const clampedValue = Math.max(min, Math.min(max, numValue));
+      handleChange(clampedValue);
+      setManualValue(clampedValue.toString());
+    } else {
+      setManualValue(value.toString());
+    }
+    setShowManualInput(false);
+  };
+
+  const handleManualInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleManualInputBlur();
+    } else if (e.key === 'Escape') {
+      setManualValue(value.toString());
+      setShowManualInput(false);
+    }
+  };
+
   return (
-    <div className="hologram-card p-6 rounded-xl border border-border relative overflow-hidden group hover:shadow-glow-lg transition-all duration-500">
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 pointer-events-none z-0" />
-      
-      <div className="relative z-20">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-3">
-            {icon && <div className="text-primary">{icon}</div>}
-            <label className="text-sm font-display text-text-secondary uppercase tracking-wider">
-              {label}
-            </label>
-          </div>
-          <div className={`text-xl font-mono data-display transition-all duration-300 ${isAnimating ? 'scale-110 text-glow-strong' : ''}`}>
-            {unit === '%' ? `${value}%` : unit === '$' ? formatCurrency(value) : value}{unit && unit !== '%' && unit !== '$' ? ` ${unit}` : ''}
-          </div>
+    <div className="glass-card rounded-xl border border-border/60 bg-dark-card/80 p-6 shadow-glass hover:shadow-glow-sm transition-all duration-300">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center space-x-3">
+          {icon && <div className="text-primary">{icon}</div>}
+          <label className="text-sm font-medium text-text-muted uppercase tracking-wide">
+            {label}
+          </label>
         </div>
-        
-        <div className="relative">
-          <div className="h-3 bg-glass rounded-full border border-border-muted relative overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-primary via-accent to-primary rounded-full transition-all duration-300 relative"
-              style={{ width: `${percentage}%` }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse" />
-            </div>
+        {showManualInput ? (
+          <div className="flex items-center gap-2">
+            {unit === '$' && <span className="text-lg font-mono text-text-muted">$</span>}
+            <input
+              type="number"
+              value={manualValue}
+              onChange={(e) => handleManualInputChange(e.target.value)}
+              onBlur={handleManualInputBlur}
+              onKeyDown={handleManualInputKeyDown}
+              autoFocus
+              step={step}
+              min={min}
+              max={max}
+              className="w-32 px-3 py-1 bg-dark-card border border-primary/50 rounded-lg text-xl font-mono text-primary text-right focus:outline-none focus:ring-2 focus:ring-primary/60"
+            />
+            {unit === '%' && <span className="text-lg font-mono text-text-muted">%</span>}
           </div>
-          
-          <input
-            type="range"
-            min={min}
-            max={max}
-            step={step}
-            value={value}
-            onChange={(e) => handleChange(Number(e.target.value))}
-            className="absolute inset-0 w-full h-3 opacity-0 cursor-pointer z-30"
-          />
-          
-          <div 
-            className="absolute top-1/2 w-6 h-6 -mt-3 bg-gradient-to-br from-primary to-accent rounded-full border-2 border-white shadow-glow-lg transition-all duration-300 hover:scale-125 cursor-pointer"
-            style={{ left: `calc(${percentage}% - 12px)` }}
+        ) : (
+          <button
+            onClick={() => {
+              setManualValue(value.toString());
+              setShowManualInput(true);
+            }}
+            className={`text-xl font-mono font-bold text-primary transition-all duration-200 hover:text-accent cursor-pointer px-2 py-1 rounded ${isAnimating ? 'scale-110' : ''}`}
+            title="Clic para ingresar valor manual"
           >
-            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-primary to-accent animate-pulse" />
-          </div>
+            {unit === '%' ? `${value}%` : unit === '$' ? formatCurrency(value) : value}{unit && unit !== '%' && unit !== '$' ? ` ${unit}` : ''}
+          </button>
+        )}
+      </div>
+
+      <div className="relative">
+        <div className="h-3 bg-dark-card/50 rounded-full border border-border/40 relative overflow-hidden">
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-300 relative"
+            style={{ width: `${percentage}%` }}
+          />
         </div>
-        
-        <div className="flex justify-between mt-2 text-xs text-text-dim font-mono">
-          <span>{unit === '$' ? formatCurrency(min) : min}</span>
-          <span>{unit === '$' ? formatCurrency(max) : max}</span>
-        </div>
+
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => handleChange(Number(e.target.value))}
+          className="absolute inset-0 w-full h-3 opacity-0 cursor-pointer z-30"
+        />
+
+        <div
+          className="absolute top-1/2 w-5 h-5 -mt-2.5 bg-primary rounded-full border-2 border-white shadow-md transition-all duration-200 hover:scale-110 cursor-pointer"
+          style={{ left: `calc(${percentage}% - 10px)` }}
+        />
+      </div>
+
+      <div className="flex justify-between mt-2 text-xs text-text-dim font-mono">
+        <span>{unit === '$' ? formatCurrency(min) : min}</span>
+        <span>{unit === '$' ? formatCurrency(max) : max}</span>
       </div>
     </div>
   );
@@ -192,42 +240,37 @@ const MultiLevelMetricCard: React.FC<MultiLevelMetricCardProps> = ({
   };
 
   return (
-    <div className={`hologram-card p-6 rounded-xl border-2 relative overflow-hidden group transition-all duration-500 ${isSelected ? `border-${config.color}/70 bg-${config.color}/20 shadow-glow-lg scale-105 z-10` : `border-${config.color}/30 bg-${config.color}/5 hover:scale-105`}`}>
-      <div className={`absolute inset-0 bg-gradient-${config.bgGradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none z-0`} />
-      
-      <div className="relative z-20">
-        <div className="flex items-center justify-between mb-3">
-          <div className={`p-3 rounded-lg bg-glass border border-${config.color}/30 text-${config.color}`}>
-            {getIcon()}
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="text-right">
-              <div className="text-sm font-display text-text-muted uppercase tracking-wider">
-                {getTitle()}
-              </div>
-              <div className="text-xs text-text-dim font-mono">
-                {getSubtitle()}
-                {isSimulated && <span className="ml-2 text-accent">SIM</span>}
-              </div>
+    <div className={`glass-card rounded-xl border p-6 shadow-glass transition-all duration-300 ${isSelected ? `border-${config.color}/70 bg-${config.color}/10 shadow-glow-sm scale-102` : `border-${config.color}/40 bg-dark-card/70 hover:bg-dark-card/90`}`}>
+      <div className="flex items-center justify-between mb-3">
+        <div className={`p-3 rounded-lg bg-dark-card/60 border border-${config.color}/30 text-${config.color}`}>
+          {getIcon()}
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="text-right">
+            <div className="text-sm font-medium text-text-muted uppercase tracking-wide">
+              {getTitle()}
             </div>
-            {!isSimulated && onShowHelp && (
-              <button
-                onClick={onShowHelp}
-                className={`p-1 rounded-full transition-all duration-200 hover:scale-110 relative z-30 text-${config.color}/60 hover:text-${config.color} hover:bg-${config.color}/20`}
-              >
-                <HelpCircle className="w-4 h-4" />
-              </button>
-            )}
+            <div className="text-xs text-text-dim font-mono">
+              {getSubtitle()}
+              {isSimulated && <span className="ml-2 text-accent">SIM</span>}
+            </div>
           </div>
+          {!isSimulated && onShowHelp && (
+            <button
+              onClick={onShowHelp}
+              className={`p-1 rounded-full transition-all duration-200 hover:scale-110 text-${config.color}/60 hover:text-${config.color} hover:bg-${config.color}/20`}
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+          )}
         </div>
-        
-        <div className={`text-4xl font-mono font-bold text-${config.color} transition-all duration-300`}>
-          {showUnits && unitaryData ? 
-            `${Math.round(unitaryData.puntosEquilibrioM2[analysisType]).toLocaleString()} m²` : 
-            formatCurrency(result.puntoEquilibrio)
-          }
-        </div>
-        
+      </div>
+
+      <div className={`text-4xl font-mono font-bold text-${config.color} transition-all duration-300`}>
+        {showUnits && unitaryData ?
+          `${Math.round(unitaryData.puntosEquilibrioM2[analysisType]).toLocaleString()} m²` :
+          formatCurrency(result.puntoEquilibrio)
+        }
       </div>
     </div>
   );
@@ -235,6 +278,7 @@ const MultiLevelMetricCard: React.FC<MultiLevelMetricCardProps> = ({
 
 const BreakEvenAnalysis: React.FC = () => {
   const { data } = useFinancialData();
+  const { selectedYear } = useYear();
   const { updateMixedCosts, updateCustomClassifications } = useMixedCosts();
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [analysisType, setAnalysisType] = useState<BreakEvenAnalysisType>('contable');
@@ -242,13 +286,23 @@ const BreakEvenAnalysis: React.FC = () => {
   const [priceChange, setPriceChange] = useState<number>(0);
   const [fixedCostChange, setFixedCostChange] = useState<number>(0);
   const [variableCostRateChange, setVariableCostRateChange] = useState<number>(0);
-  
+
   // Estados para simulación Monte Carlo
   const [enableMonteCarlo, setEnableMonteCarlo] = useState<boolean>(false);
   const [monteCarloIterations, setMonteCarloIterations] = useState<number>(1000);
-  const [priceChangeParams, setPriceChangeParams] = useState<{ mean: number; stdDev: number }>({ mean: 0, stdDev: 5 });
-  const [fixedCostChangeParams, setFixedCostChangeParams] = useState<{ mean: number; stdDev: number }>({ mean: 0, stdDev: 5000 });
-  const [variableCostRateChangeParams, setVariableCostRateChangeParams] = useState<{ mean: number; stdDev: number }>({ mean: 0, stdDev: 3 });
+
+  const initialMcParams = {
+    distribution: 'normal' as 'normal' | 'triangular' | 'uniform',
+    mean: 0,
+    stdDev: 5,
+    min: -10,
+    max: 10,
+    mode: 2
+  };
+
+  const [priceChangeParams, setPriceChangeParams] = useState(initialMcParams);
+  const [fixedCostChangeParams, setFixedCostChangeParams] = useState({ ...initialMcParams, stdDev: 5000, min: -10000, max: 10000, mode: 1000 });
+  const [variableCostRateChangeParams, setVariableCostRateChangeParams] = useState({ ...initialMcParams, stdDev: 3 });
   const [customClassifications, setCustomClassifications] = useState<Record<string, string>>({});
   const [useCustomClassifications, setUseCustomClassifications] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState<BreakEvenAnalysisType | null>(null);
@@ -262,6 +316,9 @@ const BreakEvenAnalysis: React.FC = () => {
   const [mixedCostAnalysis, setMixedCostAnalysis] = useState<{totalFixed: number; totalVariable: number; adjustedCosts: MixedCost[]} | null>(null);
   const [detectedMixedAccounts, setDetectedMixedAccounts] = useState<Array<{ code: string; name: string; value: number }>>([]);
   const prevValuesRef = useRef<{CFT: number, CVU: number, PVU: number} | null>(null);
+  const [combinedData, setCombinedData] = useState<CombinedData | null>(null);
+  const [combinedLoading, setCombinedLoading] = useState<boolean>(false);
+  const [combinedError, setCombinedError] = useState<string | null>(null);
 
   // Debug logging removed for performance
 
@@ -269,6 +326,41 @@ const BreakEvenAnalysis: React.FC = () => {
   useEffect(() => {
     // Interface ready
   }, [data]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchCombinedData = async () => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+
+      setCombinedLoading(true);
+      setCombinedError(null);
+      try {
+        const yearToLoad = selectedYear ?? new Date().getFullYear();
+        const result = await loadCombinedData(yearToLoad);
+        if (isMounted) {
+          setCombinedData(result);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setCombinedData(null);
+          setCombinedError(error instanceof Error ? error.message : 'Error cargando datos combinados');
+        }
+      } finally {
+        if (isMounted) {
+          setCombinedLoading(false);
+        }
+      }
+    };
+
+    fetchCombinedData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedYear]);
 
   // Cargar clasificaciones guardadas
   useEffect(() => {
@@ -311,7 +403,7 @@ const BreakEvenAnalysis: React.FC = () => {
   if (!currentMonth || (currentMonth !== 'Anual' && currentMonth !== 'Promedio' && !data.monthly[currentMonth])) {
     return (
       <div className="p-8 text-center">
-        <div className="hologram-card p-8 rounded-xl">
+        <div className="glass-card p-8 rounded-xl">
           <p className="text-text-muted font-display">No hay datos disponibles para mostrar.</p>
         </div>
       </div>
@@ -388,11 +480,9 @@ const BreakEvenAnalysis: React.FC = () => {
           // También mostrar un toast o modal con información detallada
           // Crear un toast elegante integrado con el tema
           const toast = document.createElement('div');
-          toast.className = 'fixed top-4 right-4 z-[10000] hologram-card p-6 rounded-xl border-2 border-accent/50 bg-dark-card/95 backdrop-blur-md shadow-glow-accent max-w-md';
+          toast.className = 'fixed top-4 right-4 z-[10000] glass-card p-6 rounded-xl border-2 border-accent/50 bg-dark-card/95 backdrop-blur-md shadow-glass max-w-md';
           toast.innerHTML = `
             <div class="relative">
-              <div class="absolute inset-0 bg-gradient-to-br from-accent/10 via-transparent to-primary/10 animate-hologram rounded-xl"></div>
-              <div class="relative z-10">
                 <div class="flex items-center gap-3 mb-3">
                   <div class="p-2 bg-accent/20 rounded-lg">
                     <svg class="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -577,119 +667,112 @@ const BreakEvenAnalysis: React.FC = () => {
 
   // Calcular métricas unitarias (m²) para TODOS los tipos de análisis usando DATOS REALES
   const unitaryMetrics = useMemo(() => {
-    // Intentar cargar datos reales de producción
-    try {
-      const combinedData = loadCombinedData();
-      
-      if (combinedData && combinedData.production && combinedData.production.length > 0) {
-        let realM2Vendidos = 0;
-        let realPrecioPorM2 = 0;
-        let realCostoVariablePorM2 = 0;
-
-        if (currentMonth === 'Anual') {
-          const totalM2 = combinedData.production.reduce((sum: number, p: any) => sum + p.metrosVendidos, 0);
-          const totalIngresos = combinedData.financial.yearly.ingresos;
-          const totalCostosVariables = combinedData.financial.yearly.costosVariables;
-          
-          realM2Vendidos = totalM2;
-          if (realM2Vendidos > 0) { // Only calculate if there are actual units sold
-            realPrecioPorM2 = totalIngresos / realM2Vendidos;
-            realCostoVariablePorM2 = totalCostosVariables / realM2Vendidos;
-          }
-          
-        } else if (currentMonth === 'Promedio') {
-          const avgM2 = combinedData.production.reduce((sum: number, p: any) => sum + p.metrosVendidos, 0) / combinedData.production.length;
-          const avgIngresos = combinedData.financial.yearly.ingresos / combinedData.production.length;
-          const avgCostosVariables = combinedData.financial.yearly.costosVariables / combinedData.production.length;
-          
-          realM2Vendidos = avgM2;
-          if (realM2Vendidos > 0) { // Only calculate if there are actual units sold
-            realPrecioPorM2 = avgIngresos / realM2Vendidos;
-            realCostoVariablePorM2 = avgCostosVariables / avgM2;
-          }
-          
-        } else {
-          const productionMonth = combinedData.production.find((p: any) => p.month === currentMonth);
-          const operationalMonth = combinedData.operational.find((o: any) => o.month === currentMonth);
-          
-          if (productionMonth && operationalMonth) {
-            realM2Vendidos = productionMonth.metrosVendidos;
-            if (realM2Vendidos > 0) { // Only calculate if there are actual units sold
-              realPrecioPorM2 = operationalMonth.precioVentaPorMetro;
-              realCostoVariablePorM2 = operationalMonth.costoVariablePorMetro;
-            }
-          }
-        }
-        
-        // If realM2Vendidos is 0, or realPrecioPorM2 is 0, then unit analysis is not meaningful.
-        if (realM2Vendidos === 0 || realPrecioPorM2 === 0) {
-            return null; // Return null to indicate no meaningful unit data
-        }
-
-        const puntosEquilibrioM2 = {
-            contable: 0,
-            operativo: 0,
-            caja: 0
-        };
-
-        const costoPorM2PorTipo = {
-            contable: 0,
-            operativo: 0,
-            caja: 0
-        };
-
-        const margenPorM2PorTipo = {
-            contable: 0,
-            operativo: 0,
-            caja: 0
-        };
-
-        (['contable', 'operativo', 'caja'] as BreakEvenAnalysisType[]).forEach(type => {
-            const fixedCostsForType = multiLevelData[type].costosFijos;
-            
-            const derivedCostoVariablePorM2 = realCostoVariablePorM2;
-            
-            // Calculate total cost per m² for this analysis type (variable + distributed fixed)
-            // Ensure realM2Vendidos is not zero to avoid division by zero
-            const totalCostoPorM2ForType = realM2Vendidos > 0 
-                ? derivedCostoVariablePorM2 + (fixedCostsForType / realM2Vendidos)
-                : derivedCostoVariablePorM2; // If no m2 sold, fixed costs can't be distributed per m2
-
-            // Calculate total cost per m² for display (variable + distributed fixed)
-            const totalCostoPorM2ForDisplay = realM2Vendidos > 0 
-                ? derivedCostoVariablePorM2 + (fixedCostsForType / realM2Vendidos)
-                : derivedCostoVariablePorM2; // If no m2 sold, fixed costs can't be distributed per m2
-
-            // Calculate contribution margin per m² for BEP calculation
-            // 🚨 SSOT: Usar margen de contribución REAL desde datos financieros
-            const margenContribucionRealPorM2 = realM2Vendidos > 0 ? 
-                multiLevelData[type].margenContribucion / realM2Vendidos : 0;
-
-            margenPorM2PorTipo[type] = margenContribucionRealPorM2; // Usar MC real, no calculado
-            puntosEquilibrioM2[type] = (margenContribucionRealPorM2 > 0 && fixedCostsForType >= 0) 
-                ? fixedCostsForType / margenContribucionRealPorM2 
-                : (fixedCostsForType < 0 ? 0 : Infinity);
-            costoPorM2PorTipo[type] = totalCostoPorM2ForDisplay;
-        });
-
-        return {
-            m2Vendidos: realM2Vendidos,
-            precioVentaPorM2: realPrecioPorM2,
-            costoPorM2: costoPorM2PorTipo.contable,
-            costoPorM2PorTipo,
-            margenPorM2PorTipo,
-            puntosEquilibrioM2,
-            margenPorcentualM2: realPrecioPorM2 > 0 ? (margenPorM2PorTipo.contable / realPrecioPorM2) * 100 : 0,
-            isRealData: true
-        };
-      }
-    } catch (error) {
-      // console.error('Error cargando datos reales para unidades:', error);
+    if (!combinedData || !combinedData.production || combinedData.production.length === 0) {
+      return null;
     }
-    
-    // FALLBACK: Return null if no real data or insufficient data for unit analysis
-    return null;
-  }, [multiLevelData, currentMonth, data]);
+
+    const yearlyData = combinedData.financial?.yearly;
+    if (!yearlyData) {
+      return null;
+    }
+
+    try {
+      let realM2Vendidos = 0;
+      let realPrecioPorM2 = 0;
+      let realCostoVariablePorM2 = 0;
+
+      if (currentMonth === 'Anual') {
+        const totalM2 = combinedData.production.reduce((sum, p) => sum + (p.metrosVendidos || 0), 0);
+        realM2Vendidos = totalM2;
+
+        if (realM2Vendidos > 0) {
+          realPrecioPorM2 = yearlyData.ingresos / realM2Vendidos;
+          realCostoVariablePorM2 = yearlyData.costosVariables / realM2Vendidos;
+        }
+      } else if (currentMonth === 'Promedio') {
+        const totalM2 = combinedData.production.reduce((sum, p) => sum + (p.metrosVendidos || 0), 0);
+        const monthsCount = combinedData.production.length || 1;
+        const avgM2 = totalM2 / monthsCount;
+        realM2Vendidos = avgM2;
+
+        if (realM2Vendidos > 0) {
+          const avgIngresos = yearlyData.ingresos / monthsCount;
+          const avgCostosVariables = yearlyData.costosVariables / monthsCount;
+          realPrecioPorM2 = avgIngresos / realM2Vendidos;
+          realCostoVariablePorM2 = avgCostosVariables / realM2Vendidos;
+        }
+      } else {
+        const productionMonth = combinedData.production.find((p) => p.month === currentMonth);
+        const monthlyFinancial = combinedData.financial?.monthly?.[currentMonth];
+
+        if (productionMonth && monthlyFinancial) {
+          realM2Vendidos = productionMonth.metrosVendidos || 0;
+          if (realM2Vendidos > 0) {
+            realPrecioPorM2 = monthlyFinancial.ingresos / realM2Vendidos;
+            realCostoVariablePorM2 = monthlyFinancial.costosVariables / realM2Vendidos;
+          }
+        }
+      }
+
+      if (realM2Vendidos <= 0 || realPrecioPorM2 <= 0) {
+        return null;
+      }
+
+      const puntosEquilibrioM2: Record<BreakEvenAnalysisType, number> = {
+        contable: 0,
+        operativo: 0,
+        caja: 0
+      };
+
+      const costoPorM2PorTipo: Record<BreakEvenAnalysisType, number> = {
+        contable: 0,
+        operativo: 0,
+        caja: 0
+      };
+
+      const margenPorM2PorTipo: Record<BreakEvenAnalysisType, number> = {
+        contable: 0,
+        operativo: 0,
+        caja: 0
+      };
+
+      (['contable', 'operativo', 'caja'] as BreakEvenAnalysisType[]).forEach((type) => {
+        const currentLevel = multiLevelData?.[type];
+        if (!currentLevel) {
+          return;
+        }
+
+        const fixedCostsForType = currentLevel.costosFijos;
+        const derivedCostoVariablePorM2 = realCostoVariablePorM2;
+        const totalCostoPorM2ForType = realM2Vendidos > 0
+          ? derivedCostoVariablePorM2 + (fixedCostsForType / realM2Vendidos)
+          : derivedCostoVariablePorM2;
+
+        const margenContribucionRealPorM2 = realM2Vendidos > 0
+          ? currentLevel.margenContribucion / realM2Vendidos
+          : 0;
+
+        costoPorM2PorTipo[type] = totalCostoPorM2ForType;
+        margenPorM2PorTipo[type] = margenContribucionRealPorM2;
+        puntosEquilibrioM2[type] = margenContribucionRealPorM2 > 0
+          ? fixedCostsForType / margenContribucionRealPorM2
+          : (fixedCostsForType < 0 ? 0 : Infinity);
+      });
+
+      return {
+        m2Vendidos: realM2Vendidos,
+        precioVentaPorM2: realPrecioPorM2,
+        costoPorM2: costoPorM2PorTipo.contable,
+        costoPorM2PorTipo,
+        margenPorM2PorTipo,
+        puntosEquilibrioM2,
+        margenPorcentualM2: realPrecioPorM2 > 0 ? (margenPorM2PorTipo.contable / realPrecioPorM2) * 100 : 0,
+        isRealData: true
+      };
+    } catch (error) {
+      return null;
+    }
+  }, [combinedData, currentMonth, multiLevelData]);
 
   // Análisis CVU (Costo-Volumen-Utilidad) 
   const cvuAnalysis = useMemo(() => {
@@ -782,13 +865,15 @@ const BreakEvenAnalysis: React.FC = () => {
         }
       );
     } else {
-      // Simulación simple (compatibilidad)
+      // Simulación simple
       return simulateBreakEvenLevel(
         analysisType,
         currentResult,
-        priceChange,
-        fixedCostChange,
-        variableCostRateChange
+        {
+          priceChange: priceChange,
+          fixedCostChange: fixedCostChange,
+          variableCostRateChange
+        }
       );
     }
   }, [
@@ -854,7 +939,7 @@ const BreakEvenAnalysis: React.FC = () => {
           <h2 className="text-2xl lg:text-3xl font-display text-primary neon-text">
             Análisis Multinivel de Punto de Equilibrio
           </h2>
-          <p className="text-lg lg:text-xl font-display text-accent text-glow mt-2">
+          <p className="text-lg lg:text-xl font-display text-accent font-semibold mt-2">
             Perspectivas profesionales: Contable, Operativo y de Caja
           </p>
           <div className="flex items-center gap-4 mt-2">
@@ -921,7 +1006,7 @@ const BreakEvenAnalysis: React.FC = () => {
               !unitaryMetrics 
                 ? 'opacity-50 cursor-not-allowed border-border text-text-dim'
                 : showUnitsAnalysis
-                  ? 'border-accent/50 bg-accent/10 text-accent shadow-glow-accent'
+                  ? 'border-accent/50 bg-accent/10 text-accent shadow-glass'
                   : 'border-border hover:border-primary/30 text-text-secondary hover:bg-glass/50'
             }`}
             disabled={!unitaryMetrics}
@@ -1041,11 +1126,21 @@ const BreakEvenAnalysis: React.FC = () => {
           </select>
         </div>
       </div>
+      {combinedLoading && !combinedError && (
+        <div className="rounded-lg border border-info/40 bg-info/5 px-4 py-2 text-sm font-mono text-info">
+          Sincronizando métricas reales de producción desde la base de datos…
+        </div>
+      )}
+      {combinedError && (
+        <div className="rounded-lg border border-danger/40 bg-danger/5 px-4 py-2 text-sm font-mono text-danger">
+          Error al cargar datos reales de producción: {combinedError}
+        </div>
+      )}
 
       {/* Panel de Insights Críticos */}
       {criticalInsights.length > 0 && (
         <div className="mb-6">
-          <div className="hologram-card p-6 rounded-xl border-2 border-danger/50 bg-danger/10">
+          <div className="glass-card p-6 rounded-xl border-2 border-danger/50 bg-danger/10">
             <div className="flex items-center gap-4 mb-4">
               <div className="p-3 rounded-lg bg-danger/20 border border-danger/30">
                 <Settings className="w-6 h-6 text-danger animate-pulse" />
@@ -1099,7 +1194,7 @@ const BreakEvenAnalysis: React.FC = () => {
       {/* Panel de Insights de Advertencia */}
       {warningInsights.length > 0 && criticalInsights.length === 0 && (
         <div className="mb-6">
-          <div className="hologram-card p-4 rounded-xl border border-warning/50 bg-warning/5">
+          <div className="glass-card p-4 rounded-xl border border-warning/50 bg-warning/5">
             <div className="flex items-center gap-3 mb-3">
               <div className="p-2 rounded-lg bg-warning/20 border border-warning/30">
                 <Settings className="w-5 h-5 text-warning" />
@@ -1138,7 +1233,7 @@ const BreakEvenAnalysis: React.FC = () => {
 
       {/* Warning for negative margin */}
       {currentResult.margenContribucion < 0 && (
-        <div className="hologram-card p-6 rounded-xl border-2 border-danger/50 bg-danger/10">
+        <div className="glass-card p-6 rounded-xl border-2 border-danger/50 bg-danger/10">
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-lg bg-danger/20 border border-danger/30">
               <Activity className="w-6 h-6 text-danger animate-pulse" />
@@ -1207,13 +1302,10 @@ const BreakEvenAnalysis: React.FC = () => {
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
         {/* Compact Type Selector */}
         <div className="xl:col-span-1">
-          <div className="hologram-card p-4 rounded-xl relative overflow-hidden h-full">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 animate-hologram pointer-events-none z-0" />
-            
-            <div className="relative z-20">
-              <h3 className="text-lg font-display text-primary mb-4 text-glow">
-                Tipo de Análisis
-              </h3>
+          <div className="glass-card p-4 rounded-xl border border-border/60 bg-dark-card/80 shadow-glass h-full">
+            <h3 className="text-lg font-medium text-primary mb-4">
+              Tipo de Análisis
+            </h3>
               
               <div className="space-y-3">
                 {Object.values({
@@ -1251,7 +1343,6 @@ const BreakEvenAnalysis: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
 
         {/* Compact Metrics con Insights */}
         <div className="xl:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1302,145 +1393,90 @@ const BreakEvenAnalysis: React.FC = () => {
         </div>
       </div>
 
-      {/* Simulación Activa - Sección Dedicada */}
-      {(priceChange !== 0 || fixedCostChange !== 0 || variableCostRateChange !== 0 || 
-        enableMonteCarlo || 
-        (enableMonteCarlo && (priceChangeParams.mean !== 0 || fixedCostChangeParams.mean !== 0 || variableCostRateChangeParams.mean !== 0))) && 
-       currentResult.margenContribucion > 0 && (
-        <div className="hologram-card p-8 rounded-2xl border-2 border-accent/50 bg-accent/5 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-accent/10 via-transparent to-accent/5 animate-pulse pointer-events-none z-0" />
-          
-          <div className="relative z-20">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <div className="p-4 rounded-xl bg-accent/20 border border-accent/30">
-                  <Zap className="w-8 h-8 text-accent animate-pulse" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-display text-accent text-glow">
-                    🎯 Simulación Activa
-                  </h3>
-                  <p className="text-text-muted font-mono">
-                    Análisis {analysisType.charAt(0).toUpperCase() + analysisType.slice(1)} Modificado
-                  </p>
-                </div>
+      <div className="space-y-4">
+        {/* Simulación Activa - Sección Dedicada */}
+        {(priceChange !== 0 || fixedCostChange !== 0 || variableCostRateChange !== 0 || 
+          enableMonteCarlo || 
+          (enableMonteCarlo && (priceChangeParams.mean !== 0 || fixedCostChangeParams.mean !== 0 || variableCostRateChangeParams.mean !== 0))) && 
+         currentResult.margenContribucion > 0 && (
+          <div className="glass-card p-8 rounded-2xl border border-accent/50 bg-dark-card/80 shadow-glass">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <div className="p-4 rounded-xl bg-accent/10 border border-accent/30">
+                <Zap className="w-8 h-8 text-accent" />
               </div>
-              <button
-                onClick={() => {
-                  setPriceChange(0);
-                  setFixedCostChange(0);
-                  setVariableCostRateChange(0);
-                }}
-                className="cyber-button px-4 py-2 text-sm relative z-30"
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                RESET
-              </button>
+              <div>
+                <h3 className="text-2xl font-display text-accent font-semibold">
+                  🎯 Simulación Activa
+                </h3>
+                <p className="text-text-muted font-mono">
+                  Análisis {analysisType.charAt(0).toUpperCase() + analysisType.slice(1)} Modificado
+                </p>
+              </div>
             </div>
+            <button
+              onClick={() => {
+                setPriceChange(0);
+                setFixedCostChange(0);
+                setVariableCostRateChange(0);
+              }}
+              className="cyber-button px-4 py-2 text-sm relative z-30"
+            >
+              <Zap className="w-4 h-4 mr-2" />
+              RESET
+            </button>
+          </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              {/* Métricas Principales */}
-              <div className="lg:col-span-2 grid grid-cols-2 gap-4">
-                <div className="glass-card p-4 rounded-lg text-center">
-                  <div className="text-sm text-text-muted mb-1">Punto de Equilibrio</div>
-                  <div className="text-2xl font-mono font-bold text-accent">
-                    {formatCurrency(getSimulatedValue('puntoEquilibrio'))}
-                  </div>
-                  <div className="text-xs text-text-dim mt-1">
-                    {getSimulatedValue('puntoEquilibrio') > currentResult.puntoEquilibrio ? '↗️' : '↘️'} 
-                    {currentResult.puntoEquilibrio > 0 
-                      ? ((getSimulatedValue('puntoEquilibrio') - currentResult.puntoEquilibrio) / currentResult.puntoEquilibrio * 100).toFixed(1) + '%'
-                      : 'N/A'
-                    }
-                  </div>
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Métricas Principales */}
+            <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+              <div className="glass-card p-4 rounded-lg text-center">
+                <div className="text-sm text-text-muted mb-1">Punto de Equilibrio</div>
+                <div className="text-2xl font-mono font-bold text-accent">
+                  {formatCurrency(getSimulatedValue('puntoEquilibrio'))}
                 </div>
-                
-                <div className="glass-card p-4 rounded-lg text-center">
-                  <div className="text-sm text-text-muted mb-1">Margen Contribución</div>
-                  <div className="text-2xl font-mono font-bold text-primary">
-                    {(getSimulatedValue('margenContribucionPorc') * 100).toFixed(1)}%
-                  </div>
-                  <div className="text-xs text-text-dim mt-1">
-                    {getSimulatedValue('margenContribucionPorc') > currentResult.margenContribucionPorc ? '↗️' : '↘️'} 
-                    {isFinite(getSimulatedValue('margenContribucionPorc')) && isFinite(currentResult.margenContribucionPorc)
-                      ? ((getSimulatedValue('margenContribucionPorc') - currentResult.margenContribucionPorc) * 100).toFixed(1) + 'pp'
-                      : 'N/A'
-                    }
-                  </div>
-                </div>
-                
-                <div className="glass-card p-4 rounded-lg text-center">
-                  <div className="text-sm text-text-muted mb-1">Utilidad Neta</div>
-                  <div className={`text-xl font-mono font-bold ${getSimulatedValue('utilidadNeta') >= 0 ? 'text-accent' : 'text-danger'}`}>
-                    {formatCurrency(getSimulatedValue('utilidadNeta'))}
-                  </div>
-                  <div className="text-xs text-text-dim mt-1">
-                    {getSimulatedValue('utilidadNeta') > currentResult.utilidadNeta ? '↗️' : '↘️'} 
-                    {formatCurrency(getSimulatedValue('utilidadNeta') - currentResult.utilidadNeta)}
-                  </div>
-                </div>
-                
-                <div className="glass-card p-4 rounded-lg text-center">
-                  <div className="text-sm text-text-muted mb-1">EBITDA</div>
-                  <div className="text-xl font-mono font-bold text-warning">
-                    {formatCurrency(getSimulatedValue('ebitda'))}
-                  </div>
-                  <div className="text-xs text-text-dim mt-1">
-                    {getSimulatedValue('ebitda') > currentResult.ebitda ? '↗️' : '↘️'} 
-                    {formatCurrency(getSimulatedValue('ebitda') - currentResult.ebitda)}
-                  </div>
+                <div className="text-xs text-text-dim mt-1">
+                  {getSimulatedValue('puntoEquilibrio') > currentResult.puntoEquilibrio ? '↗️' : '↘️'} 
+                  {currentResult.puntoEquilibrio > 0 
+                    ? ((getSimulatedValue('puntoEquilibrio') - currentResult.puntoEquilibrio) / currentResult.puntoEquilibrio * 100).toFixed(1) + '%'
+                    : 'N/A'
+                  }
                 </div>
               </div>
-
-              {/* Cambios Aplicados */}
-              <div className="glass-card p-4 rounded-lg">
-                <h4 className="text-lg font-display text-accent mb-3">📊 Cambios Aplicados</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">Precios:</span>
-                    <span className={`font-mono ${priceChange === 0 ? 'text-text-dim' : priceChange > 0 ? 'text-accent' : 'text-danger'}`}>
-                      {priceChange > 0 ? '+' : ''}{priceChange}%
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">Costos Fijos:</span>
-                    <span className={`font-mono ${fixedCostChange === 0 ? 'text-text-dim' : fixedCostChange > 0 ? 'text-danger' : 'text-accent'}`}>
-                      {formatCurrency(fixedCostChange)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">Costos Variables:</span>
-                    <span className={`font-mono ${variableCostRateChange === 0 ? 'text-text-dim' : variableCostRateChange > 0 ? 'text-danger' : 'text-accent'}`}>
-                      {variableCostRateChange > 0 ? '+' : ''}{variableCostRateChange}%
-                    </span>
-                  </div>
+              
+              <div className="glass-card p-4 rounded-lg text-center">
+                <div className="text-sm text-text-muted mb-1">Margen Contribución</div>
+                <div className="text-2xl font-mono font-bold text-primary">
+                  {(getSimulatedValue('margenContribucionPorc') * 100).toFixed(1)}%
+                </div>
+                <div className="text-xs text-text-dim mt-1">
+                  {getSimulatedValue('margenContribucionPorc') > currentResult.margenContribucionPorc ? '↗️' : '↘️'} 
+                  {isFinite(getSimulatedValue('margenContribucionPorc')) && isFinite(currentResult.margenContribucionPorc)
+                    ? ((getSimulatedValue('margenContribucionPorc') - currentResult.margenContribucionPorc) * 100).toFixed(1) + 'pp'
+                    : 'N/A'
+                  }
                 </div>
               </div>
-
-              {/* Comparación */}
-              <div className="glass-card p-4 rounded-lg">
-                <h4 className="text-lg font-display text-primary mb-3">📈 vs. Original</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">P.E. Original:</span>
-                    <span className="font-mono text-text-secondary">
-                      {formatCurrency(currentResult.puntoEquilibrio)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">P.E. Simulado:</span>
-                    <span className="font-mono text-accent">
-                      {formatCurrency(getSimulatedValue('puntoEquilibrio'))}
-                    </span>
-                  </div>
-                  <div className="h-px bg-border my-2"></div>
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">Diferencia:</span>
-                    <span className={`font-mono font-bold ${getSimulatedValue('puntoEquilibrio') > currentResult.puntoEquilibrio ? 'text-danger' : 'text-accent'}`}>
-                      {getSimulatedValue('puntoEquilibrio') > currentResult.puntoEquilibrio ? '+' : ''}
-                      {formatCurrency(getSimulatedValue('puntoEquilibrio') - currentResult.puntoEquilibrio)}
-                    </span>
-                  </div>
+              
+              <div className="glass-card p-4 rounded-lg text-center">
+                <div className="text-sm text-text-muted mb-1">Utilidad Neta</div>
+                <div className={`text-xl font-mono font-bold ${getSimulatedValue('utilidadNeta') >= 0 ? 'text-accent' : 'text-danger'}`}>
+                  {formatCurrency(getSimulatedValue('utilidadNeta'))}
+                </div>
+                <div className="text-xs text-text-dim mt-1">
+                  {getSimulatedValue('utilidadNeta') > currentResult.utilidadNeta ? '↗️' : '↘️'} 
+                  {formatCurrency(getSimulatedValue('utilidadNeta') - currentResult.utilidadNeta)}
+                </div>
+              </div>
+              
+              <div className="glass-card p-4 rounded-lg text-center">
+                <div className="text-sm text-text-muted mb-1">EBITDA</div>
+                <div className="text-xl font-mono font-bold text-warning">
+                  {formatCurrency(getSimulatedValue('ebitda'))}
+                </div>
+                <div className="text-xs text-text-dim mt-1">
+                  {getSimulatedValue('ebitda') > currentResult.ebitda ? '↗️' : '↘️'}
+                  {formatCurrency(getSimulatedValue('ebitda') - currentResult.ebitda)}
                 </div>
               </div>
             </div>
@@ -1471,17 +1507,14 @@ const BreakEvenAnalysis: React.FC = () => {
 
       {/* Análisis CVU - Costo-Volumen-Utilidad */}
       {showCVUAnalysis && (
-        <div className="hologram-card p-6 rounded-xl border-2 border-warning/50 bg-warning/5 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-warning/10 via-transparent to-warning/5 animate-pulse pointer-events-none z-0" />
-          
-          <div className="relative z-20">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <div className="p-4 rounded-xl bg-warning/20 border border-warning/30">
-                  <Target className="w-8 h-8 text-warning" />
+        <div className="glass-card p-6 rounded-xl border border-warning/50 bg-dark-card/80 shadow-glass">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <div className="p-4 rounded-xl bg-warning/10 border border-warning/30">
+                <Target className="w-8 h-8 text-warning" />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-display text-warning text-glow">
+                  <h3 className="text-2xl font-display text-warning font-semibold">
                     📈 Análisis CVU (Costo-Volumen-Utilidad)
                   </h3>
                   <p className="text-text-muted font-mono text-sm">
@@ -1492,10 +1525,9 @@ const BreakEvenAnalysis: React.FC = () => {
                   </p>
                 </div>
               </div>
-              
-            </div>
+          </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               {/* Utilidad Objetivo - Rediseñado para Claridad */}
               <div className="glass-card p-4 rounded-lg">
                 <div className="text-sm text-text-muted mb-2 flex items-center gap-2">
@@ -1582,10 +1614,10 @@ const BreakEvenAnalysis: React.FC = () => {
                   Sensibilidad al volumen
                 </div>
               </div>
-            </div>
+          </div>
 
-            {/* Interpretación CVU */}
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Interpretación CVU */}
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="glass-card p-4 rounded-lg">
                 <h4 className="text-sm font-display text-warning mb-2">💡 Interpretación CVU</h4>
                 <div className="space-y-2 text-xs text-text-muted">
@@ -1664,27 +1696,24 @@ const BreakEvenAnalysis: React.FC = () => {
                 </div>
               </div>
             </div>
-          </div>
         </div>
       )}
+      </div>
 
       {/* Main Analysis Grid - Compacto */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
         {/* Interactive Chart */}
-        <div className="xl:col-span-4 hologram-card p-6 rounded-xl shadow-hologram hover:shadow-glow-xl transition-all duration-500 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 animate-hologram pointer-events-none z-0" />
-          
-          <div className="relative z-20">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-display text-primary text-glow flex items-center">
-                <BarChart3 className="w-5 h-5 mr-2" />
-                Gráfico Multinivel - {analysisType.toUpperCase()}
-              </h3>
-              <div className="flex items-center space-x-2 text-xs font-mono text-text-dim">
-                <div className="w-2 h-2 bg-primary rounded animate-pulse"></div>
-                <span>TIEMPO REAL</span>
-              </div>
+        <div className="xl:col-span-4 glass-card p-6 rounded-xl border border-border/60 bg-dark-card/80 shadow-glass transition-all duration-300">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-medium text-primary flex items-center">
+              <BarChart3 className="w-5 h-5 mr-2" />
+              Gráfico Multinivel - {analysisType.toUpperCase()}
+            </h3>
+            <div className="flex items-center space-x-2 text-xs font-mono text-text-dim">
+              <div className="w-2 h-2 bg-primary rounded"></div>
+              <span>TIEMPO REAL</span>
             </div>
+          </div>
             
             <div className="relative h-[380px] w-full">
               <Line
@@ -1693,73 +1722,85 @@ const BreakEvenAnalysis: React.FC = () => {
                   datasets: [
                     {
                       label: 'Ingresos',
-                      data: multiLevelChartData.map(d => d.Ingresos),
-                      borderColor: '#00FF99',
-                      backgroundColor: 'rgba(0, 255, 153, 0.3)',
+                      data: multiLevelChartData.map(d => ({
+                        x: d.ventas,
+                        y: d.Ingresos
+                      })),
+                      borderColor: '#10b981',
+                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
                       fill: true,
                       tension: 0.4,
+                      borderWidth: 2,
                       pointRadius: 0,
-                      pointHoverRadius: 8,
+                      pointHoverRadius: 6,
                     },
                     {
                       label: 'Costos Totales',
-                      data: multiLevelChartData.map(d => d['Costos Totales']),
-                      borderColor: '#FF0080',
-                      backgroundColor: 'rgba(255, 0, 128, 0.3)',
+                      data: multiLevelChartData.map(d => ({
+                        x: d.ventas,
+                        y: d['Costos Totales']
+                      })),
+                      borderColor: '#ef4444',
+                      backgroundColor: 'rgba(239, 68, 68, 0.15)',
                       fill: true,
                       tension: 0.4,
+                      borderWidth: 2,
                       pointRadius: 0,
-                      pointHoverRadius: 8,
+                      pointHoverRadius: 6,
                     },
                     {
                       label: 'P.E. Contable',
                       data: [
-                        { x: multiLevelData.contable.puntoEquilibrio, y: 0 }, 
+                        { x: multiLevelData.contable.puntoEquilibrio, y: 0 },
                         { x: multiLevelData.contable.puntoEquilibrio, y: Math.max(...multiLevelChartData.map(d => d.Ingresos)) * 1.2 }
                       ],
-                      borderColor: '#00F0FF',
+                      borderColor: '#3b82f6',
                       borderDash: [8, 4],
-                      pointRadius: 5, // Hacemos el punto visible
-                      pointHoverRadius: 10, // Aumentamos el radio al pasar el cursor
+                      borderWidth: 2,
+                      pointRadius: 4,
+                      pointHoverRadius: 8,
                       fill: false,
                       showLine: true,
                     },
                     {
                       label: 'P.E. Operativo',
                       data: [
-                        { x: multiLevelData.operativo.puntoEquilibrio, y: 0 }, 
+                        { x: multiLevelData.operativo.puntoEquilibrio, y: 0 },
                         { x: multiLevelData.operativo.puntoEquilibrio, y: Math.max(...multiLevelChartData.map(d => d.Ingresos)) * 1.2 }
                       ],
-                      borderColor: '#00FF99',
+                      borderColor: '#06b6d4',
                       borderDash: [4, 8],
-                      pointRadius: 5, // Hacemos el punto visible
-                      pointHoverRadius: 10, // Aumentamos el radio al pasar el cursor
+                      borderWidth: 2,
+                      pointRadius: 4,
+                      pointHoverRadius: 8,
                       fill: false,
                       showLine: true,
                     },
                     {
                       label: 'P.E. Caja',
                       data: [
-                        { x: multiLevelData.caja.puntoEquilibrio, y: 0 }, 
+                        { x: multiLevelData.caja.puntoEquilibrio, y: 0 },
                         { x: multiLevelData.caja.puntoEquilibrio, y: Math.max(...multiLevelChartData.map(d => d.Ingresos)) * 1.2 }
                       ],
-                      borderColor: '#FFB800',
+                      borderColor: '#f59e0b',
                       borderDash: [2, 6],
-                      pointRadius: 5, // Hacemos el punto visible
-                      pointHoverRadius: 10, // Aumentamos el radio al pasar el cursor
+                      borderWidth: 2,
+                      pointRadius: 4,
+                      pointHoverRadius: 8,
                       fill: false,
                       showLine: true,
                     },
                     {
                       label: 'P.E. Simulado',
                       data: [
-                        { x: getSimulatedValue('puntoEquilibrio'), y: 0 }, 
+                        { x: getSimulatedValue('puntoEquilibrio'), y: 0 },
                         { x: getSimulatedValue('puntoEquilibrio'), y: Math.max(...multiLevelChartData.map(d => d.Ingresos)) * 1.2 }
                       ],
-                      borderColor: '#FF4444',
+                      borderColor: '#ec4899',
                       borderDash: [10, 2],
-                      pointRadius: 5, // Hacemos el punto visible
-                      pointHoverRadius: 10, // Aumentamos el radio al pasar el cursor
+                      borderWidth: 2,
+                      pointRadius: 4,
+                      pointHoverRadius: 8,
                       fill: false,
                       showLine: true,
                     }
@@ -1770,75 +1811,79 @@ const BreakEvenAnalysis: React.FC = () => {
                   maintainAspectRatio: false,
                   resizeDelay: 0,
                   interaction: {
-                    mode: 'index',
+                    mode: 'x',
                     intersect: false,
+                    axis: 'x',
                   },
                   plugins: {
                     legend: {
                       labels: {
-                        color: '#E0E7FF',
-                        font: { size: 12 },
+                        color: '#9ca3af',
+                        font: { size: 12, family: 'system-ui' },
+                        padding: 12,
                       },
                     },
                     tooltip: {
                       callbacks: {
                         label: function(context) {
-                          let label = context.dataset.label || '';
-                          if (label) label += ': ';
-                          if (context.parsed.y !== null) {
-                            label += formatCurrency(context.parsed.y);
+                          const datasetLabel = context.dataset.label || '';
+                          const isBreakEvenLine = datasetLabel.includes('P.E');
+                          const value = isBreakEvenLine
+                            ? context.parsed.x
+                            : context.parsed.y;
+                          
+                          if (datasetLabel) {
+                            return `${datasetLabel}: ${formatCurrency(value || 0)}`;
                           }
-                          return label;
+                          return formatCurrency(value || 0);
                         },
                         title: function(context) {
                           return `Ventas: ${formatCurrency(context[0].parsed.x)}`;
                         }
                       },
-                      backgroundColor: 'rgba(26, 26, 37, 0.9)',
-                      borderColor: 'rgba(0, 240, 255, 0.3)',
+                      backgroundColor: 'rgba(31, 41, 55, 0.95)',
+                      borderColor: 'rgba(107, 114, 128, 0.3)',
                       borderWidth: 1,
-                      titleColor: '#00F0FF',
-                      bodyColor: '#E0E7FF',
+                      titleColor: '#f3f4f6',
+                      bodyColor: '#d1d5db',
+                      padding: 12,
                     },
                   },
                   scales: {
                     x: {
                       type: 'linear',
-                      title: { display: true, text: 'Ventas', color: '#8B9DC3' },
+                      title: { display: true, text: 'Ventas', color: '#9ca3af', font: { size: 12 } },
                       ticks: {
-                        color: '#8B9DC3',
+                        color: '#9ca3af',
                         callback: function(value) {
                           return `${(Number(value)/1000).toFixed(0)}k`;
                         }
                       },
-                      grid: { color: 'rgba(0, 240, 255, 0.1)' },
+                      grid: { color: 'rgba(107, 114, 128, 0.15)' },
                     },
                     y: {
-                      title: { display: true, text: 'Valor', color: '#8B9DC3' },
+                      title: { display: true, text: 'Valor', color: '#9ca3af', font: { size: 12 } },
                       ticks: {
-                        color: '#8B9DC3',
+                        color: '#9ca3af',
                         callback: function(value) {
                           return `${(Number(value)/1000).toFixed(0)}k`;
                         }
                       },
-                      grid: { color: 'rgba(0, 240, 255, 0.1)' },
+                      grid: { color: 'rgba(107, 114, 128, 0.15)' },
                     },
                   },
                 }}
               />
             </div>
-          </div>
         </div>
 
         {/* Integrated Controls Panel */}
         <div className="xl:col-span-1" id="simulation-controls">
-          <div className="hologram-card p-4 rounded-xl relative overflow-hidden h-full">
-            <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-primary/5 animate-pulse pointer-events-none z-0" />
-            <div className="relative z-20">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-display text-primary text-glow flex items-center">
-                  <Zap className="w-4 h-4 mr-2" />
-                  Simulación {enableMonteCarlo ? '(Monte Carlo)' : '(Simple)'}
+          <div className="glass-card p-4 rounded-xl border border-border/60 bg-dark-card/80 shadow-glass h-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-primary flex items-center">
+                <Zap className="w-4 h-4 mr-2" />
+                Simulación {enableMonteCarlo ? '(Monte Carlo)' : '(Simple)'}
                 </h3>
                 <div className="flex items-center gap-2">
                   <label className="flex items-center cursor-pointer">
@@ -1861,135 +1906,43 @@ const BreakEvenAnalysis: React.FC = () => {
                   </button>
                 </div>
               </div>
-              
+
               <div className="space-y-3">
                 {enableMonteCarlo ? (
-                  <>
-                    {/* Monte Carlo Controls */}
-                    <div>
-                      <div className="text-xs text-text-muted mb-1">Iteraciones</div>
-                      <input
-                        type="number"
-                        min={100}
-                        max={10000}
-                        step={100}
-                        value={monteCarloIterations}
-                        onChange={(e) => setMonteCarloIterations(Number(e.target.value))}
-                        className="w-full px-2 py-1 bg-glass rounded text-xs text-text-secondary border border-border focus:border-accent"
-                      />
-                    </div>
-                    
-                    <div>
-                      <div className="text-xs text-text-muted mb-1">Precios (Media ± Desv.)</div>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          value={priceChangeParams.mean}
-                          onChange={(e) => setPriceChangeParams({...priceChangeParams, mean: Number(e.target.value)})}
-                          className="w-1/2 px-2 py-1 bg-glass rounded text-xs text-text-secondary border border-border focus:border-accent"
-                          placeholder="Media %"
-                        />
-                        <input
-                          type="number"
-                          value={priceChangeParams.stdDev}
-                          onChange={(e) => setPriceChangeParams({...priceChangeParams, stdDev: Number(e.target.value)})}
-                          className="w-1/2 px-2 py-1 bg-glass rounded text-xs text-text-secondary border border-border focus:border-accent"
-                          placeholder="Desv %"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <div className="text-xs text-text-muted mb-1">C. Fijos (Media ± Desv.)</div>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          value={fixedCostChangeParams.mean}
-                          onChange={(e) => setFixedCostChangeParams({...fixedCostChangeParams, mean: Number(e.target.value)})}
-                          className="w-1/2 px-2 py-1 bg-glass rounded text-xs text-text-secondary border border-border focus:border-accent"
-                          placeholder="Media $"
-                        />
-                        <input
-                          type="number"
-                          value={fixedCostChangeParams.stdDev}
-                          onChange={(e) => setFixedCostChangeParams({...fixedCostChangeParams, stdDev: Number(e.target.value)})}
-                          className="w-1/2 px-2 py-1 bg-glass rounded text-xs text-text-secondary border border-border focus:border-accent"
-                          placeholder="Desv $"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <div className="text-xs text-text-muted mb-1">C. Variables (Media ± Desv.)</div>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          value={variableCostRateChangeParams.mean}
-                          onChange={(e) => setVariableCostRateChangeParams({...variableCostRateChangeParams, mean: Number(e.target.value)})}
-                          className="w-1/2 px-2 py-1 bg-glass rounded text-xs text-text-secondary border border-border focus:border-accent"
-                          placeholder="Media %"
-                        />
-                        <input
-                          type="number"
-                          value={variableCostRateChangeParams.stdDev}
-                          onChange={(e) => setVariableCostRateChangeParams({...variableCostRateChangeParams, stdDev: Number(e.target.value)})}
-                          className="w-1/2 px-2 py-1 bg-glass rounded text-xs text-text-secondary border border-border focus:border-accent"
-                          placeholder="Desv %"
-                        />
-                      </div>
-                    </div>
-                  </>
+                  <MonteCarloControls
+                    iterations={monteCarloIterations}
+                    onIterationsChange={setMonteCarloIterations}
+                    distributions={[
+                      {
+                        title: 'Precios',
+                        params: priceChangeParams,
+                        unit: '%',
+                        onChange: (next) => setPriceChangeParams(next),
+                      },
+                      {
+                        title: 'C. Fijos',
+                        params: fixedCostChangeParams,
+                        unit: '$',
+                        onChange: (next) => setFixedCostChangeParams(next),
+                      },
+                      {
+                        title: 'Tasa C. Var.',
+                        params: variableCostRateChangeParams,
+                        unit: '%',
+                        onChange: (next) => setVariableCostRateChangeParams(next),
+                      },
+                    ]}
+                  />
                 ) : (
-                  <>
-                    {/* Simple Controls */}
-                    <div>
-                      <div className="text-xs text-text-muted mb-1">Precios</div>
-                      <input
-                        type="range"
-                        min={-50}
-                        max={50}
-                        step={1}
-                        value={priceChange}
-                        onChange={(e) => setPriceChange(Number(e.target.value))}
-                        className="w-full h-2 bg-glass rounded-lg appearance-none cursor-pointer relative z-30"
-                      />
-                      <div className="text-xs text-center font-mono mt-1">
-                        {priceChange > 0 ? '+' : ''}{priceChange}%
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <div className="text-xs text-text-muted mb-1">C. Fijos</div>
-                      <input
-                        type="range"
-                        min={-Math.max(10000, currentResult.costosFijos * 0.5)}
-                        max={Math.max(10000, currentResult.costosFijos * 0.5)}
-                        step={500}
-                        value={fixedCostChange}
-                        onChange={(e) => setFixedCostChange(Number(e.target.value))}
-                        className="w-full h-2 bg-glass rounded-lg appearance-none cursor-pointer relative z-30"
-                      />
-                      <div className="text-xs text-center font-mono mt-1">
-                        {formatCurrency(fixedCostChange)}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <div className="text-xs text-text-muted mb-1">C. Variables</div>
-                      <input
-                        type="range"
-                        min={-50}
-                        max={50}
-                        step={1}
-                        value={variableCostRateChange}
-                        onChange={(e) => setVariableCostRateChange(Number(e.target.value))}
-                        className="w-full h-2 bg-glass rounded-lg appearance-none cursor-pointer relative z-30"
-                      />
-                      <div className="text-xs text-center font-mono mt-1">
-                        {variableCostRateChange > 0 ? '+' : ''}{variableCostRateChange}%
-                      </div>
-                    </div>
-                  </>
+                  <SimpleSimulationControls
+                    priceChange={priceChange}
+                    onPriceChange={setPriceChange}
+                    fixedCostChange={fixedCostChange}
+                    onFixedCostChange={setFixedCostChange}
+                    currentFixedCosts={currentResult.costosFijos}
+                    variableCostRateChange={variableCostRateChange}
+                    onVariableCostRateChange={setVariableCostRateChange}
+                  />
                 )}
               </div>
 
@@ -2089,7 +2042,6 @@ const BreakEvenAnalysis: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
 
       {/* Modal Explicativo para Tarjetas */}
       <AnimatePresence>
@@ -2117,7 +2069,7 @@ const BreakEvenAnalysis: React.FC = () => {
                     {showHelpModal === 'caja' && <DollarSign className="w-8 h-8 text-warning" />}
                   </div>
                   <div>
-                    <h2 className="text-xl font-display text-primary text-glow">
+                    <h2 className="text-xl font-display text-primary font-semibold">
                       P.E. {showHelpModal === 'contable' ? 'Contable' : showHelpModal === 'operativo' ? 'Operativo' : 'de Caja'}
                     </h2>
                     <p className="text-text-muted font-mono text-sm">

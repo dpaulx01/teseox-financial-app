@@ -21,6 +21,9 @@ import {
   DailyProductionPlanEntry,
   DailyProductionPlanResponse,
   DailyScheduleResponse,
+  StockPlanningParseResponse,
+  StockPlanningConfirmPayload,
+  StockPlanningConfirmResponse,
 } from '../types/production';
 
 class FinancialAPIService {
@@ -323,6 +326,26 @@ class FinancialAPIService {
   async getProductionSchedule(): Promise<DailyScheduleResponse> {
     const response = await this.api.get('/api/production/dashboard/schedule');
     return response.data as DailyScheduleResponse;
+  }
+
+  async parseStockPlanning(file: File): Promise<StockPlanningParseResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await this.api.post('/api/production/stock-planning/parse', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    return response.data as StockPlanningParseResponse;
+  }
+
+  async confirmStockPlanning(
+    payload: StockPlanningConfirmPayload,
+  ): Promise<StockPlanningConfirmResponse> {
+    const response = await this.api.post('/api/production/stock-planning/confirm', payload);
+    return response.data as StockPlanningConfirmResponse;
   }
 
   // Mock data generator for development

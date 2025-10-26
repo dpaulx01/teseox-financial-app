@@ -41,6 +41,7 @@ from models.production import (
     ProductionProduct,
     ProductionQuote,
     ProductionStatusEnum,
+    ProductionTypeEnum,
 )
 
 
@@ -187,6 +188,45 @@ class DailyScheduleDay(BaseModel):
 class DailyScheduleResponse(BaseModel):
     days: List[DailyScheduleDay]
 
+
+# Stock Planning Models
+class StockProductProgramming(BaseModel):
+    """Programación diaria de un producto de stock."""
+    fecha: date
+    cantidad: float
+
+
+class StockProductParsed(BaseModel):
+    """Producto extraído del Excel de programación de stock."""
+    nombre: str
+    categoria: Optional[str] = None
+    unidad: Optional[str] = None
+    programacion_diaria: List[StockProductProgramming]
+
+
+class StockPlanningParsedData(BaseModel):
+    """Datos parseados del Excel de Contifico (sin guardar aún)."""
+    numero_pedido: str
+    responsable: Optional[str] = None
+    local: Optional[str] = None
+    fecha_inicio: date
+    fecha_fin: date
+    productos: List[StockProductParsed]
+
+
+class StockPlanningConfirmRequest(BaseModel):
+    """Solicitud para confirmar y guardar la programación de stock con datos adicionales del usuario."""
+    parsed_data: StockPlanningParsedData
+    bodega: str = Field(..., min_length=1, description="Bodega destino para el pedido de stock")
+    notas: Optional[str] = Field(None, description="Notas adicionales sobre el pedido")
+
+
+class StockPlanningUploadResponse(BaseModel):
+    """Respuesta al subir el Excel de programación de stock."""
+    parsed_data: StockPlanningParsedData
+    message: str
+
+
 class DashboardKpisResponse(BaseModel):
     kpi_cards: List[KpiCard]
     production_load_chart: List[DistributionChartItem]
@@ -242,7 +282,10 @@ async def get_dashboard_kpis(
     active_items: List[ProductionProduct] = (
         db.query(ProductionProduct)
         .options(joinedload(ProductionProduct.cotizacion))
-        .filter(ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO)
+        .filter(
+            ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO,
+            ProductionProduct.estatus != ProductionStatusEnum.EN_BODEGA
+        )
         .all()
     )
 
@@ -420,7 +463,20 @@ async def get_dashboard_kpis(
                 if start_date < today:
                     start_date = today
                 start_date = _next_working_day(start_date)
-                production_end = _previous_working_day(end_date)
+
+                # Para pedidos de stock, la fecha de entrega es el día que estará disponible
+                # Para cotizaciones de cliente, la producción termina un día antes
+                is_stock = quote and quote.tipo_produccion == ProductionTypeEnum.STOCK
+                if is_stock:
+                    # Stock: producción disponible el mismo día (si es hábil)
+                    if _is_working_day(end_date):
+                        production_end = end_date
+                    else:
+                        production_end = _previous_working_day(end_date, include_today=False)
+                else:
+                    # Cliente: producción termina el día hábil anterior a la entrega
+                    production_end = _previous_working_day(end_date)
+
                 if production_end < start_date:
                     if start_date == end_date and _is_working_day(start_date):
                         working_days = [start_date]
@@ -456,14 +512,18 @@ async def get_dashboard_kpis(
 
         if item.fecha_entrega:
             delta_days = (item.fecha_entrega - today).days
+            # No generar alertas para productos ya completados
+            is_completed = item.estatus in (ProductionStatusEnum.EN_BODEGA, ProductionStatusEnum.ENTREGADO)
+
             if delta_days < 0:
-                overdue_items.append(item)
-                overdue_days.append(abs(delta_days))
+                if not is_completed:
+                    overdue_items.append(item)
+                    overdue_days.append(abs(delta_days))
             else:
-                if delta_days <= 7 and item.id not in due_next_7_ids:
+                if delta_days <= 7 and item.id not in due_next_7_ids and not is_completed:
                     due_next_7_ids.add(item.id)
                     due_next_7_items.append(item)
-                if delta_days <= 3:
+                if delta_days <= 3 and not is_completed:
                     due_soon_items.append((item, delta_days))
         else:
             missing_date_items.append(item)
@@ -521,7 +581,10 @@ async def get_dashboard_kpis(
     active_quote_ids = (
         db.query(ProductionQuote.id.distinct())
         .join(ProductionProduct)
-        .filter(ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO)
+        .filter(
+            ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO,
+            ProductionProduct.estatus != ProductionStatusEnum.EN_BODEGA
+        )
         .subquery()
     )
     
@@ -1541,6 +1604,213 @@ def parse_quote_excel(content: bytes, filename: str) -> dict:
     }
 
 
+def parse_stock_planning_excel(content: bytes, filename: str) -> dict:
+    """
+    Parser específico para el formato de Excel de Contifico (Pedido semanal de stock).
+    Extrae:
+    - Número de pedido (PDI xxxxxxxx)
+    - Período (fechas inicio/fin)
+    - Responsable
+    - Local/Bodega
+    - Productos con programación diaria (columnas "Actual" de cada día)
+    """
+    df = _read_excel(content, filename)
+    values = df.applymap(_clean_line).values.tolist()
+
+    # Extraer información del encabezado
+    numero_pedido: Optional[str] = None
+    responsable: Optional[str] = None
+    local: Optional[str] = None
+    fecha_periodo: Optional[str] = None
+    fecha_inicio: Optional[date] = None
+    fecha_fin: Optional[date] = None
+
+    # Buscar en las primeras 10 filas el encabezado
+    for row in values[:10]:
+        row_text = " ".join(str(cell) for cell in row if cell)
+        normalized = _strip_accents(row_text).upper()
+
+        # Buscar número de pedido (ej: "Pedido: PDI 202409000006")
+        if not numero_pedido:
+            match = re.search(r"PEDIDO[:\s]*PDI\s*(\d+)", normalized)
+            if match:
+                numero_pedido = f"PDI{match.group(1)}"
+
+        # Buscar período (ej: "Periodo 20/10/2025 - 26/10/2025")
+        if not fecha_periodo:
+            match = re.search(r"PERIODO[:\s]*(.+)", normalized)
+            if match:
+                fecha_periodo = match.group(1).strip()
+                # Intentar parsear las fechas
+                date_match = re.search(r"(\d{2}/\d{2}/\d{4})\s*-\s*(\d{2}/\d{2}/\d{4})", fecha_periodo)
+                if date_match:
+                    try:
+                        fecha_inicio = datetime.strptime(date_match.group(1), "%d/%m/%Y").date()
+                        fecha_fin = datetime.strptime(date_match.group(2), "%d/%m/%Y").date()
+                    except ValueError:
+                        pass
+
+        # Buscar responsable (ej: "Responsable bherrera01")
+        if not responsable:
+            match = re.search(r"RESPONSABLE[:\s]*([A-Za-z0-9_]+)", normalized)
+            if match:
+                responsable = match.group(1)
+
+        # Buscar local/bodega (ej: "Local Materia Prima")
+        if not local:
+            match = re.search(r"LOCAL[:\s]*(.+?)(?:RESPONSABLE|$)", normalized)
+            if match:
+                local = match.group(1).strip()
+
+    if not numero_pedido:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se encontró el número de pedido (PDI) en el Excel de programación de stock."
+        )
+
+    # Buscar la fila de encabezado con los días de la semana
+    header_idx = None
+    day_columns: Dict[str, Dict[str, int]] = {}  # {dia: {"sugerencia": idx, "actual": idx}}
+
+    for idx, row in enumerate(values[:15]):
+        normalized_row = [_strip_accents(str(cell)).upper() for cell in row]
+        row_text = " ".join(normalized_row)
+
+        # Detectar fila que contiene "LUNES MARTES MIERCOLES..."
+        if "LUNES" in row_text and "MARTES" in row_text:
+            header_idx = idx
+
+            # Mapear índices de columnas por día
+            for col_idx, cell in enumerate(normalized_row):
+                if "LUNES" in cell:
+                    day_columns["LUNES"] = {"sugerencia": col_idx, "actual": col_idx + 1}
+                elif "MARTES" in cell:
+                    day_columns["MARTES"] = {"sugerencia": col_idx, "actual": col_idx + 1}
+                elif "MIERCOLES" in cell or "MI RCOLES" in cell:
+                    day_columns["MIERCOLES"] = {"sugerencia": col_idx, "actual": col_idx + 1}
+                elif "JUEVES" in cell:
+                    day_columns["JUEVES"] = {"sugerencia": col_idx, "actual": col_idx + 1}
+                elif "VIERNES" in cell:
+                    day_columns["VIERNES"] = {"sugerencia": col_idx, "actual": col_idx + 1}
+                elif "SABADO" in cell or "S BADO" in cell:
+                    day_columns["SABADO"] = {"sugerencia": col_idx, "actual": col_idx + 1}
+                elif "DOMINGO" in cell:
+                    day_columns["DOMINGO"] = {"sugerencia": col_idx, "actual": col_idx + 1}
+            break
+
+    if header_idx is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se pudo identificar el encabezado con los días de la semana en el Excel."
+        )
+
+    # Buscar columnas de producto y unidad
+    producto_col = None
+    unidad_col = None
+
+    for col_idx, cell in enumerate(normalized_row):
+        if "PRODUCTO" in cell:
+            producto_col = col_idx
+        elif "UNIDAD" in cell:
+            unidad_col = col_idx
+
+    # Productos encontrados con programación diaria
+    productos_programados: List[dict] = []
+
+    # Iterar por las filas de productos (después de los encabezados)
+    start_row = header_idx + 2
+    current_category = None
+
+    for row in values[start_row:]:
+        if not row or not any(row):
+            continue
+
+        cells = [str(cell).strip() if cell else '' for cell in row]
+
+        # Detectar categorías (filas que no tienen cantidades, solo nombre)
+        if producto_col and cells[producto_col]:
+            # Ver si es una categoría (texto sin números en las columnas de días)
+            has_numbers = False
+            for day_cols in day_columns.values():
+                actual_idx = day_cols.get("actual")
+                if actual_idx is not None and actual_idx < len(cells):
+                    actual_val = cells[actual_idx]
+                    if actual_val and _parse_decimal(actual_val):
+                        has_numbers = True
+                        break
+
+            if not has_numbers and not any(c in cells[producto_col].upper() for c in ["TOTAL", "SUMA"]):
+                current_category = cells[producto_col]
+                continue
+
+        # Extraer nombre del producto
+        producto_nombre = cells[producto_col] if producto_col and len(cells) > producto_col else ""
+        if not producto_nombre or producto_nombre.upper() in ["", "PRODUCTO"]:
+            continue
+
+        # Extraer unidad
+        unidad = cells[unidad_col] if unidad_col and len(cells) > unidad_col else "UNIDAD"
+
+        # Extraer programación diaria (solo columnas "Actual")
+        programacion_diaria: List[dict] = []
+
+        # Mapear días de la semana a fechas si tenemos fecha_inicio
+        if fecha_inicio and fecha_fin:
+            weekday_labels = ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO"]
+            weekday_to_date: Dict[str, date] = {}
+            current = fecha_inicio
+            while current <= fecha_fin:
+                weekday_to_date[weekday_labels[current.weekday()]] = current
+                current += timedelta(days=1)
+
+            for day_name, cols in day_columns.items():
+                target_date = weekday_to_date.get(day_name)
+                if not target_date:
+                    continue
+
+                sugerencia_idx = cols.get("sugerencia")
+                actual_idx = cols.get("actual")
+
+                sugerida = None
+                if sugerencia_idx is not None and sugerencia_idx < len(cells):
+                    sugerida = _parse_decimal(cells[sugerencia_idx])
+
+                actual = None
+                if actual_idx is not None and actual_idx < len(cells):
+                    actual = _parse_decimal(cells[actual_idx])
+
+                cantidad = sugerida if sugerida and sugerida > Decimal("0") else actual
+                if cantidad and cantidad > Decimal("0"):
+                    programacion_diaria.append({
+                        "fecha": target_date,
+                        "cantidad": cantidad,
+                    })
+
+        # Solo agregar productos que tienen programación
+        if programacion_diaria:
+            productos_programados.append({
+                "nombre": producto_nombre,
+                "categoria": current_category,
+                "unidad": unidad,
+                "programacion_diaria": programacion_diaria,
+            })
+
+    if not productos_programados:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se encontraron productos con programación diaria en el Excel de stock."
+        )
+
+    return {
+        "numero_pedido": numero_pedido,
+        "responsable": responsable,
+        "local": local,
+        "fecha_inicio": fecha_inicio,
+        "fecha_fin": fecha_fin,
+        "productos": productos_programados,
+    }
+
+
 def _safe_filename(name: str) -> str:
     name = re.sub(r"[^\w\-.]", "_", name)
     return name[:120]
@@ -1584,6 +1854,8 @@ def product_to_dict(product: ProductionProduct) -> dict:
         "id": product.id,
         "cotizacionId": quote.id,
         "numeroCotizacion": quote.numero_cotizacion,
+        "tipoProduccion": quote.tipo_produccion.value if quote.tipo_produccion else ProductionTypeEnum.CLIENTE.value,
+        "numeroPedidoStock": quote.numero_pedido_stock,
         "cliente": quote.cliente,
         "contacto": quote.contacto,
         "proyecto": quote.proyecto,
@@ -1604,6 +1876,10 @@ def product_to_dict(product: ProductionProduct) -> dict:
         "saldoPendiente": saldo_pendiente,
         "metadataNotes": metadata_notes,
         "esServicio": _is_service_product(product.descripcion),
+        "bodega": quote.bodega,
+        "responsable": quote.responsable,
+        "fechaInicioPeriodo": quote.fecha_inicio_periodo.isoformat() if quote.fecha_inicio_periodo else None,
+        "fechaFinPeriodo": quote.fecha_fin_periodo.isoformat() if quote.fecha_fin_periodo else None,
     }
 
 
@@ -1618,6 +1894,7 @@ class PaymentPayload(BaseModel):
 
 
 class ProductionUpdatePayload(BaseModel):
+    fechaIngreso: Optional[date] = None
     fechaEntrega: Optional[date] = None
     estatus: Optional[str] = Field(
         default=None, description="Estatus de producción (texto exactamente igual a las opciones definidas)."
@@ -1742,6 +2019,200 @@ async def upload_quotes(
     }
 
 
+@router.post("/stock-planning/parse", response_model=StockPlanningUploadResponse)
+async def parse_stock_planning(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Parsea el Excel de programación de stock de Contifico y devuelve los datos extraídos
+    sin guardarlos aún. El frontend mostrará estos datos al usuario para que confirme
+    y agregue información faltante (bodega, etc.).
+    """
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo debe tener un nombre válido."
+        )
+
+    filename = file.filename
+    extension = Path(filename).suffix.lower()
+
+    if extension not in {".xls", ".xlsx"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo debe ser un Excel (.xls o .xlsx). Los pedidos de stock se suben en formato Excel."
+        )
+
+    content = await file.read()
+
+    try:
+        parsed = parse_stock_planning_excel(content, filename)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error al procesar el Excel: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error inesperado al procesar el archivo: {str(e)}"
+        )
+
+    # Convertir el dict parseado a los modelos Pydantic
+    productos_parsed = []
+    for prod in parsed["productos"]:
+        programacion = [
+            StockProductProgramming(fecha=prog["fecha"], cantidad=prog["cantidad"])
+            for prog in prod["programacion_diaria"]
+        ]
+        productos_parsed.append(
+            StockProductParsed(
+                nombre=prod["nombre"],
+                categoria=prod.get("categoria"),
+                unidad=prod.get("unidad"),
+                programacion_diaria=programacion
+            )
+        )
+
+    parsed_data = StockPlanningParsedData(
+        numero_pedido=parsed["numero_pedido"],
+        responsable=parsed.get("responsable"),
+        local=parsed.get("local"),
+        fecha_inicio=parsed["fecha_inicio"],
+        fecha_fin=parsed["fecha_fin"],
+        productos=productos_parsed
+    )
+
+    return StockPlanningUploadResponse(
+        parsed_data=parsed_data,
+        message=f"Excel parseado correctamente. {len(productos_parsed)} productos encontrados. Por favor confirme la información y agregue los datos faltantes."
+    )
+
+
+@router.post("/stock-planning/confirm")
+async def confirm_stock_planning(
+    request: StockPlanningConfirmRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Confirma y guarda la programación de stock en la base de datos.
+    Crea una cotización de tipo 'stock' con sus productos y plan diario.
+    """
+    parsed = request.parsed_data
+
+    # Verificar si ya existe un pedido con este número
+    existing_quote = (
+        db.query(ProductionQuote)
+        .filter(ProductionQuote.numero_pedido_stock == parsed.numero_pedido)
+        .one_or_none()
+    )
+
+    if existing_quote:
+        # Si existe, limpiamos sus productos y plan para actualizarlo
+        existing_quote.productos.clear()
+        db.flush()
+        quote = existing_quote
+        quote.updated_at = datetime.utcnow()
+    else:
+        # Crear nueva cotización de tipo stock
+        quote = ProductionQuote(
+            numero_cotizacion=f"STOCK-{parsed.numero_pedido}",
+            tipo_produccion=ProductionTypeEnum.STOCK,
+            numero_pedido_stock=parsed.numero_pedido,
+            fecha_ingreso=datetime.utcnow(),
+        )
+        db.add(quote)
+
+    # Actualizar campos de la cotización
+    quote.bodega = request.bodega
+    quote.responsable = parsed.responsable
+    quote.fecha_inicio_periodo = parsed.fecha_inicio
+    quote.fecha_fin_periodo = parsed.fecha_fin
+    quote.cliente = None  # Stock no tiene cliente
+    quote.valor_total = None  # Stock no tiene valor monetario
+
+    # Crear productos y sus planes diarios
+    total_productos_creados = 0
+    total_planes_creados = 0
+
+    for prod_data in parsed.productos:
+        # Crear el producto
+        descripcion = prod_data.nombre
+        # Formatear cantidad con unidad
+        cantidad_text = None
+        if prod_data.programacion_diaria:
+            total_cantidad = sum(prog.cantidad for prog in prod_data.programacion_diaria)
+            if prod_data.unidad:
+                cantidad_text = f"{total_cantidad} {prod_data.unidad}"
+            else:
+                cantidad_text = str(total_cantidad)
+
+        additional_notes = []
+        if request.notas:
+            cleaned = request.notas.strip()
+            if cleaned:
+                additional_notes.append(cleaned)
+        if prod_data.categoria:
+            additional_notes.append(f"Categoría stock: {prod_data.categoria}")
+
+        # Calcular la fecha de entrega como el último día con producción
+        plan_dates = [prog.fecha for prog in prod_data.programacion_diaria if prog.cantidad > 0]
+        last_plan_date = max(plan_dates) if plan_dates else parsed.fecha_fin
+
+        product = ProductionProduct(
+            descripcion=descripcion,
+            cantidad=cantidad_text,
+            valor_subtotal=None,  # Stock no tiene valor
+            estatus=ProductionStatusEnum.EN_PRODUCCION,  # Stock inicia en producción
+            notas_estatus="\n".join(additional_notes) if additional_notes else None,
+            fecha_entrega=last_plan_date,
+        )
+        quote.productos.append(product)
+        db.flush()  # Para obtener el ID del producto
+
+        total_productos_creados += 1
+
+        # Crear entradas de plan diario para este producto
+        for prog in prod_data.programacion_diaria:
+            if prog.cantidad <= 0:
+                continue  # Omitir días sin producción
+
+            # Determinar si es metros o unidades según la unidad
+            metros = Decimal("0")
+            unidades = Decimal("0")
+
+            if prod_data.unidad and "M2" in prod_data.unidad.upper():
+                metros = Decimal(str(prog.cantidad))
+            else:
+                unidades = Decimal(str(prog.cantidad))
+
+            daily_plan = ProductionDailyPlan(
+                producto_id=product.id,
+                fecha=prog.fecha,
+                metros=metros,
+                unidades=unidades,
+                cantidad_sugerida=None,  # Podríamos agregar esto si el Excel lo trae
+                is_manually_edited=True,  # Viene del Excel, se considera manual
+                completado=False,
+            )
+            db.add(daily_plan)
+            total_planes_creados += 1
+
+    db.commit()
+
+    return {
+        "message": f"Programación de stock guardada correctamente.",
+        "numero_pedido": parsed.numero_pedido,
+        "cotizacion_id": quote.id,
+        "numero_cotizacion": quote.numero_cotizacion,
+        "productos_creados": total_productos_creados,
+        "planes_diarios_creados": total_planes_creados,
+        "bodega": request.bodega,
+    }
+
+
 @router.get("/items/all")
 async def list_all_items(
     current_user: User = Depends(get_current_user),
@@ -1776,11 +2247,15 @@ async def list_active_items(
     products = (
         db.query(ProductionProduct)
         .join(ProductionQuote)
-        .filter(ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO)
         .order_by(ProductionQuote.fecha_ingreso.desc(), ProductionProduct.id.desc())
         .all()
     )
-    serialized = [product_to_dict(product) for product in products]
+
+    serialized = [
+        product_to_dict(product)
+        for product in products
+        if product.estatus != ProductionStatusEnum.EN_BODEGA
+    ]
     active_items = [item for item in serialized if not item.get("esServicio")]
     return {
         "items": active_items,
@@ -1827,6 +2302,10 @@ async def update_item(
 
     quote = product.cotizacion
 
+    # Guardar valores anteriores para detectar cambios
+    old_fecha_entrega = product.fecha_entrega
+    old_fecha_ingreso = quote.fecha_ingreso.date() if isinstance(quote.fecha_ingreso, datetime) else quote.fecha_ingreso
+
     product.fecha_entrega = payload.fechaEntrega
     product.estatus = (
         ProductionStatusEnum(payload.estatus) if payload.estatus else product.estatus
@@ -1835,15 +2314,26 @@ async def update_item(
     product.factura = payload.factura
     product.updated_at = datetime.utcnow()
 
+    # Actualizar fecha_ingreso (convertir date a datetime para la base de datos)
+    if payload.fechaIngreso is not None:
+        if isinstance(payload.fechaIngreso, date) and not isinstance(payload.fechaIngreso, datetime):
+            # Convertir date a datetime (medianoche UTC)
+            quote.fecha_ingreso = datetime.combine(payload.fechaIngreso, datetime.min.time())
+        else:
+            quote.fecha_ingreso = payload.fechaIngreso
+
     if payload.fechaVencimiento is not None:
         quote.fecha_vencimiento = payload.fechaVencimiento
     if payload.valorTotal is not None:
         quote.valor_total = payload.valorTotal
 
-    # LÓGICA CRÍTICA: Si cambió la fecha de entrega, validar plan manual
-    if (product.fecha_entrega != payload.fechaEntrega and 
-        payload.fechaEntrega is not None):
-        
+    # LÓGICA CRÍTICA: Si cambió la fecha de entrega o fecha de ingreso, validar plan manual
+    date_changed = (
+        (old_fecha_entrega != payload.fechaEntrega and payload.fechaEntrega is not None) or
+        (old_fecha_ingreso != payload.fechaIngreso and payload.fechaIngreso is not None)
+    )
+
+    if date_changed:
         # Verificar si existe plan manual para este producto
         existing_manual_plan = (
             db.query(ProductionDailyPlan)
@@ -1853,7 +2343,7 @@ async def update_item(
             )
             .first()
         )
-        
+
         if existing_manual_plan:
             # ADVERTENCIA: No regenerar automáticamente si hay plan manual
             # El encargado debe actualizar manualmente el plan desde "Plan diario"
@@ -2055,7 +2545,10 @@ async def get_dashboard_schedule(
     active_items: List[ProductionProduct] = (
         db.query(ProductionProduct)
         .options(joinedload(ProductionProduct.cotizacion))
-        .filter(ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO)
+        .filter(
+            ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO,
+            ProductionProduct.estatus != ProductionStatusEnum.EN_BODEGA
+        )
         .all()
     )
 
@@ -2164,7 +2657,20 @@ async def get_dashboard_schedule(
         if start_date < today:
             start_date = today
         start_date = _next_working_day(start_date)
-        production_end = _previous_working_day(end_date)
+
+        # Para pedidos de stock, la fecha de entrega es el día que estará disponible
+        # Para cotizaciones de cliente, la producción termina un día antes
+        is_stock = quote and quote.tipo_produccion == ProductionTypeEnum.STOCK
+        if is_stock:
+            # Stock: producción disponible el mismo día (si es hábil)
+            if _is_working_day(end_date):
+                production_end = end_date
+            else:
+                production_end = _previous_working_day(end_date, include_today=False)
+        else:
+            # Cliente: producción termina el día hábil anterior a la entrega
+            production_end = _previous_working_day(end_date)
+
         if production_end < start_date:
             if start_date == end_date and _is_working_day(start_date):
                 working_days = [start_date]

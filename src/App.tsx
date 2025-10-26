@@ -17,7 +17,8 @@ import { ToastContainer } from './components/ui/Toast';
 import AnimatedBackground from './components/ui/AnimatedBackground';
 import DashboardKPIs from './pages/DashboardKPIs';
 import PnlAnalysis from './pages/PnlAnalysis';
-import BreakEvenAnalysis from './pages/BreakEvenAnalysis';
+// Lazy load para componentes grandes
+const BreakEvenAnalysis = React.lazy(() => import('./pages/BreakEvenAnalysis'));
 import DataConfiguration from './pages/DataConfiguration';
 import OperationalAnalysis from './pages/OperationalAnalysis';
 import ProductionDashboard from './pages/ProductionDashboard';
@@ -143,7 +144,11 @@ const MainAppContent: React.FC = () => {
           );
         }
       case 'breakeven':
-        return <BreakEvenAnalysis />;
+        return (
+          <React.Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="text-primary animate-pulse">Cargando análisis...</div></div>}>
+            <BreakEvenAnalysis />
+          </React.Suspense>
+        );
       case 'operational':
         return <OperationalAnalysis onNavigateToConfig={() => setActiveTab('config')} />;
       case 'config':

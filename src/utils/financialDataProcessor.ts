@@ -39,6 +39,12 @@ export const processFinancialData = (data: RawDataRow[]): FinancialData => {
   });
 
   const filteredData = normalizedData.filter(row => row['COD.'] && row['COD.'].toString().trim() !== '');
+  const accountCodeSet = new Set(
+    filteredData
+      .map(row => row['COD.'])
+      .filter(code => typeof code === 'string' && code.trim() !== '')
+      .map(code => (code as string).trim())
+  );
   
   // Detectar meses disponibles automáticamente
   const mesesDisponibles = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
@@ -98,15 +104,17 @@ export const processFinancialData = (data: RawDataRow[]): FinancialData => {
 
     // LÓGICA ORIGINAL - procesamiento directo sin logs excesivos
     processed.raw.forEach(row => {
-      const code = row['COD.'] || '';
+      const code = (row['COD.'] || '').toString().trim();
       const cuenta = row['CUENTA'] || '';
       const rawValue = row[month];
       const value = parseNumericValue(rawValue || 0);
+      const parentCode = code.includes('.') ? code.slice(0, code.lastIndexOf('.')) : '';
+      const hasParent = parentCode ? accountCodeSet.has(parentCode) : false;
 
       // SOLUCIÓN: Solo procesar CUENTAS PRINCIPALES (sin subcuentas) para evitar doble conteo
       
-      // Ingresos - solo cuenta principal "4" (no incluir 4.1, 4.1.1, etc.)
-      if (code === '4') {
+      // Ingresos: sumar cuentas de la clase 4 que no tengan padre en el dataset
+      if (code.startsWith('4') && !hasParent) {
         monthData.ingresos += value;
       }
       

@@ -43,6 +43,7 @@ const ProductionArchive: React.FC = () => {
           isSaving={isSaving}
           onDeleteQuote={deleteQuote}
           viewMode="quotes"
+          readOnlyStatuses={[]}
         />
       )}
     </div>

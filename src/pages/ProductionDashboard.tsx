@@ -176,7 +176,12 @@ const ProductionDashboard: React.FC = () => {
   const hasMounted = useRef(false);
 
   const handleNavigateToControlPanel = useCallback((payload: ExternalPanelContext) => {
-    setPanelContext(payload);
+    const targetView = payload.viewMode ?? 'products';
+    if (targetView === 'products') {
+      setPanelContext({ productViewType: 'detailed', ...payload });
+    } else {
+      setPanelContext(payload);
+    }
     setActiveView('control_panel');
   }, []);
 
@@ -786,15 +791,6 @@ const ProductionDashboard: React.FC = () => {
               <h4 className="text-xl font-semibold text-text-primary neon-text">Resumen financiero</h4>
             </div>
             <dl className="space-y-4 text-sm">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-dark-card/60 border border-border/40">
-                <dt className="text-text-muted">
-                  <div>Valor activo (líneas abiertas)</div>
-                  <div className="text-xs text-text-dim mt-1">Suma de productos individuales</div>
-                </dt>
-                <dd className="font-bold text-primary data-display">
-                  {formatCurrency(financial_summary.total_en_produccion)}
-                </dd>
-              </div>
               <div className="flex items-center justify-between p-3 rounded-xl bg-primary-glow border border-primary/40">
                 <dt className="text-text-secondary font-medium">
                   <div>Total cotizaciones activas</div>

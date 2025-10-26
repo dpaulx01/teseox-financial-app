@@ -43,7 +43,9 @@ export default function UserManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [selectedTab, setSelectedTab] = useState<'users' | 'roles' | 'permissions'>('users');
+  const [selectedPermissions, setSelectedPermissions] = useState<number[]>([]);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -73,13 +75,13 @@ export default function UserManagement() {
       setLoading(true);
       const [usersRes, rolesRes, permsRes] = await Promise.all([
         axios.get('http://localhost:8001/api/users', config),
-        axios.get('http://localhost:8001/api/roles', config),
-        axios.get('http://localhost:8001/api/permissions', config)
+        axios.get('http://localhost:8001/api/admin/roles', config),
+        axios.get('http://localhost:8001/api/admin/permissions', config)
       ]);
-      
+
       setUsers(usersRes.data);
-      setRoles(rolesRes.data.roles || []);
-      setPermissions(permsRes.data.permissions || []);
+      setRoles(rolesRes.data || []);
+      setPermissions(permsRes.data || []);
     } catch (err) {
       setError('Error al cargar los datos');
       console.error(err);
@@ -153,6 +155,37 @@ export default function UserManagement() {
       is_active: user.is_active,
       is_superuser: user.is_superuser
     });
+  };
+
+  const startEditingRole = (role: Role) => {
+    setEditingRole(role);
+    setSelectedPermissions(role.permissions?.map(p => p.id) || []);
+  };
+
+  const handleUpdateRolePermissions = async () => {
+    if (!editingRole) return;
+
+    try {
+      await axios.post(
+        `http://localhost:8001/api/admin/roles/${editingRole.id}/permissions`,
+        { permission_ids: selectedPermissions },
+        config
+      );
+      setSuccess('Permisos del rol actualizados exitosamente');
+      setEditingRole(null);
+      setSelectedPermissions([]);
+      fetchData();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Error al actualizar permisos del rol');
+    }
+  };
+
+  const togglePermission = (permissionId: number) => {
+    setSelectedPermissions(prev =>
+      prev.includes(permissionId)
+        ? prev.filter(id => id !== permissionId)
+        : [...prev, permissionId]
+    );
   };
 
   const filteredUsers = users.filter(user => 
@@ -372,7 +405,10 @@ export default function UserManagement() {
                   <span className="text-text-muted text-xs font-mono">
                     {role.permissions?.length || 0} permisos
                   </span>
-                  <button className="text-accent-primary text-sm font-mono hover:underline">
+                  <button
+                    onClick={() => startEditingRole(role)}
+                    className="text-accent-primary text-sm font-mono hover:underline"
+                  >
                     Editar
                   </button>
                 </div>
@@ -547,6 +583,135 @@ export default function UserManagement() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Role Permissions Modal */}
+      {editingRole && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-dark-bg border border-border-secondary rounded-2xl p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-orbitron font-bold text-white">
+                  EDITAR PERMISOS: {editingRole.name}
+                </h2>
+                <p className="text-sm text-text-muted font-mono mt-1">
+                  {editingRole.description}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingRole(null);
+                  setSelectedPermissions([]);
+                }}
+                className="text-text-muted hover:text-white transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {editingRole.is_system_role && (
+              <div className="bg-warning/10 border border-warning/50 rounded-xl p-4 mb-6 flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-warning flex-shrink-0" />
+                <p className="text-warning font-mono text-sm">
+                  Este es un rol del sistema. Los cambios afectarán a todos los usuarios con este rol.
+                </p>
+              </div>
+            )}
+
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-mono font-bold text-white">
+                  Permisos Disponibles ({permissions.length})
+                </h3>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedPermissions(permissions.map(p => p.id))}
+                    className="text-xs font-mono text-accent-primary hover:underline"
+                  >
+                    Seleccionar Todos
+                  </button>
+                  <span className="text-text-muted">|</span>
+                  <button
+                    onClick={() => setSelectedPermissions([])}
+                    className="text-xs font-mono text-error hover:underline"
+                  >
+                    Deseleccionar Todos
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto p-2">
+                {permissions
+                  .sort((a, b) => {
+                    if (a.resource !== b.resource) {
+                      return a.resource.localeCompare(b.resource);
+                    }
+                    return a.action.localeCompare(b.action);
+                  })
+                  .map((permission) => {
+                    const isSelected = selectedPermissions.includes(permission.id);
+                    return (
+                      <label
+                        key={permission.id}
+                        className={`
+                          flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all
+                          ${isSelected
+                            ? 'bg-accent-primary/20 border-accent-primary'
+                            : 'bg-white/5 border-border-secondary hover:border-accent-primary/50'
+                          }
+                        `}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => togglePermission(permission.id)}
+                          className="mt-1 w-4 h-4 bg-white/5 border border-border-secondary rounded"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Key className="w-3 h-3 text-accent-primary" />
+                            <span className="text-sm font-mono font-bold text-white">
+                              {permission.resource}:{permission.action}
+                            </span>
+                          </div>
+                          {permission.description && (
+                            <p className="text-xs text-text-muted font-mono">
+                              {permission.description}
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t border-border-secondary">
+              <p className="text-sm font-mono text-text-muted">
+                {selectedPermissions.length} de {permissions.length} permisos seleccionados
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setEditingRole(null);
+                    setSelectedPermissions([]);
+                  }}
+                  className="px-4 py-2 bg-white/10 text-white rounded-lg font-mono hover:bg-white/20 transition-all"
+                >
+                  <X className="w-4 h-4 inline mr-2" />
+                  CANCELAR
+                </button>
+                <button
+                  onClick={handleUpdateRolePermissions}
+                  className="px-4 py-2 bg-gradient-primary text-white rounded-lg font-mono hover:shadow-lg transition-all"
+                >
+                  <Save className="w-4 h-4 inline mr-2" />
+                  GUARDAR CAMBIOS
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
