@@ -1,0 +1,862 @@
+!DOCTYPE html
+html lang=es
+head
+    meta charset=UTF-8
+    meta name=viewport content=width=device-width, initial-scale=1.0
+    titleARTYCO  Presentación Gerencial Infográficatitle
+    script src=httpscdn.tailwindcss.comscript
+    script src=httpscdn.jsdelivr.netnpmchart.jsscript
+    link rel=preconnect href=httpsfonts.googleapis.com
+    link rel=preconnect href=httpsfonts.gstatic.com crossorigin
+    link href=httpsfonts.googleapis.comcss2family=Interwght@400;700;900&display=swap rel=stylesheet
+    style
+        body {
+            font-family 'Inter', sans-serif;
+            background-color #F1F1F1;
+        }
+        .kpi-card {
+            background-color white;
+            border-radius 0.75rem;
+            box-shadow 0 4px 6px -1px rgb(0 0 0  0.1), 0 2px 4px -2px rgb(0 0 0  0.1);
+            padding 1.5rem;
+            text-align center;
+            border-left 5px solid #0B3C5D;
+        }
+        .kpi-value {
+            font-size 2.5rem;
+            font-weight 900;
+            color #0B3C5D;
+        }
+        .kpi-label {
+            font-size 1rem;
+            color #1D2731;
+            margin-top 0.5rem;
+        }
+        .chart-container {
+            position relative;
+            width 100%;
+            margin-left auto;
+            margin-right auto;
+            background-color white;
+            padding 1.5rem;
+            border-radius 0.75rem;
+            box-shadow 0 4px 6px -1px rgb(0 0 0  0.1), 0 2px 4px -2px rgb(0 0 0  0.1);
+        }
+        .flow-step {
+            background-color #0B3C5D;
+            color white;
+            padding 1rem;
+            border-radius 0.5rem;
+            text-align center;
+            font-weight 700;
+            flex-grow 1;
+        }
+        .flow-arrow {
+            font-size 2rem;
+            color #0B3C5D;
+            align-self center;
+        }
+        h1, h2, h3 {
+             color #1D2731;
+        }
+        .toggle-btn {
+            transition all 0.2s ease-in-out;
+        }
+        .toggle-btn.active {
+            background-color #0B3C5D;
+            color white;
+            font-weight 700;
+        }
+         .toggle-btn.inactive {
+            background-color #F1F1F1;
+            color #0B3C5D;
+            border 1px solid #0B3C5D;
+        }
+    style
+head
+body class=text-gray-800
+
+    header class=bg-white shadow-md p-6
+        div class=container mx-auto text-center
+            h1 class=text-4xl font-black tracking-tightPresentación Gerencial Infográficah1
+            p class=text-xl mt-2 font-bold text-[#0B3C5D]ARTYCO Un Negocio Probado, Listo para Escalarp
+        div
+    header
+
+    main class=container mx-auto p-4 mdp-8
+
+        section id=resumen class=mb-12
+            h2 class=text-3xl font-bold text-center mb-6El Panorama General 2023–2025 (YTD)h2
+            p class=max-w-3xl mx-auto text-center mb-8 text-lgLa operación de Artyco ha demostrado una base técnica y comercial sólida, generando resultados consistentes. La propuesta es clara construir una alianza estratégica para desplegar una nueva planta escalable y capitalizar el éxito probado.p
+            div class=grid grid-cols-2 mdgrid-cols-4 gap-4 mdgap-8
+                div class=kpi-card
+                    div class=kpi-value21.779div
+                    div class=kpi-labelm² Producidosdiv
+                div
+                div class=kpi-card
+                    div class=kpi-value$681,5kdiv
+                    div class=kpi-labelVentas Netasdiv
+                div
+                div class=kpi-card
+                    div class=kpi-value$31,29div
+                    div class=kpi-labelPrecio Neto  m²div
+                div
+                div class=kpi-card
+                    div class=kpi-value~80%div
+                    div class=kpi-labelMargen sobre MPdiv
+                div
+            div
+        section
+
+        section id=diagnostico class=mb-16
+            h2 class=text-3xl font-bold text-center mb-8Diagnóstico Anual El Reto y la Oportunidadh2
+            
+            div class=mb-12
+                div class=chart-container h-60
+                    canvas id=annualTrendChartcanvas
+                div
+                div class=max-w-3xl mx-auto text-center mt-6 text-lg
+                     h3 class=text-2xl font-bold mb-4La Presión sobre el Precio Netoh3
+                    pEl análisis anual revela una tendencia clave el precio neto por m² ha disminuido progresivamente, principalmente por la presión de los descuentos, que han aumentado del 27% al 33% sobre el precio de lista.p
+                div
+            div
+
+            div
+                div class=chart-container h-96
+                    canvas id=mpCostChartcanvas
+                    div class=flex justify-center mt-4 space-x-2
+                        button id=btn-general-mp class=toggle-btn active px-4 py-2 rounded-md text-smVisión Generalbutton
+                        button id=btn-synus-mp class=toggle-btn inactive px-4 py-2 rounded-md text-smSin Factor Synusbutton
+                    div
+                div
+                 div class=max-w-3xl mx-auto text-center mt-6 text-lg
+                    h3 class=text-2xl font-bold mb-4La Gran Victoria Eficiencia en Costosh3
+                    p id=mp-analysis-textLa capacidad de Artyco para optimizar mezclas y compras ha reducido el costo de materia prima a su nivel más bajo en 2025 ($4,75m²). Esta gestión de costos eficiente es el pilar sobre el que se construirá la rentabilidad de la nueva planta.p
+                div
+            div
+        section
+
+        section id=evolucion_categorias class=mb-16
+            h2 class=text-3xl font-bold text-center mb-8Evolución de Categorías El ADN del Portafolioh2
+            div class=chart-container h-96 mdh-[60vh]
+                canvas id=consolidatedCategoryChartcanvas
+            div
+            div class=max-w-3xl mx-auto text-center mt-6 text-lg
+                h3 class=text-2xl font-bold mb-4La Evolución del Mix de Ventash3
+                p class=mb-4El análisis consolidado revela una clara evolución en nuestro portafolio. Mientras que en 2023 las categorías de Piscinas y Mosaicos fueron las dominantes, hemos visto un cambio estratégico en la demanda.p
+                p class=mb-4Categorías como 3D, Piedras y Bricks han demostrado ser un núcleo de negocio resiliente, con una contribución importante y creciente a lo largo de los años.p
+                p class=font-bold text-[#328CC1]La Estrella en Ascensop
+                pLa familia de Piedras es la protagonista del cambio, mostrando un crecimiento que la consolida como una de las líderes en ventas. Esta dinámica valida la estrategia de enfocar la nueva planta en las familias con mayor demanda actual y potencial de crecimiento.p
+            div
+        section
+
+        section id=foco class=mb-16
+             h2 class=text-3xl font-bold text-center mb-8Enfocando el Esfuerzo Donde Genera Valorh2
+            
+            div class=mb-12
+                div class=chart-container h-96 mdh-[60vh]
+                    canvas id=categoryMixChartcanvas
+                div
+                div class=max-w-3xl mx-auto text-center mt-6 text-lg
+                     h3 class=text-2xl font-bold mb-4Mix de Categorías Ganadoras (2025)h3
+                    pLos datos de 2025 confirman un nuevo panorama. La familia de Piedras se consolida como líder indiscutible, seguida de cerca por 3D. Un núcleo fuerte compuesto por Bricks, Listones, Piscinas, Concreto y Piso Vecchio demuestra la diversidad y solidez del portafolio actual.p
+                div
+            div
+
+            div
+                div class=chart-container h-96 mdh-[75vh]
+                    div class=flex justify-center mb-4 space-x-2
+                        button id=btn-pareto-sales class=toggle-btn active px-4 py-2 rounded-md text-smPor Ventas (USD)button
+                        button id=btn-pareto-volume class=toggle-btn inactive px-4 py-2 rounded-md text-smPor Volumen (m²)button
+                        button id=btn-pareto-profit class=toggle-btn inactive px-4 py-2 rounded-md text-smPor Rentabilidad (USD)button
+                    div
+                    canvas id=paretoChartcanvas
+                div
+                div class=max-w-3xl mx-auto text-center mt-6 text-lg
+                    h3 class=text-2xl font-bold mb-4El Principio de Pareto en Acciónh3
+                     p id=pareto-analysis-textUn número reducido de productos estrella impulsa la mayor parte del negocio. El análisis completo por ventas demuestra que el 81% de los ingresos se concentra en los 42 productos mostrados. De forma aún más específica, el Top 10 genera el 42,5% de los ingresos y el Top 20 casi el 58%. Esto guía nuestras decisiones para priorizar los moldes golden.p
+                div
+            div
+        section
+
+        section id=rentabilidad class=mb-16
+            h2 class=text-3xl font-bold text-center mb-8Campeones de la Rentabilidad Un Análisis Anualh2
+             div class=chart-container h-96 mdh-[60vh]
+                canvas id=profitabilityChartcanvas
+                div class=flex justify-center mt-4 space-x-2
+                    button id=btn-profit-2023 class=toggle-btn active px-4 py-2 rounded-md text-sm2023button
+                    button id=btn-profit-2024 class=toggle-btn inactive px-4 py-2 rounded-md text-sm2024button
+                    button id=btn-profit-2025 class=toggle-btn inactive px-4 py-2 rounded-md text-sm2025button
+                div
+            div
+            div class=max-w-3xl mx-auto text-center mt-6 text-lg
+                h3 class=text-2xl font-bold mb-4La Evolución de la Rentabilidad por m²h3
+                p class=mb-4Analizar la rentabilidad año por año revela el impacto directo de la optimización de costos. Se puede observar cómo la rentabilidad por m² de ciertas categorías se ha mantenido alta o incluso ha mejorado, a pesar de la presión en los precios de venta.p
+                p class=font-bold text-[#0B3C5D]La Decisión Estratégicap
+                pEste análisis demuestra que la eficiencia en costos de materia prima nos permite ser más competitivos y proteger los márgenes. La nueva planta se enfocará en estandarizar estos procesos eficientes para todas las familias de productos, asegurando una base rentable sólida para el crecimiento futuro.p
+            div
+        section
+
+        section id=eficiencia class=mb-16
+            h2 class=text-3xl font-bold text-center mb-8El Foco en la Eficiencia Operativah2
+            div class=chart-container h-96 mdh-[60vh]
+                canvas id=efficiencyChartcanvas
+            div
+            div class=max-w-3xl mx-auto text-center mt-6 text-lg
+                h3 class=text-2xl font-bold mb-4Un Análisis Centrado en la Manufacturah3
+                p class=mb-4Este estudio se centra intencionalmente en los tres pilares del costo de manufactura, utilizando datos reales de 3 años para establecer una línea base operativa clarap
+                ul class=list-none space-y-2 text-left my-4 inline-block
+                    listrong class=text-[#0B3C5D]Materia Prima (MP)strong El costo de los insumos directos para producir cada m².li
+                    listrong class=text-[#0B3C5D]Mano de Obra Directa (MOD)strong El costo del personal directamente involucrado en la fabricación.li
+                    listrong class=text-[#0B3C5D]Costos Indirectos (CIF)strong Costos de fábrica no directamente ligados a una unidad, como supervisión o mantenimiento.li
+                ul
+                p class=font-bold text-red-700¿Por qué este enfoque y no un costeo 360°p
+                ul class=list-disc list-inside text-left space-y-2 mt-4 bg-gray-100 p-4 rounded-lg
+                    listrongPropósitostrong Evitar el ruido de gastos comerciales o financieros para fijar una línea base del margen de manufactura real por m².li
+                    listrongPrecisiónstrong Métodos contables como la absorción pueden distorsionar el costo unitario real cuando la producción y el mix de productos varían.li
+                    listrongDecisiones Clavestrong Con MP+MOD+CIF logramos atacar directamente las mermas, retrabajos y cuellos de botella del proceso productivo.li
+                ul
+                 p class=mt-4 font-semiboldEsta base operativa es el punto de partida. Sobre ella, el equipo financiero incorporará los gastos SG&A, depreciaciones y costos financieros para construir el P&L completo y definir la estrategia de precios.p
+            div
+        section
+        
+        section id=solucion class=mb-12
+            h2 class=text-3xl font-bold text-center mb-6La Solución Una Nueva Planta con Tecnología y Eficienciah2
+            p class=max-w-3xl mx-auto text-center mb-8 text-lgLa nueva planta integra innovación en materiales con un flujo Lean para crear un proceso de alta precisión. El objetivo es simple fabricar productos superiores, de forma más rápida y con menos desperdicio.p
+            div class=bg-white p-6 rounded-lg shadow-md
+                h3 class=text-2xl font-bold text-center mb-6Flujo Productivo de Alto Desempeñoh3
+                div class=flex flex-col mdflex-row items-stretch justify-center gap-4
+                    div class=flow-step1. Recepción MPdiv
+                    div class=flow-arrow hidden mdblock→div
+                    div class=flow-step2. Mezcla Única (UHPC)div
+                    div class=flow-arrow hidden mdblock→div
+                    div class=flow-step3. Moldeo de Precisióndiv
+                    div class=flow-arrow hidden mdblock→div
+                    div class=flow-step4. Curado Optimizadodiv
+                    div class=flow-arrow hidden mdblock→div
+                    div class=flow-step5. Acabado y QAdiv
+                    div class=flow-arrow hidden mdblock→div
+                    div class=flow-step6. Despachodiv
+                div
+                div class=grid grid-cols-1 mdgrid-cols-2 lggrid-cols-4 gap-6 mt-8 text-center
+                    div class=p-4 border-t-4 border-[#328CC1] rounded bg-gray-50
+                        div class=text-4xl mb-2🧪div
+                        h4 class=font-bold text-lgInnovación en Materialesh4
+                        pRecetas Single-Mix con Concreto de Ultra-Alto Desempeño (UHPC) y Metacaolín propio para piezas más ligeras y duraderas.p
+                    div
+                    div class=p-4 border-t-4 border-[#328CC1] rounded bg-gray-50
+                        div class=text-4xl mb-2✅div
+                        h4 class=font-bold text-lgCalidad de Precisiónh4
+                        pControl estricto de la relación aguacemento (wc) y slump-flow para garantizar la consistencia y un acabado perfecto.p
+                    div
+                    div class=p-4 border-t-4 border-[#328CC1] rounded bg-gray-50
+                        div class=text-4xl mb-2🔬div
+                        h4 class=font-bold text-lgCurado Optimizadoh4
+                        pProcesos de curado húmedo y térmico para maximizar la resistencia y minimizar la porosidad, asegurando la calidad a la vista.p
+                    div
+                    div class=p-4 border-t-4 border-[#328CC1] rounded bg-gray-50
+                        div class=text-4xl mb-2⚙️div
+                        h4 class=font-bold text-lgEficiencia Lean (SMED)h4
+                        pCambios de molde ultra-rápidos en productos Pareto para maximizar el tiempo productivo y la flexibilidad.p
+                    div
+                div
+            div
+        section
+
+        section id=proyeccion class=mb-12
+             h2 class=text-3xl font-bold text-center mb-6El Panorama Financiero Proyecciones con Costeo Realh2
+             p class=max-w-3xl mx-auto text-center mb-8 text-lgHemos modelado tres escenarios de producción utilizando los costos unitarios optimizados de 2025 (MP+MOD+CIF). Los resultados demuestran un modelo de negocio robusto y una rentabilidad sólida, con un margen proyectado de casi el strong47%strong.p
+            div class=grid grid-cols-1 lggrid-cols-5 gap-8
+                div class=lgcol-span-3 chart-container h-96 mdh-[50vh]
+                     canvas id=scenariosChartcanvas
+                div
+                div class=lgcol-span-2 bg-white p-6 rounded-lg shadow-md flex flex-col justify-center
+                    h3 class=text-2xl font-bold mb-4 text-centerTabla de Escenarios Mensualesh3
+                     div class=overflow-x-auto
+                        table class=w-full text-left
+                            thead
+                                tr class=border-b-2 border-[#0B3C5D]
+                                    th class=p-2 font-boldVolumenth
+                                    th class=p-2 font-bold text-rightMargen USDth
+                                    th class=p-2 font-bold text-rightMargen %th
+                                tr
+                            thead
+                            tbody
+                                tr class=border-b
+                                    td class=p-23.000 m²mestd
+                                    td class=p-2 text-right font-mono$38.880td
+                                    td class=p-2 text-right font-mono46,8%td
+                                tr
+                                tr class=border-b bg-blue-50
+                                    td class=p-2 font-bold5.000 m²mestd
+                                    td class=p-2 text-right font-bold font-mono$64.800td
+                                    td class=p-2 text-right font-bold font-mono46,8%td
+                                tr
+                                tr
+                                    td class=p-28.000 m²mestd
+                                    td class=p-2 text-right font-mono$103.680td
+                                    td class=p-2 text-right font-mono46,8%td
+                                tr
+                            tbody
+                        table
+                    div
+                    p class=text-sm mt-4 text-center text-gray-600Basado en Precio Neto $27,69m² y Costo Total $14,73m².p
+                div
+            div
+        section
+
+        section id=alianza class=text-center bg-[#0B3C5D] text-white p-8 rounded-lg shadow-xl
+            h2 class=text-3xl font-bold mb-4La Alianza Una Propuesta de Valor Conjuntah2
+            div class=grid grid-cols-1 mdgrid-cols-3 gap-6 items-center
+                div class=mdtext-right
+                    h3 class=text-2xl font-bold text-[#D9B310]APORTE DE ARTYCOh3
+                    p class=text-lgRecetas, moldes, cartera de clientes y un Pareto probado que acelera la curva de demanda.p
+                div
+                div class=text-5xl font-black+div
+                div
+                     h3 class=text-2xl font-bold text-[#328CC1] mdtext-leftAPORTE DEL SOCIOh3
+                     p class=text-lg mdtext-leftCapital para escalar la operación y una red comercial para ampliar el alcance de mercado.p
+                div
+            div
+            div class=mt-6 text-2xl font-bold bg-white text-[#1D2731] p-4 rounded-md inline-block
+                = Liderazgo del Mercado
+            div
+        section
+
+    main
+
+    footer class=text-center p-6 mt-8 bg-white text-sm text-gray-600
+        pARTYCO  Presentación Gerencial Infográfica  Octubre 2025p
+    footer
+
+    script
+        const brilliantBluesPalette = {
+            primary '#0B3C5D',
+            accent1 '#328CC1',
+            accent2 '#D9B310',
+            text '#1D2731',
+            lightGray '#E0E0E0'
+        };
+
+        const defaultTooltipCallback = {
+            plugins {
+                tooltip {
+                    callbacks {
+                        title function(tooltipItems) {
+                            const item = tooltipItems[0];
+                            let label = item.chart.data.labels[item.dataIndex];
+                            if (Array.isArray(label)) {
+                                return label.join(' ');
+                            }
+                            return label;
+                        }
+                    }
+                }
+            }
+        };
+        
+        const wrapLabel = (label) = {
+            const maxLength = 16;
+            if (typeof label !== 'string'  label.length = maxLength) {
+                return label;
+            }
+            const words = label.split(' ');
+            const lines = [];
+            let currentLine = '';
+            for (const word of words) {
+                if ((currentLine + word).length  maxLength) {
+                    lines.push(currentLine.trim());
+                    currentLine = '';
+                }
+                currentLine += word + ' ';
+            }
+            lines.push(currentLine.trim());
+            return lines.filter(line = line.length  0);
+        };
+
+        const annualTrendCtx = document.getElementById('annualTrendChart').getContext('2d');
+        new Chart(annualTrendCtx, {
+            type 'line',
+            data {
+                labels ['2023', '2024', '2025 (YTD)'],
+                datasets [{
+                    label 'Neto  m² (USD)',
+                    data [34.65, 31.54, 25.55],
+                    borderColor brilliantBluesPalette.primary,
+                    backgroundColor brilliantBluesPalette.primary + '33',
+                    yAxisID 'y',
+                    tension 0.1,
+                    fill true,
+                }, {
+                    label '% Descuento sLista',
+                    data [26.74, 30.06, 33.29],
+                    borderColor brilliantBluesPalette.accent2,
+                    backgroundColor brilliantBluesPalette.accent2 + '33',
+                    yAxisID 'y1',
+                    tension 0.1,
+                    fill true,
+                }]
+            },
+            options {
+                responsive true,
+                maintainAspectRatio false,
+                interaction {
+                    mode 'index',
+                    intersect false,
+                },
+                plugins {
+                     ...defaultTooltipCallback.plugins,
+                    title { display true, text 'Evolución Anual Precio Neto vs. Descuento' }
+                },
+                scales {
+                    y {
+                        type 'linear',
+                        display true,
+                        position 'left',
+                        title { display true, text 'USD  m²' },
+                        grid { drawOnChartArea false }
+                    },
+                    y1 {
+                        type 'linear',
+                        display true,
+                        position 'right',
+                        title { display true, text 'Porcentaje (%)' },
+                    }
+                }
+            }
+        });
+        
+        const mpCostCtx = document.getElementById('mpCostChart').getContext('2d');
+        const mpCostData = {
+            general [6.68, 6.83, 4.75],
+            sinSynus [6.31, 5.18, 4.73] 
+        };
+        const mpCostChart = new Chart(mpCostCtx, {
+            type 'bar',
+            data {
+                labels ['2023', '2024', '2025 (YTD)'],
+                datasets [{
+                    label 'Costo MP  m² (USD)',
+                    data mpCostData.general,
+                    backgroundColor [
+                        brilliantBluesPalette.accent1,
+                        brilliantBluesPalette.accent1,
+                        brilliantBluesPalette.primary
+                    ],
+                }]
+            },
+            options {
+                responsive true,
+                maintainAspectRatio false,
+                plugins {
+                    ...defaultTooltipCallback.plugins,
+                    legend { display false },
+                    title { display true, text 'Optimización del Costo de Materia Prima' }
+                },
+                scales {
+                    y {
+                        beginAtZero true,
+                        title { display true, text 'USD  m²' },
+                        ticks { callback value = `$${value.toFixed(2)}` }
+                    }
+                }
+            }
+        });
+
+        const btnGeneralMp = document.getElementById('btn-general-mp');
+        const btnSynusMp = document.getElementById('btn-synus-mp');
+        const mpAnalysisText = document.getElementById('mp-analysis-text');
+
+        btnGeneralMp.addEventListener('click', () = {
+            mpCostChart.data.datasets[0].data = mpCostData.general;
+            mpCostChart.data.datasets[0].backgroundColor = [brilliantBluesPalette.accent1, brilliantBluesPalette.accent1, brilliantBluesPalette.primary];
+            mpCostChart.update();
+            mpAnalysisText.textContent = 'La capacidad de Artyco para optimizar mezclas y compras ha reducido el costo de materia prima a su nivel más bajo en 2025 ($4,75m²). Esta gestión de costos eficiente es el pilar sobre el que se construirá la rentabilidad de la nueva planta.';
+            btnGeneralMp.classList.replace('inactive', 'active');
+            btnSynusMp.classList.replace('active', 'inactive');
+        });
+
+        btnSynusMp.addEventListener('click', () = {
+            mpCostChart.data.datasets[0].data = mpCostData.sinSynus;
+            mpCostChart.data.datasets[0].backgroundColor = [brilliantBluesPalette.accent1, brilliantBluesPalette.primary, brilliantBluesPalette.primary];
+            mpCostChart.update();
+            mpAnalysisText.innerHTML = 'Al excluir el Factor Synus, una línea de alto costo que distorsionó los promedios, se revela la verdadera historia una strongmejora de eficiencia continua y aceleradastrong. El costo real en 2024 ya era de $5,18m², y en 2025 la eficiencia es aún mayor, con un costo base de solo strong$4,73m²strong. Esto demuestra que la optimización ha sido constante y prepara el terreno para el éxito.';
+            btnSynusMp.classList.replace('inactive', 'active');
+            btnGeneralMp.classList.replace('active', 'inactive');
+        });
+
+        const finalCategoryData = {
+            '3D'           { '2023' 33025.01, '2024' 30061.57, '2025' 20545.11 },
+            'Bricks'       { '2023' 36836.59, '2024' 21652.10, '2025' 13793.21 },
+            'Concreto'     { '2023' 24291.84, '2024' 24797.06, '2025' 12893.85 },
+            'Deco'         { '2023' 10955.18, '2024' 28584.34, '2025' 6206.92 },
+            'Listones'     { '2023' 25851.58, '2024' 17928.87, '2025' 13346.10 },
+            'Madeyra'      { '2023' 15437.50, '2024' 3411.56,  '2025' 10814.09 },
+            'Mosaicos'     { '2023' 61708.34, '2024' 29318.89, '2025' 10509.28 },
+            'Piedras'      { '2023' 34720.04, '2024' 22809.61, '2025' 30470.37 },
+            'Piscinas'     { '2023' 62030.59, '2024' 35217.39, '2025' 12935.59 },
+            'Piso Vecchio' { '2023' 0,        '2024' 0,        '2025' 11827.30 },
+            'Coatings'     { '2023' 1143.25,  '2024' 3848.31,  '2025' 951.25 },
+            'Pisos'        { '2023' 3278.45,  '2024' 930.87,   '2025' 0 }
+        };
+        
+        const sortedFinalTopCategories = Object.keys(finalCategoryData).map(key = {
+            const total = (finalCategoryData[key]['2023']  0) + (finalCategoryData[key]['2024']  0) + (finalCategoryData[key]['2025']  0);
+            return { name key, total total };
+        }).sort((a, b) = b.total - a.total).slice(0, 12).map(c = c.name);
+
+
+        const consolidatedCategoryCtx = document.getElementById('consolidatedCategoryChart').getContext('2d');
+        new Chart(consolidatedCategoryCtx, {
+            type 'bar',
+            data {
+                labels sortedFinalTopCategories,
+                datasets [
+                    {
+                        label '2023',
+                        data sortedFinalTopCategories.map(cat = finalCategoryData[cat]['2023']  0),
+                        backgroundColor brilliantBluesPalette.accent2,
+                    },
+                    {
+                        label '2024',
+                        data sortedFinalTopCategories.map(cat = finalCategoryData[cat]['2024']  0),
+                        backgroundColor brilliantBluesPalette.accent1,
+                    },
+                    {
+                        label '2025',
+                        data sortedFinalTopCategories.map(cat = finalCategoryData[cat]['2025']  0),
+                        backgroundColor brilliantBluesPalette.primary,
+                    }
+                ]
+            },
+            options {
+                responsive true,
+                maintainAspectRatio false,
+                plugins {
+                    ...defaultTooltipCallback.plugins,
+                    title { display true, text 'Ventas Netas Consolidadas por Categoría (USD) - Top 12' }
+                },
+                scales {
+                    x { stacked true, ticks { font { size 10 } } },
+                    y { stacked true, ticks { callback value = `$${(value1000)}k` } }
+                }
+            }
+        });
+
+        const categoryMixCtx = document.getElementById('categoryMixChart').getContext('2d');
+        const categoryData2025 = [
+            { category 'Piedras', value 30470.37 },
+            { category '3D', value 20545.11 },
+            { category 'Bricks', value 13793.21 },
+            { category 'Listones', value 13346.10 },
+            { category 'Piscinas', value 12935.59 },
+            { category 'Concreto', value 12893.85 },
+            { category 'Pisos', value 11827.30 }, Piso Vecchio is now Pisos
+            { category 'Madeyra', value 10947.24 },
+            { category 'Mosaicos', value 18060.40 },
+            { category 'Deco', value 6206.92 },
+            { category 'Coatings', value 951.25 }
+        ].sort((a, b) = b.value - a.value);
+
+
+        new Chart(categoryMixCtx, {
+            type 'bar',
+            data {
+                labels categoryData2025.map(d = d.category),
+                datasets [{
+                    label 'Ventas Netas (USD)',
+                    data categoryData2025.map(d = d.value),
+                    backgroundColor [
+                        brilliantBluesPalette.primary, 
+                        brilliantBluesPalette.accent1, 
+                        brilliantBluesPalette.accent2, 
+                        '#5899AD', '#F5D042', '#3E6E8E', 
+                        '#A1C7D3', '#C4DDE9', '#87AAB8',
+                        '#F8E07C', '#6C8A9B', '#BBD3DE'
+                     ],
+                    borderColor '#ffffff',
+                    borderWidth 2
+                }]
+            },
+            options {
+                indexAxis 'y',
+                responsive true,
+                maintainAspectRatio false,
+                plugins {
+                     ...defaultTooltipCallback.plugins,
+                    legend { display false },
+                    title { display false }
+                },
+                 scales {
+                    x { ticks { callback value = `$${(value1000)}k` } }
+                }
+            }
+        });
+
+        const paretoCtx = document.getElementById('paretoChart').getContext('2d');
+        const paretoDatasets = {
+            sales [
+                { product 'Mosaico Oxyden Ocre Oxidado Multiformato', value 54892.42 }, { product 'Synus Blanco Grezzo 5 X 70 X 30', value 45746.44 }, { product 'Longbrick Ladrillo Ladrillo 4 X 60', value 39037.25 }, { product 'Apparente Concreto Apparente 50 X 100', value 35077.84 }, { product 'Inka Ocre Piedra Multiformato', value 24855.75 }, { product 'Prisma Blanco Paris 40 X 60', value 22768.86 }, { product 'Mosaico Blanco Etrusco Multiformato', value 17965.74 }, { product 'Borde Clasico 35 Atermica Crema 35 X 50', value 17316.62 }, { product 'Galeras Gris Piedra Multiformato', value 16429.73 }, { product 'Listones Arena Etrusco 10 X 50', value 15836.54 }, { product 'Apparente Concreto Apparente Multiformato', value 15781.30 }, { product 'Galeras Blanco Arenado Piedra Multiformato', value 14353.75 }, { product 'Borde Clasico 35 Terrazo Atermica Blanco 35 X 50', value 14279.37 }, { product 'Piso Crema Grezzo 50 X 50', value 13889.92 }, { product 'Scaleno Gris Claro Etrusco 50 X 100', value 12742.89 }, { product 'Urbanbrick Cenizo Ladrillo 5 X 25', value 10943.72 }, { product 'Madeyra Vecchia Canela Madera 20 X 100', value 10787.51 }, { product 'Pizarra Ladrillo Rombo 17 x 17 (30 Altura)', value 9906.63 }, { product 'Piso Terrazo Blanco 50 X 50', value 9600.41 }, { product 'Mosaico Gris Claro Etrusco Multiformato', value 9476.06 }, { product 'Mosaico Grafito Ignis 20 X 20', value 9049.73 }, { product 'Madeyra Vecchia Canela Madera Multiformato', value 8990.93 }, { product 'Galeras Arena Piedra Multiformato', value 8986.82 }, { product 'Piso Arena Grezzo 50 X 50', value 8527.61 }, { product 'Urbanbrick Gris Claro Ladrillo 5 X 25', value 7960.08 }, { product 'Scaleno Blanco Etrusco 50 X 100', value 7953.98 }, { product 'Scaleno Blanco Grezzo 50 X 100', value 6931.17 }, { product 'Listones Tierra Adobe 10 X 40', value 6075.36 }, { product 'Mosaico Arena Etrusco Multiformato', value 5999.59 }, { product 'Listones Gris Oscuro Ignis 10 X 50', value 5886.31 }, { product 'Liston Oxyden Oxidado 12 X 120', value 5844.94 }, { product 'Apparente Concreto Apparente 12 X 120', value 5415.74 }, { product 'Borde Plano Crema Grezzo 50X50', value 5254.05 }, { product 'Listones Blanco Etrusco 10 X 50', value 5220.25 }, { product 'Liston Oxyden Oxidado 5.5 X 60', value 4839.28 }, { product 'Apparente Concreto Apparente 8 X 75', value 4809.10 }, { product 'Inka Arena Piedra Multiformato', value 4722.35 }, { product 'Rejilla 14 Atermica Crema 14 X 50', value 4717.34 }, { product 'Urbanbrick Arena 5 X 25', value 4707.97 }, { product 'Tribu Gris Claro Grezzo 20 X 20', value 4577.34 }, { product 'Borde Plano Terrazo Atermica Blanco 50 X 50', value 4055.51 }, { product 'Gaira Ocre Piedra 10 X 50', value 4043.75 }
+            ],
+            volume [
+                { product 'Mosaico Oxyden Ocre Oxidado Multiformato', value 2042.06 }, { product 'Longbrick Ladrillo Ladrillo 4 X 60', value 1419.54 }, { product 'Apparente Concreto Apparente 50 X 100', value 1224.50 }, { product 'Inka Ocre Piedra Multiformato', value 1104.26 }, { product 'Synus Blanco Grezzo 5 X 70 X 30', value 888.58 }, { product 'Listones Arena Etrusco 10 X 50', value 680.60 }, { product 'Galeras Gris Piedra Multiformato', value 676.25 }, { product 'Galeras Blanco Arenado Piedra Multiformato', value 588.15 }, { product 'Prisma Blanco Paris 40 X 60', value 573.88 }, { product 'Mosaico Blanco Etrusco Multiformato', value 544.00 }, { product 'Apparente Concreto Apparente Multiformato', value 495.79 }, { product 'Urbanbrick Cenizo Ladrillo 5 X 25', value 465.10 }, { product 'Piso Crema Grezzo 50 X 50', value 455.45 }, { product 'Piso Terrazo Blanco 50 X 50', value 414.75 }, { product 'Pizarra Ladrillo Rombo 17 x 17 (30 Altura)', value 392.00 }, { product 'Urbanbrick Gris Claro Ladrillo 5 X 25', value 386.20 }, { product 'Madeyra Vecchia Canela Madera 20 X 100', value 380.10 }, { product 'Scaleno Gris Claro Etrusco 50 X 100', value 361.00 }, { product 'Mosaico Gris Claro Etrusco Multiformato', value 343.00 }, { product 'Mosaico Grafito Ignis 20 X 20', value 321.60 }, { product 'Piso Arena Grezzo 50 X 50', value 285.00 }, { product 'Listones Tierra Adobe 10 X 40', value 268.80 }, { product 'Madeyra Vecchia Canela Madera Multiformato', value 261.40 }, { product 'Listones Gris Oscuro Ignis 10 X 50', value 250.00 }, { product 'Scaleno Blanco Etrusco 50 X 100', value 239.50 }, { product 'Listones Blanco Etrusco 10 X 50', value 221.20 }, { product 'Inka Arena Piedra Multiformato', value 216.58 }, { product 'Borde Clasico 35 Atermica Crema 35 X 50', value 213.15 }, { product 'Galeras Arena Piedra Multiformato', value 205.81 }, { product 'Mosaico Arena Etrusco Multiformato', value 196.00 }, { product 'Borde Clasico 35 Terrazo Atermica Blanco 35 X 50', value 193.03 }, { product 'Scaleno Blanco Grezzo 50 X 100', value 191.00 }, { product 'Liston Oxyden Oxidado 12 X 120', value 178.13 }, { product 'Apparente Concreto Apparente 12 X 120', value 175.95 }, { product 'Andes Ocre Piedra', value 168.62 }, { product 'Apparente Concreto Apparente 8 X 75', value 161.11 }, { product 'Gaira Ocre Piedra 10 X 50', value 151.20 }, { product 'Listones Gris Claro Etrusco 10 X 50', value 149.20 }
+            ],
+            profit [
+                { product 'Mosaico Oxyden Ocre Oxidado Multiformato', value 48617.54 }, { product 'Longbrick Ladrillo Ladrillo 4 X 60', value 31762.90 }, { product 'Apparente Concreto Apparente 50 X 100', value 31591.09 }, { product 'Synus Blanco Grezzo 5 X 70 X 30', value 20473.48 }, { product 'Prisma Blanco Paris 40 X 60', value 19578.21 }, { product 'Inka Ocre Piedra Multiformato', value 18259.08 }, { product 'Mosaico Blanco Etrusco Multiformato', value 14951.21 }, { product 'Apparente Concreto Apparente Multiformato', value 14301.78 }, { product 'Borde Clasico 35 Atermica Crema 35 X 50', value 13805.53 }, { product 'Galeras Gris Piedra Multiformato', value 13641.31 }, { product 'Listones Arena Etrusco 10 X 50', value 12570.49 }, { product 'Borde Clasico 35 Terrazo Atermica Blanco 35 X 50', value 11659.15 }, { product 'Scaleno Gris Claro Etrusco 50 X 100', value 11286.83 }, { product 'Piso Crema Grezzo 50 X 50', value 11225.57 }, { product 'Galeras Blanco Arenado Piedra Multiformato', value 10917.74 }, { product 'Madeyra Vecchia Canela Madera 20 X 100', value 9266.79 }, { product 'Pizarra Ladrillo Rombo 17 x 17 (30 Altura)', value 8763.74 }, { product 'Mosaico Gris Claro Etrusco Multiformato', value 8462.06 }, { product 'Urbanbrick Cenizo Ladrillo 5 X 25', value 8082.63 }, { product 'Mosaico Grafito Ignis 20 X 20', value 8034.24 }, { product 'Madeyra Vecchia Canela Madera Multiformato', value 7866.07 }, { product 'Piso Arena Grezzo 50 X 50', value 6686.00 }, { product 'Galeras Arena Piedra Multiformato', value 6578.77 }, { product 'Urbanbrick Gris Claro Ladrillo 5 X 25', value 6507.46 }, { product 'Scaleno Blanco Etrusco 50 X 100', value 6103.09 }, { product 'Scaleno Blanco Grezzo 50 X 100', value 5403.98 }, { product 'Piso Terrazo Blanco 50 X 50', value 5312.74 }, { product 'Mosaico Arena Etrusco Multiformato', value 4927.26 }, { product 'Liston Oxyden Oxidado 12 X 120', value 4903.50 }, { product 'Apparente Concreto Apparente 12 X 120', value 4882.55 }, { product 'Listones Gris Oscuro Ignis 10 X 50', value 4796.51 }, { product 'Borde Plano Crema Grezzo 50X50', value 4653.34 }, { product 'Apparente Concreto Apparente 8 X 75', value 4415.40 }, { product 'Liston Oxyden Oxidado 5.5 X 60', value 4285.03 }, { product 'Rejilla 14 Atermica Crema 14 X 50', value 4239.76 }, { product 'Listones Tierra Adobe 10 X 40', value 3979.26 }, { product 'Listones Blanco Etrusco 10 X 50', value 3923.10 }, { product 'Urbanbrick Arena 5 X 25', value 3856.54 }, { product 'Tribu Gris Claro Grezzo 20 X 20', value 3822.65 }, { product 'Inka Arena Piedra Multiformato', value 3380.69 }, { product 'Borde Plano Terrazo Atermica Blanco 50 X 50', value 3309.70 }, { product 'Gaira Ocre Piedra 10 X 50', value 3287.96 }, { product 'Borde Clasico 35 Atermica Arena 35 X 50', value 3213.65 }
+            ]
+        };
+
+        const paretoChart = new Chart(document.getElementById('paretoChart').getContext('2d'), {
+            type 'bar',
+            data { labels [], datasets [{}, {}] },
+            options {
+                responsive true,
+                maintainAspectRatio false,
+                plugins { ...defaultTooltipCallback.plugins, legend { position 'top' }, title { display false } },
+                scales {
+                     x { ticks { font { size 9 } } },
+                     y { ticks { callback value = `$${(value1000)}k` } },
+                     y1 {
+                        type 'linear',
+                        display true,
+                        position 'right',
+                        title { display true, text '%' },
+                        min 0,
+                        max 100,
+                        grid { drawOnChartArea false }
+                    }
+                }
+            }
+        });
+        
+        const updateParetoChart = (type) = {
+            const data = paretoDatasets[type];
+            const total = data.reduce((sum, item) = sum + item.value, 0);
+            let cumulative = 0;
+            const cumulativePercentage = data.map(d = {
+                cumulative += d.value;
+                return (cumulative  total)  100;
+            });
+            
+            paretoChart.data.labels = data.map(d = wrapLabel(d.product));
+            paretoChart.data.datasets[0] = {
+                label type === 'sales'  'Ventas Netas (USD)'  type === 'volume'  'Volumen (m²)'  'Rentabilidad (USD)',
+                data data.map(d = d.value),
+                backgroundColor brilliantBluesPalette.primary,
+            };
+            paretoChart.data.datasets[1] = {
+                type 'line',
+                label '% Acumulado',
+                data cumulativePercentage,
+                borderColor brilliantBluesPalette.accent2,
+                backgroundColor brilliantBluesPalette.accent2 + '33',
+                yAxisID 'y1',
+                fill true,
+            };
+
+            const yAxis = paretoChart.options.scales.y;
+            if (type === 'volume') {
+                yAxis.ticks.callback = value = `${value.toLocaleString('es-ES')} m²`;
+            } else {
+                yAxis.ticks.callback = value = `$${(value1000).toFixed(0)}k`;
+            }
+
+            paretoChart.update();
+        };
+
+        const btnParetoSales = document.getElementById('btn-pareto-sales');
+        const btnParetoVolume = document.getElementById('btn-pareto-volume');
+        const btnParetoProfit = document.getElementById('btn-pareto-profit');
+        const paretoAnalysisText = document.getElementById('pareto-analysis-text');
+
+        btnParetoSales.addEventListener('click', () = {
+            updateParetoChart('sales');
+            paretoAnalysisText.innerHTML = 'Un número reducido de productos estrella impulsa la mayor parte del negocio. El análisis completo por strongventasstrong demuestra que el 81% de los ingresos se concentra en los 42 productos mostrados. De forma aún más específica, el Top 10 genera el 42,5% de los ingresos y el Top 20 casi el 58%. Esto guía nuestras decisiones para priorizar los moldes golden.';
+            btnParetoSales.classList.replace('inactive', 'active');
+            btnParetoVolume.classList.replace('active', 'inactive');
+            btnParetoProfit.classList.replace('active', 'inactive');
+        });
+        btnParetoVolume.addEventListener('click', () = {
+            updateParetoChart('volume');
+            paretoAnalysisText.innerHTML = 'El análisis por strongvolumenstrong muestra qué productos ocupan más capacidad productiva. Es clave cruzar esta información con la rentabilidad para asegurar que nuestros productos de mayor volumen sean también rentables. El Top 10 por m² representa el 44% del volumen total, y el Top 20 casi el 60%.';
+            btnParetoSales.classList.replace('active', 'inactive');
+            btnParetoVolume.classList.replace('inactive', 'active');
+            btnParetoProfit.classList.replace('active', 'inactive');
+        });
+        btnParetoProfit.addEventListener('click', () = {
+            updateParetoChart('profit');
+             paretoAnalysisText.innerHTML = 'El análisis por strongrentabilidadstrong es el más importante, ya que revela qué productos generan más margen. Aquí vemos que el Top 10 por rentabilidad concentra el 40% del margen total, y el Top 20 casi el 60%. Enfocar nuestros esfuerzos en estos productos es clave para maximizar la ganancia.';
+            btnParetoSales.classList.replace('active', 'inactive');
+            btnParetoVolume.classList.replace('active', 'inactive');
+            btnParetoProfit.classList.replace('inactive', 'active');
+        });
+        
+        updateParetoChart('sales');
+
+
+       const profitabilityData = {
+            '2023' [
+                { category 'Huellas', value 55.58 }, { category 'Decks', value 36.72 }, { category 'Terrazo', value 33.54 }, { category '3D', value 32.52 }, { category 'Coating', value 43.51 }, { category 'Pisos', value 35.30 }, { category 'Concreto', value 29.83 }, { category 'Madeyra', value 31.58 }, { category 'Bricks', value 23.93 }, { category 'Mosaicos', value 25.01 }, { category 'Aligerados', value 20.08 }, { category 'Listones', value 18.25 }, { category 'Piscinas', value 43.10 }, { category 'Piedras', value 17.41 },
+            ],
+            '2024' [
+                { category 'Pisos', value 31.20 }, { category 'Decks', value 30.51 }, { category '3D', value 29.23 }, { category 'Coating', value 27.16 }, { category 'Concreto', value 27.06 }, { category 'Madeyra', value 22.58 }, { category 'Mosaicos', value 24.75 }, { category 'Listones', value 19.82 }, { category 'Bricks', value 20.30 }, { category 'Piedras', value 21.47 }, { category 'Piscinas', value 32.80 }, { category 'Deco', value 26.47 }, { category 'Blocks', value 24.09 },
+            ],
+            '2025' [
+                { category 'Piso Vecchio', value 22.00 }, { category 'Decks', value 28.11 }, { category '3D', value 27.55 }, { category 'Coating', value 31.05 }, { category 'Concreto', value 22.21 }, { category 'Madeyra', value 23.38 }, { category 'Mosaicos', value 23.31 }, { category 'Listones', value 22.13 }, { category 'Bricks', value 15.49 }, { category 'Piedras', value 19.75 }, { category 'Piscinas', value 36.96 }, { category 'Deco', value 30.99 },
+            ]
+        };
+
+        const profitabilityCtx = document.getElementById('profitabilityChart').getContext('2d');
+        const profitabilityChart = new Chart(profitabilityCtx, {
+            type 'bar',
+            data {
+                labels [],
+                datasets [{
+                    label 'Margen sobre MP (USD  m²)',
+                    data [],
+                    backgroundColor brilliantBluesPalette.primary,
+                }]
+            },
+            options {
+                indexAxis 'y',
+                responsive true,
+                maintainAspectRatio false,
+                plugins {
+                    ...defaultTooltipCallback.plugins,
+                    legend { display false },
+                    title { display true, text 'Ranking de Rentabilidad 2023' }
+                },
+                scales {
+                    x { 
+                        ticks { callback value = `$${value.toFixed(2)}` },
+                        title { display true, text 'Margen sobre MP por m² (USD)'}
+                    }
+                }
+            }
+        });
+        
+        const updateProfitabilityChart = (year) = {
+            const data = profitabilityData[year].sort((a,b) = b.value - a.value);
+            profitabilityChart.data.labels = data.map(d = d.category);
+            profitabilityChart.data.datasets[0].data = data.map(d = d.value);
+            profitabilityChart.options.plugins.title.text = `Ranking de Rentabilidad ${year}`;
+            profitabilityChart.update();
+        };
+
+        const btnProfit2023 = document.getElementById('btn-profit-2023');
+        const btnProfit2024 = document.getElementById('btn-profit-2024');
+        const btnProfit2025 = document.getElementById('btn-profit-2025');
+
+        btnProfit2023.addEventListener('click', () = {
+            updateProfitabilityChart('2023');
+            btnProfit2023.classList.replace('inactive', 'active');
+            btnProfit2024.classList.replace('active', 'inactive');
+            btnProfit2025.classList.replace('active', 'inactive');
+        });
+        btnProfit2024.addEventListener('click', () = {
+            updateProfitabilityChart('2024');
+            btnProfit2023.classList.replace('active', 'inactive');
+            btnProfit2024.classList.replace('inactive', 'active');
+            btnProfit2025.classList.replace('active', 'inactive');
+        });
+        btnProfit2025.addEventListener('click', () = {
+            updateProfitabilityChart('2025');
+            btnProfit2023.classList.replace('active', 'inactive');
+            btnProfit2024.classList.replace('active', 'inactive');
+            btnProfit2025.classList.replace('inactive', 'active');
+        });
+
+        updateProfitabilityChart('2023');
+
+
+        const efficiencyCtx = document.getElementById('efficiencyChart').getContext('2d');
+        const efficiencyData = {
+             '2023' { mp 6.68, mod 12.17, cif 4.08 },
+             '2024' { mp 6.83, mod 11.71, cif 5.21 },
+             '2025' { mp 4.75, mod 5.88, cif 2.96 },
+        };
+        
+        const labels = Object.keys(efficiencyData);
+        
+        new Chart(efficiencyCtx, {
+            type 'bar',
+            data {
+                labels labels,
+                datasets [
+                     {
+                        label 'MP  m²',
+                        data labels.map(year = efficiencyData[year].mp),
+                        backgroundColor brilliantBluesPalette.primary,
+                    },
+                    {
+                        label 'MOD  m²',
+                        data labels.map(year = efficiencyData[year].mod),
+                        backgroundColor brilliantBluesPalette.accent1,
+                    },
+                    {
+                        label 'CIF Manufactura  m²',
+                        data [efficiencyData['2023'].cif, efficiencyData['2024'].cif  0.8, efficiencyData['2025'].cif  0.8],
+                        backgroundColor brilliantBluesPalette.accent2,
+                    },
+                    {
+                        label 'CIF Comercial (Inversión)  m²',
+                        data [0, efficiencyData['2024'].cif  0.2, efficiencyData['2025'].cif  0.2],
+                        backgroundColor '#F5D042',
+                    }
+                ]
+            },
+            options {
+                responsive true,
+                maintainAspectRatio false,
+                plugins {
+                    ...defaultTooltipCallback.plugins,
+                    legend { position 'top' },
+                    title { display true, text 'Evolución de Costos Operativos por m²' }
+                },
+                scales {
+                    x { stacked true, grid { display false } },
+                    y { 
+                        stacked true,
+                        title { display true, text 'USD  m²' },
+                        ticks { callback value = `$${value.toFixed(2)}` }
+                    }
+                }
+            }
+        });
+        
+        const scenariosCtx = document.getElementById('scenariosChart').getContext('2d');
+        new Chart(scenariosCtx, {
+            type 'bar',
+            data {
+                labels ['3.000 m²mes', '5.000 m²mes', '8.000 m²mes'],
+                datasets [
+                    {
+                        label 'Costo Total (USD)',
+                        data [44190, 73650, 117840],
+                        backgroundColor brilliantBluesPalette.accent1,
+                    },
+                    {
+                        label 'Margen Neto (USD)',
+                        data [38880, 64800, 103680],
+                        backgroundColor brilliantBluesPalette.primary,
+                    }
+                ]
+            },
+            options {
+                responsive true,
+                maintainAspectRatio false,
+                plugins {
+                    ...defaultTooltipCallback.plugins,
+                    title { display true, text 'Proyección Mensual Margen vs. Costo' }
+                },
+                scales {
+                    x { stacked true },
+                    y { stacked true, ticks { callback value = `$${(value1000)}k` } }
+                }
+            }
+        });
+
+    script
+body
+html
+

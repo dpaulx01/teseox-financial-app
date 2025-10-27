@@ -415,6 +415,7 @@ export default function SalesBIDashboard() {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.1 }}
+        className="relative z-20"
       >
         <Card className="glass-panel border border-border/60 bg-dark-card/75 shadow-hologram">
           <Flex justifyContent="between" alignItems="start" className="mb-6 gap-4">
