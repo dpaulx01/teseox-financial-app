@@ -116,6 +116,25 @@ class FinancialAPIService {
   // FINANCIAL TOOLS ENDPOINTS
   // ===============================
 
+  async uploadSalesCSV(file: File): Promise<{
+    success: boolean;
+    message: string;
+    total_uploaded: number;
+    errors_count: number;
+    errors?: string[];
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await this.api.post('/api/sales-bi/upload/csv', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    return response.data;
+  }
+
   async analyzePortfolio(investments: any[], analysisType: string = 'return'): Promise<PortfolioAnalysis> {
     const response: AxiosResponse<ApiResponse<PortfolioAnalysis>> = await this.api.post(
       '/api/portfolio/analyze',
@@ -346,6 +365,26 @@ class FinancialAPIService {
   ): Promise<StockPlanningConfirmResponse> {
     const response = await this.api.post('/api/production/stock-planning/confirm', payload);
     return response.data as StockPlanningConfirmResponse;
+  }
+
+  // ===============================
+  // GENERIC HTTP METHODS
+  // ===============================
+
+  async get(url: string, config?: any): Promise<AxiosResponse> {
+    return this.api.get(url, config);
+  }
+
+  async post(url: string, data?: any, config?: any): Promise<AxiosResponse> {
+    return this.api.post(url, data, config);
+  }
+
+  async put(url: string, data?: any, config?: any): Promise<AxiosResponse> {
+    return this.api.put(url, data, config);
+  }
+
+  async delete(url: string, config?: any): Promise<AxiosResponse> {
+    return this.api.delete(url, config);
   }
 
   // Mock data generator for development

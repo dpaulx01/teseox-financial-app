@@ -1,0 +1,171 @@
+================================================================================
+UBICACIÓN DE DOCUMENTOS - ANÁLISIS DEL MÓDULO BREAKEVEN
+================================================================================
+
+Ruta Base del Proyecto:
+/mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/
+
+================================================================================
+DOCUMENTACIÓN GENERADA
+================================================================================
+
+1. INDICE_ANALISIS_BREAKEVEN.md
+   Ruta: /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/INDICE_ANALISIS_BREAKEVEN.md
+   Tamaño: 7.6 KB
+   Propósito: Índice y referencia rápida de todos los documentos
+   Lectura: 5 minutos
+
+2. RESUMEN_EJECUTIVO_BREAKEVEN.md
+   Ruta: /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/RESUMEN_EJECUTIVO_BREAKEVEN.md
+   Tamaño: 6.6 KB
+   Propósito: Resumen para decisores y stakeholders
+   Lectura: 5-10 minutos
+
+3. REPORTE_ANALISIS_BREAKEVEN.md
+   Ruta: /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/REPORTE_ANALISIS_BREAKEVEN.md
+   Tamaño: 11 KB
+   Propósito: Análisis detallado para desarrolladores
+   Lectura: 15-20 minutos
+
+4. FRAGMENTOS_CODIGO_CLAVE.md
+   Ruta: /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/FRAGMENTOS_CODIGO_CLAVE.md
+   Tamaño: 13 KB
+   Propósito: Fragmentos de código comentados para programadores
+   Lectura: 10-15 minutos
+
+================================================================================
+ARCHIVOS DE CÓDIGO ANALIZADOS
+================================================================================
+
+ARCHIVOS PRINCIPALES (5):
+
+1. src/pages/BreakEvenAnalysis.tsx
+   Ruta: /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/src/pages/BreakEvenAnalysis.tsx
+   Líneas: 2,200+
+   Descripción: Componente principal con UI y estados
+
+2. src/utils/multiLevelBreakEven.ts
+   Ruta: /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/src/utils/multiLevelBreakEven.ts
+   Líneas: 560
+   Descripción: Lógica de cálculo core (CRÍTICO)
+
+3. src/constants/breakEvenConfig.ts
+   Ruta: /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/src/constants/breakEvenConfig.ts
+   Líneas: 91
+   Descripción: Configuración de análisis
+
+4. src/components/breakeven/BreakEvenWithInsights.tsx
+   Ruta: /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/src/components/breakeven/BreakEvenWithInsights.tsx
+   Descripción: Wrapper con insights inteligentes
+
+5. src/utils/multiProductBreakEven.ts
+   Ruta: /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/src/utils/multiProductBreakEven.ts
+   Descripción: Análisis multi-producto
+
+COMPONENTES RELACIONADOS (8):
+
+- src/components/breakeven/AccountClassificationPanel.tsx
+- src/components/breakeven/AnalysisTypeSelector.tsx
+- src/components/breakeven/MixedCostPanel.tsx
+- src/components/breakeven/ProductMixPanel.tsx
+- src/components/breakeven/StatisticalAnalysis.tsx
+- src/contexts/MixedCostContext.ts
+- src/utils/statisticalAnalysis.ts
+- src/utils/pnlInsights.ts
+
+================================================================================
+PUNTOS CLAVE DE CÓDIGO
+================================================================================
+
+LÍNEAS CRÍTICAS A REVISAR:
+
+BreakEvenAnalysis.tsx:
+  36-118     → SliderControl (componente visual)
+  236-264    → Estados principales de simulación
+  771-805    → Ejecución de simulación (useMemo)
+  1945-1991  → Sliders de control UI
+  1305-1449  → Panel "Simulación Activa"
+
+multiLevelBreakEven.ts:
+  23-55      → calculateMultiLevelBreakEven() [FUNCIÓN PRINCIPAL]
+  357-411    → calculateBreakEvenLevel()
+  450-558    → simulateBreakEvenLevel() [FUNCIÓN SIMULACIÓN]
+  485-512    → Versión simple de simulación
+  522-550    → Versión Monte Carlo
+
+================================================================================
+BASE DE DATOS
+================================================================================
+
+Tabla Principal: financial_data_2025
+Ubicación: MySQL (configuración en src/services/api.ts)
+Período: 6 meses (enero-junio 2025)
+P.E. Actual: $74,742 (Análisis Contable)
+
+Migraciones:
+  /database/migrations/20250217_align_production_metrics.sql
+  /database/migrations/20251021_add_stock_support.sql
+  /database/migrations/20251022_add_en_bodega_status.sql
+
+================================================================================
+COMANDOS PARA ACCEDER A LOS DOCUMENTOS
+================================================================================
+
+Desde Terminal:
+
+# Ver el índice
+cat /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/INDICE_ANALISIS_BREAKEVEN.md
+
+# Ver resumen ejecutivo
+cat /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/RESUMEN_EJECUTIVO_BREAKEVEN.md
+
+# Ver reporte completo
+cat /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/REPORTE_ANALISIS_BREAKEVEN.md
+
+# Ver fragmentos de código
+cat /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/FRAGMENTOS_CODIGO_CLAVE.md
+
+# Contar archivos generados
+ls -lh /mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac/*.md | grep -E "(ANALISIS|FRAGMENTOS|RESUMEN|INDICE)"
+
+================================================================================
+RESUMEN DE HALLAZGOS
+================================================================================
+
+CONCLUSIÓN: Módulo OPERATIVO Y CORRECTO
+
+La lógica de simulación del Punto de Equilibrio funciona correctamente:
+
+✓ Ajustes de precios:        Se aplican como porcentaje (multiplicativo)
+✓ Ajustes de costos fijos:   Se suman directamente en pesos
+✓ Ajustes de costos variables: Se aplican como porcentaje a la tasa
+
+NO HAY ERRORES EN LA IMPLEMENTACIÓN
+
+Puntos fuertes:
+- Cálculo multinivel (3 tipos de análisis)
+- Sistema flexible de clasificación
+- Soporte para costos mixtos
+- Análisis CVU completo
+- Simulación estocástica
+
+Oportunidades de mejora:
+- Validaciones en extremos
+- Tooltips mejorados
+- Indicadores de sensibilidad
+- Exportación de escenarios
+
+================================================================================
+PARA MÁS INFORMACIÓN
+================================================================================
+
+Comienza por: INDICE_ANALISIS_BREAKEVEN.md
+Luego consulta: RESUMEN_EJECUTIVO_BREAKEVEN.md
+Profundiza en: REPORTE_ANALISIS_BREAKEVEN.md
+Implementa con: FRAGMENTOS_CODIGO_CLAVE.md
+
+Tiempo estimado de lectura completa: 35-50 minutos
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================

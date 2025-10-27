@@ -1,189 +1,238 @@
 import { ProductionData, OperationalMetrics, ProductionConfig, CombinedData } from '../types';
-import { formatCurrency } from './formatters';
 import { log } from './logger';
 
-// Claves para localStorage
-const PRODUCTION_DATA_KEY = 'artyco-production-data';
-const PRODUCTION_CONFIG_KEY = 'artyco-production-config';
-const COMBINED_DATA_KEY = 'artyco-combined-data';
-const API_BASE = 'http://localhost:8001/api/financial';
+const API_BASE = 'http://localhost:8001/api/production';
 
-// === SISTEMA HÍBRIDO: API MySQL primero, localStorage como fallback ===
+const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-// Helper function to convert month names to numbers
 const getMonthNumber = (monthName: string): number => {
-  const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-  const index = months.indexOf(monthName);
+  const index = MONTHS.indexOf(monthName);
   return index >= 0 ? index + 1 : 1;
 };
 
-export const saveProductionData = async (data: ProductionData[], year?: number): Promise<void> => {
-  try {
-    const selectedYear = year || new Date().getFullYear();
-    
-    // 1. Intentar guardar en MySQL via API RBAC
-    try {
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        // Guardar cada registro individualmente usando la nueva API
-        for (const record of data) {
-          const productionRecord = {
-            year: selectedYear,
-            month: getMonthNumber(record.month),
-            metros_producidos: record.metrosProducidos,
-            metros_vendidos: record.metrosVendidos,
-            unidades_producidas: 0,
-            unidades_vendidas: 0
-          };
+const getMonthName = (monthNumber: number): string => MONTHS[monthNumber - 1] || 'Enero';
 
-          const response = await fetch(`${API_BASE}/production`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(productionRecord)
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-        }
-
-        log.debug('ProductionStorage', 'Production data saved to MySQL RBAC:', data.length, 'records');
-        // También guardar en localStorage como cache
-        localStorage.setItem(PRODUCTION_DATA_KEY, JSON.stringify(data));
-        return;
-      }
-    } catch (apiError) {
-      log.warn('ProductionStorage', 'API error, saving to localStorage only:', apiError);
-    }
-    
-    // 2. Fallback: Guardar solo en localStorage
-    localStorage.setItem(PRODUCTION_DATA_KEY, JSON.stringify(data));
-    log.debug('ProductionStorage', 'Production data saved to localStorage:', data.length, 'records');
-  } catch (error) {
-    log.error('ProductionStorage', 'Error saving production data:', error);
+const authHeaders = () => {
+  const token = localStorage.getItem('access_token');
+  if (!token) {
+    throw new Error('No authentication token found');
   }
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  };
 };
 
-// Helper function to convert month numbers to names
-const getMonthName = (monthNumber: number): string => {
-  const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-  return months[monthNumber - 1] || 'Enero';
+export const saveProductionData = async (data: ProductionData[], year?: number): Promise<void> => {
+  const selectedYear = year || new Date().getFullYear();
+  const response = await fetch(`${API_BASE}/data`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      year: selectedYear,
+      replaceExisting: true,
+      records: data.map(record => ({
+        month: record.month,
+        metrosProducidos: record.metrosProducidos,
+        metrosVendidos: record.metrosVendidos,
+        unidadesProducidas: record.unidadesProducidas ?? 0,
+        unidadesVendidas: record.unidadesVendidas ?? 0,
+        capacidadInstalada: record.capacidadInstalada ?? 0
+      }))
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`No se pudo guardar datos de producción: ${response.statusText}`);
+  }
+
+  log.debug('ProductionStorage', 'Production data saved to API:', data.length, 'records');
 };
 
 export const loadProductionData = async (year?: number): Promise<ProductionData[]> => {
-  try {
-    // 1. Intentar cargar desde MySQL via API RBAC
-    try {
-      const selectedYear = year || new Date().getFullYear();
-      const token = localStorage.getItem('access_token');
-      
-      if (token) {
-        const response = await fetch(`${API_BASE}/production?year=${selectedYear}`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          if (result && result.monthly) {
-            // Convertir formato de API a formato interno
-            const productionData: ProductionData[] = [];
-            for (const [monthKey, monthData] of Object.entries(result.monthly)) {
-              const [yearStr, monthStr] = monthKey.split('-');
-              const monthNumber = parseInt(monthStr, 10);
-              const data = monthData as any;
-              
-              productionData.push({
-                month: getMonthName(monthNumber),
-                metrosProducidos: data.metros_producidos || 0,
-                metrosVendidos: data.metros_vendidos || 0,
-                fechaRegistro: new Date().toISOString()
-              });
-            }
-            
-            log.debug('ProductionStorage', 'Production data loaded from RBAC API:', productionData.length, 'records');
-            // También guardar en localStorage como cache
-            localStorage.setItem(PRODUCTION_DATA_KEY, JSON.stringify(productionData));
-            return productionData;
-          }
-        }
-      }
-    } catch (apiError) {
-      log.warn('ProductionStorage', 'API error, falling back to localStorage:', apiError);
-    }
-    
-    // 2. Fallback a localStorage
-    const stored = localStorage.getItem(PRODUCTION_DATA_KEY);
-    if (stored) {
-      const data = JSON.parse(stored);
-      log.debug('ProductionStorage', 'Production data loaded from localStorage:', data.length, 'records');
-      return data;
-    }
-  } catch (error) {
-    log.error('ProductionStorage', 'Error loading production data:', error);
+  const selectedYear = year || new Date().getFullYear();
+  const response = await fetch(`${API_BASE}/data?year=${selectedYear}`, {
+    method: 'GET',
+    headers: authHeaders()
+  });
+
+  if (!response.ok) {
+    throw new Error(`No se pudo cargar datos de producción: ${response.statusText}`);
   }
-  return [];
+
+  const result = await response.json();
+  if (!result.success) {
+    return [];
+  }
+
+  const productionData: ProductionData[] = (result.data || []).map((item: any) => ({
+    month: item.month || getMonthName(item.monthNumber || 1),
+    metrosProducidos: item.metrosProducidos || 0,
+    metrosVendidos: item.metrosVendidos || 0,
+    unidadesProducidas: item.unidadesProducidas || 0,
+    unidadesVendidas: item.unidadesVendidas || 0,
+    capacidadInstalada: item.capacidadInstalada || 0,
+    fechaRegistro: new Date().toISOString()
+  }));
+
+  log.debug('ProductionStorage', 'Production data loaded from API:', productionData.length, 'records');
+  return productionData;
 };
 
-export const saveProductionConfig = async (config: ProductionConfig): Promise<void> => {
-  try {
-    // Por ahora guardamos solo en localStorage hasta implementar endpoint específico
-    localStorage.setItem(PRODUCTION_CONFIG_KEY, JSON.stringify(config));
-    log.debug('ProductionStorage', 'Production config saved to localStorage');
-  } catch (error) {
-    log.error('ProductionStorage', 'Error saving production config:', error);
+export const deleteProductionData = async (year?: number): Promise<void> => {
+  const selectedYear = year || new Date().getFullYear();
+  const response = await fetch(`${API_BASE}/data?year=${selectedYear}`, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  if (!response.ok) {
+    throw new Error(`No se pudo eliminar datos de producción: ${response.statusText}`);
   }
 };
 
-export const loadProductionConfig = async (): Promise<ProductionConfig | null> => {
-  try {
-    // Por ahora usamos localStorage hasta implementar endpoint específico para config
-    const stored = localStorage.getItem(PRODUCTION_CONFIG_KEY);
-    if (stored) {
-      const config = JSON.parse(stored);
-      log.debug('ProductionStorage', 'Production config loaded from localStorage');
-      return config;
-    }
-    
-    log.debug('ProductionStorage', 'No production config found');
-    return null;
-  } catch (error) {
-    log.error('ProductionStorage', 'Error loading production config:', error);
+export const saveProductionConfig = async (config: ProductionConfig, year?: number): Promise<void> => {
+  const selectedYear = year || new Date().getFullYear();
+  const response = await fetch(`${API_BASE}/config`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      year: selectedYear,
+      capacidadMaximaMensual: config.capacidadMaximaMensual,
+      costoFijoProduccion: config.costoFijoProduccion,
+      metaPrecioPromedio: config.metaPrecioPromedio,
+      metaMargenMinimo: config.metaMargenMinimo
+    })
+  });
+  if (!response.ok) {
+    throw new Error(`No se pudo guardar la configuración: ${response.statusText}`);
+  }
+};
+
+export const loadProductionConfig = async (year?: number): Promise<ProductionConfig | null> => {
+  const selectedYear = year || new Date().getFullYear();
+  const response = await fetch(`${API_BASE}/config?year=${selectedYear}`, {
+    method: 'GET',
+    headers: authHeaders()
+  });
+
+  if (!response.ok) {
+    throw new Error(`No se pudo cargar la configuración: ${response.statusText}`);
+  }
+
+  const result = await response.json();
+  if (!result.success || !result.data) {
     return null;
   }
+
+  return {
+    capacidadMaximaMensual: result.data.capacidadMaximaMensual || 0,
+    costoFijoProduccion: result.data.costoFijoProduccion || 0,
+    metaPrecioPromedio: result.data.metaPrecioPromedio || 0,
+    metaMargenMinimo: result.data.metaMargenMinimo || 0
+  };
 };
 
-export const saveCombinedData = (data: CombinedData): void => {
-  try {
-    const dataToSave = {
+export const deleteProductionConfig = async (year?: number): Promise<void> => {
+  const selectedYear = year || new Date().getFullYear();
+  const response = await fetch(`${API_BASE}/config?year=${selectedYear}`, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  if (!response.ok) {
+    throw new Error(`No se pudo eliminar la configuración: ${response.statusText}`);
+  }
+};
+
+export const saveCombinedData = async (data: CombinedData, year?: number): Promise<void> => {
+  const selectedYear = year || new Date().getFullYear();
+  const payload = {
+    year: selectedYear,
+    data: {
       ...data,
       lastUpdated: new Date().toISOString()
-    };
-    localStorage.setItem(COMBINED_DATA_KEY, JSON.stringify(dataToSave));
-    // console.log('✅ Datos combinados guardados');
-  } catch (error) {
-    // console.error('❌ Error guardando datos combinados:', error);
+    }
+  };
+
+  const response = await fetch(`${API_BASE}/combined`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error(`No se pudo guardar datos combinados: ${response.statusText}`);
   }
 };
 
-export const loadCombinedData = (): CombinedData | null => {
-  try {
-    const stored = localStorage.getItem(COMBINED_DATA_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (error) {
-    // console.error('❌ Error cargando datos combinados:', error);
+export const loadCombinedData = async (year?: number): Promise<CombinedData | null> => {
+  const selectedYear = year || new Date().getFullYear();
+  const response = await fetch(`${API_BASE}/combined?year=${selectedYear}`, {
+    method: 'GET',
+    headers: authHeaders()
+  });
+
+  if (!response.ok) {
+    throw new Error(`No se pudo cargar datos combinados: ${response.statusText}`);
   }
-  return null;
+
+  const result = await response.json();
+  if (!result.success || !result.data) {
+    return null;
+  }
+
+  return {
+    ...result.data,
+    lastUpdated: result.lastUpdated || new Date().toISOString()
+  } as CombinedData;
+};
+
+export const deleteCombinedData = async (year?: number): Promise<void> => {
+  const selectedYear = year || new Date().getFullYear();
+  const response = await fetch(`${API_BASE}/combined?year=${selectedYear}`, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  if (!response.ok) {
+    throw new Error(`No se pudo eliminar datos combinados: ${response.statusText}`);
+  }
+};
+
+export const getStorageSummary = async (year?: number): Promise<{
+  hasProductionData: boolean;
+  hasConfig: boolean;
+  hasCombinedData: boolean;
+  lastUpdated: string | null;
+  totalRecords: number;
+}> => {
+  const selectedYear = year || new Date().getFullYear();
+  const response = await fetch(`${API_BASE}/summary?year=${selectedYear}`, {
+    method: 'GET',
+    headers: authHeaders()
+  });
+
+  if (!response.ok) {
+    throw new Error(`No se pudo obtener el resumen de producción: ${response.statusText}`);
+  }
+
+  const result = await response.json();
+  if (!result.success || !result.data) {
+    return {
+      hasProductionData: false,
+      hasConfig: false,
+      hasCombinedData: false,
+      lastUpdated: null,
+      totalRecords: 0
+    };
+  }
+
+  return {
+    hasProductionData: !!result.data.hasProductionData,
+    hasConfig: !!result.data.hasConfig,
+    hasCombinedData: !!result.data.hasCombinedData,
+    lastUpdated: result.data.lastUpdated || null,
+    totalRecords: result.data.records || 0
+  };
 };
 
 // === FUNCIONES DE CÁLCULO ===
@@ -195,9 +244,8 @@ export const calculateOperationalMetrics = (
 ): OperationalMetrics[] => {
   return production.map(prod => {
     const monthFinancial = financial.monthly[prod.month];
-    
+
     if (!monthFinancial) {
-      // console.warn(`⚠️ No hay datos financieros para ${prod.month}`);
       return {
         month: prod.month,
         costoProduccionPorMetro: 0,
@@ -209,31 +257,21 @@ export const calculateOperationalMetrics = (
       };
     }
 
-    // Calcular métricas operativas
-    // Calcular métricas operativas
-    // Calcular métricas operativas
-    // Calcular métricas operativas
-    // console.log(`[productionStorage] Calculating operational metrics for month: ${prod.month}`);
-    // console.log(`[productionStorage] Metros Producidos: ${prod.metrosProducidos}, Metros Vendidos: ${prod.metrosVendidos}`);
-    // console.log(`[productionStorage] Financial Data - Ingresos: ${monthFinancial.ingresos}, Costos Variables: ${monthFinancial.costosVariables}, Costo Ventas Total: ${monthFinancial.costoVentasTotal}, Gastos Admin Total: ${monthFinancial.gastosAdminTotal}, Gastos Ventas Total: ${monthFinancial.gastosVentasTotal}`);
-
-    const costoProduccionPorMetro = prod.metrosProducidos > 0 
-      ? (monthFinancial.costoVentasTotal + monthFinancial.gastosAdminTotal + monthFinancial.gastosVentasTotal) / prod.metrosProducidos 
-      : 0;
-    
-    const costoVariablePorMetro = prod.metrosVendidos > 0 
-      ? monthFinancial.costosVariables / prod.metrosVendidos 
+    const costoProduccionPorMetro = prod.metrosProducidos > 0
+      ? (monthFinancial.costoVentasTotal + monthFinancial.gastosAdminTotal + monthFinancial.gastosVentasTotal) / prod.metrosProducidos
       : 0;
 
-    const precioVentaPorMetro = prod.metrosVendidos > 0 
-      ? monthFinancial.ingresos / prod.metrosVendidos 
+    const costoVariablePorMetro = prod.metrosVendidos > 0
+      ? monthFinancial.costosVariables / prod.metrosVendidos
       : 0;
-    
+
+    const precioVentaPorMetro = prod.metrosVendidos > 0
+      ? monthFinancial.ingresos / prod.metrosVendidos
+      : 0;
+
     const margenPorMetro = precioVentaPorMetro - costoVariablePorMetro;
     const margenPorcentual = precioVentaPorMetro > 0 ? (margenPorMetro / precioVentaPorMetro) * 100 : 0;
 
-    // console.log(`[productionStorage] Calculated - Costo Produccion/M2: ${costoProduccionPorMetro}, Costo Variable/M2: ${costoVariablePorMetro}, Precio Venta/M2: ${precioVentaPorMetro}`);
-    
     const productividad = config.capacidadMaximaMensual > 0 ? 
       (prod.metrosProducidos / config.capacidadMaximaMensual) * 100 : 0;
     
@@ -328,94 +366,27 @@ export const exportProductionData = (data: CombinedData): string => {
 // === FUNCIONES DE LIMPIEZA ===
 
 export const clearAllProductionData = async (year?: number): Promise<void> => {
-  try {
-    // 1. Intentar borrar de MySQL via API
-    try {
-      const currentYear = year || new Date().getFullYear();
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-      
-      const response = await fetch(`${API_BASE}/clear`, {
-        method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (response.ok) {
-        log.info('ProductionStorage', 'Production data deleted from database for year:', currentYear);
-      }
-    } catch (apiError) {
-      log.warn('ProductionStorage', 'API error during delete, clearing localStorage only:', apiError);
-    }
-    
-    // 2. Limpiar localStorage
-    localStorage.removeItem(PRODUCTION_DATA_KEY);
-    localStorage.removeItem(PRODUCTION_CONFIG_KEY);
-    localStorage.removeItem(COMBINED_DATA_KEY);
-    log.debug('ProductionStorage', 'All production data cleared from localStorage');
-  } catch (error) {
-    log.error('ProductionStorage', 'Error clearing production data:', error);
-  }
+  const selectedYear = year || new Date().getFullYear();
+  await deleteCombinedData(selectedYear);
+  await deleteProductionConfig(selectedYear);
+  await deleteProductionData(selectedYear);
 };
 
 export const getAvailableYears = async (): Promise<number[]> => {
-  try {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      log.warn('ProductionStorage', 'No authentication token found');
-      return [new Date().getFullYear()];
-    }
-    
-    const response = await fetch(`${API_BASE}/production?action=years`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    if (response.ok) {
-      const result = await response.json();
-      if (result && result.years) {
-        return result.years;
-      }
-    }
-  } catch (error) {
-    log.warn('ProductionStorage', 'Error getting available years:', error);
-  }
-  
-  // Fallback: return current year
-  return [new Date().getFullYear()];
-};
+  const response = await fetch(`${API_BASE}/years`, {
+    method: 'GET',
+    headers: authHeaders()
+  });
 
-export const getStorageSummary = (year?: number): any => {
-  // Usar localStorage directamente para evitar problemas con async
-  const productionDataStored = localStorage.getItem(PRODUCTION_DATA_KEY);
-  const configStored = localStorage.getItem(PRODUCTION_CONFIG_KEY);
-  const combinedDataStored = localStorage.getItem(COMBINED_DATA_KEY);
-  
-  let productionData = [];
-  let combinedData = null;
-  
-  try {
-    if (productionDataStored) {
-      productionData = JSON.parse(productionDataStored);
-    }
-    if (combinedDataStored) {
-      combinedData = JSON.parse(combinedDataStored);
-    }
-  } catch (error) {
-    // console.error('Error parsing storage data:', error);
+  if (!response.ok) {
+    log.warn('ProductionStorage', 'Error getting available years:', response.statusText);
+    return [new Date().getFullYear()];
   }
-  
-  return {
-    hasProductionData: productionData.length > 0,
-    hasConfig: configStored !== null,
-    hasCombinedData: combinedDataStored !== null,
-    lastUpdated: combinedData?.lastUpdated || null,
-    totalRecords: productionData.length,
-    year: year || new Date().getFullYear()
-  };
+
+  const result = await response.json();
+  if (!result.success || !result.years || result.years.length === 0) {
+    return [new Date().getFullYear()];
+  }
+
+  return result.years;
 };

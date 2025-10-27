@@ -48,16 +48,8 @@ services:
       context: .
       dockerfile: Dockerfile.vite
     container_name: artyco-frontend-rbac
-    volumes:
-      - ./:/app:cached
-      - /app/node_modules
-    environment:
-      - VITE_API_BASE_URL=http://localhost:8001
-      - PORT=3001
-      - CHOKIDAR_USEPOLLING=0
-      - WATCHPACK_POLLING=false
     ports:
-      - "3001:3001"  # Puerto diferente
+      - "3001:80"
     depends_on:
       - api-rbac
     networks:

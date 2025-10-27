@@ -22,6 +22,7 @@ const BreakEvenAnalysis = React.lazy(() => import('./pages/BreakEvenAnalysis'));
 import DataConfiguration from './pages/DataConfiguration';
 import OperationalAnalysis from './pages/OperationalAnalysis';
 import ProductionDashboard from './pages/ProductionDashboard';
+import SalesBIDashboard from './pages/SalesBIDashboard';
 import PygContainer from './components/pyg/PygContainer';
 import Login from './pages/Login';
 import UserManagement from './pages/UserManagement';
@@ -100,17 +101,21 @@ const MainAppContent: React.FC = () => {
     if (activeTab === 'config') {
       return <DataConfiguration />;
     }
-    
-    // Status Producción y Análisis operativo pueden funcionar sin datos financieros
+
+    // Status Producción, BI Ventas y Análisis operativo pueden funcionar sin datos financieros
     if (activeTab === 'status') {
       return <ProductionDashboard />;
+    }
+
+    if (activeTab === 'bi-ventas') {
+      return <SalesBIDashboard />;
     }
 
     if (activeTab === 'operational') {
       return <OperationalAnalysis onNavigateToConfig={() => setActiveTab('config')} />;
     }
 
-    const requiresFinancialData = !['status', 'operational', 'config'].includes(activeTab);
+    const requiresFinancialData = !['status', 'operational', 'config', 'bi-ventas'].includes(activeTab);
 
     if (requiresFinancialData && !financialData) {
       // Sin datos: dirigir al flujo de Configuración (CSVUploaderYearAware)

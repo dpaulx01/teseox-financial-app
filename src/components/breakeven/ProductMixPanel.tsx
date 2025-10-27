@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, X, Package, TrendingUp, AlertTriangle, CheckCircle, BarChart3, Save, RotateCcw, Calculator, Database } from 'lucide-react';
-import { ProductBreakEven, MultiProductBreakEvenData } from '../../types';
+import { ProductBreakEven, MultiProductBreakEvenData, CombinedData } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
-import { loadProductionData, loadCombinedData } from '../../utils/productionStorage';
+import { loadCombinedData } from '../../utils/productionStorage';
+import { useYear } from '../../contexts/YearContext';
 
 interface ProductMixPanelProps {
   onProductMixChange?: (productMix: ProductBreakEven[]) => void;
@@ -18,9 +19,12 @@ const ProductMixPanel: React.FC<ProductMixPanelProps> = ({
   currentMonth,
   className = ''
 }) => {
+  const { selectedYear } = useYear();
   const [isOpen, setIsOpen] = useState(false);
   const [useRealData, setUseRealData] = useState(true); // SIEMPRE usar datos reales por defecto
-  const [realProductionData, setRealProductionData] = useState<any>(null);
+  const [realProductionData, setRealProductionData] = useState<CombinedData | null>(null);
+  const [isLoadingRealData, setIsLoadingRealData] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [products, setProducts] = useState<ProductBreakEven[]>([
     {
       productId: 'product-1',
@@ -46,99 +50,145 @@ const ProductMixPanel: React.FC<ProductMixPanelProps> = ({
   
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Cargar datos de producción al montar el componente
-  useEffect(() => {
-    const loadRealProductionData = async () => {
-      try {
-        const combinedData = loadCombinedData();
-        if (combinedData && combinedData.production.length > 0) {
-          setRealProductionData(combinedData);
-          // AUTO-GENERAR productos desde datos reales al cargar
-          setTimeout(() => generateProductsFromRealData(), 100);
-        }
-      } catch (error) {
-        // console.error('Error cargando datos de producción:', error);
-      }
-    };
-
-    loadRealProductionData();
-  }, []);
-
-  // Auto-generar productos cuando cambie el mes
-  useEffect(() => {
-    if (realProductionData && useRealData) {
-      generateProductsFromRealData();
+  const generateProductsFromRealData = useCallback((combined: CombinedData) => {
+    if (!combined || !combined.production || combined.production.length === 0) {
+      return;
     }
-  }, [currentMonth, realProductionData]);
-
-  // Función para generar productos desde datos reales
-  const generateProductsFromRealData = () => {
-    if (!realProductionData) return;
 
     try {
-      // Encontrar datos del mes actual o promedio
-      let monthData = null;
+      type MonthData = {
+        metrosVendidos: number;
+        ingresos: number;
+        costoProduccionPorMetro: number;
+        costoVariablePorMetro?: number;
+      };
+
+      let monthData: MonthData | null = null;
+
       if (currentMonth === 'Anual' || currentMonth === 'Promedio') {
-        // Calcular promedios para todos los meses
-        const totalProduction = realProductionData.production.reduce((sum: number, p: any) => sum + p.metrosVendidos, 0);
-        const avgProduction = totalProduction / realProductionData.production.length;
-        
-        const totalRevenue = realProductionData.financial.yearly.ingresos;
-        const avgCosts = realProductionData.financial.yearly.costoVentasTotal / realProductionData.production.length;
-        
-        monthData = {
-          metrosVendidos: avgProduction,
-          ingresos: totalRevenue / realProductionData.production.length,
-          costoProduccionPorMetro: avgCosts / avgProduction
-        };
-      } else {
-        // Buscar datos del mes específico
-        const productionMonth = realProductionData.production.find((p: any) => p.month === currentMonth);
-        const operationalMonth = realProductionData.operational.find((o: any) => o.month === currentMonth);
-        
-        if (productionMonth && operationalMonth) {
+        const totalVendidos = combined.production.reduce((sum, p) => sum + (p.metrosVendidos || 0), 0);
+        const monthsCount = combined.production.length || 1;
+        const yearly = combined.financial?.yearly;
+
+        if (totalVendidos > 0 && yearly) {
+          const promedioVendidos = totalVendidos / monthsCount;
+          const ingresosPromedio = yearly.ingresos / monthsCount;
+          const costoVentasPromedio = yearly.costoVentasTotal / monthsCount;
           monthData = {
-            metrosVendidos: productionMonth.metrosVendidos,
-            ingresos: operationalMonth.precioVentaPorMetro * productionMonth.metrosVendidos,
-            costoProduccionPorMetro: operationalMonth.costoProduccionPorMetro
+            metrosVendidos: promedioVendidos,
+            ingresos: ingresosPromedio,
+            costoProduccionPorMetro: promedioVendidos > 0 ? costoVentasPromedio / promedioVendidos : 0
           };
+        }
+      } else {
+        const productionMonth = combined.production.find((p) => p.month === currentMonth);
+        const monthlyFinancial = combined.financial?.monthly?.[currentMonth];
+        const operationalMonth = combined.operational?.find((o) => o.month === currentMonth);
+
+        if (productionMonth && monthlyFinancial) {
+          const metrosVendidos = productionMonth.metrosVendidos || 0;
+          if (metrosVendidos > 0) {
+            const ingresosCalculados = operationalMonth?.precioVentaPorMetro
+              ? operationalMonth.precioVentaPorMetro * metrosVendidos
+              : monthlyFinancial.ingresos;
+            const costoVariablePorMetro = operationalMonth?.costoVariablePorMetro
+              ?? (monthlyFinancial.costosVariables / metrosVendidos);
+            monthData = {
+              metrosVendidos,
+              ingresos: ingresosCalculados,
+              costoProduccionPorMetro: costoVariablePorMetro,
+              costoVariablePorMetro
+            };
+          }
         }
       }
 
-      if (monthData) {
-        // Crear productos basados en categorías (ejemplo: diferentes tipos de productos)
-        const realProducts: ProductBreakEven[] = [
-          {
-            productId: 'real-product-1',
-            productName: 'Producto Principal (m²)',
-            precioVentaUnitario: monthData.ingresos / monthData.metrosVendidos,
-            costoVariableUnitario: monthData.costoProduccionPorMetro,
-            margenContribucionUnitario: 0, // Se calculará automáticamente
-            participacionVentas: 70, // 70% del negocio
-            unidadMedida: 'm²',
-            categoria: 'Principal',
-            unidadesVendidas: monthData.metrosVendidos * 0.7
-          },
-          {
-            productId: 'real-product-2', 
-            productName: 'Producto Secundario (m²)',
-            precioVentaUnitario: (monthData.ingresos / monthData.metrosVendidos) * 0.8, // 20% menos precio
-            costoVariableUnitario: monthData.costoProduccionPorMetro * 0.9, // 10% menos costo
-            margenContribucionUnitario: 0,
-            participacionVentas: 30, // 30% del negocio
-            unidadMedida: 'm²',
-            categoria: 'Secundario',
-            unidadesVendidas: monthData.metrosVendidos * 0.3
-          }
-        ];
-
-        setProducts(realProducts);
-        setUseRealData(true);
+      if (!monthData || !monthData.metrosVendidos || monthData.metrosVendidos <= 0) {
+        return;
       }
+
+      const precioUnitarioBase = monthData.ingresos / monthData.metrosVendidos;
+      const costoVariableBase = monthData.costoVariablePorMetro ?? monthData.costoProduccionPorMetro;
+
+      if (precioUnitarioBase <= 0 || costoVariableBase <= 0) {
+        return;
+      }
+
+      const realProducts: ProductBreakEven[] = [
+        {
+          productId: 'real-product-1',
+          productName: 'Producto Principal (m²)',
+          precioVentaUnitario: precioUnitarioBase,
+          costoVariableUnitario: costoVariableBase,
+          margenContribucionUnitario: 0,
+          participacionVentas: 70,
+          unidadMedida: 'm²',
+          categoria: 'Principal',
+          unidadesVendidas: monthData.metrosVendidos * 0.7
+        },
+        {
+          productId: 'real-product-2',
+          productName: 'Producto Secundario (m²)',
+          precioVentaUnitario: precioUnitarioBase * 0.8,
+          costoVariableUnitario: costoVariableBase * 0.9,
+          margenContribucionUnitario: 0,
+          participacionVentas: 30,
+          unidadMedida: 'm²',
+          categoria: 'Secundario',
+          unidadesVendidas: monthData.metrosVendidos * 0.3
+        }
+      ];
+
+      setProducts(realProducts);
+      setUseRealData(true);
+      setErrors({});
     } catch (error) {
       // console.error('Error generando productos desde datos reales:', error);
     }
-  };
+  }, [currentMonth]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchRealData = async () => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+
+      setIsLoadingRealData(true);
+      setLoadError(null);
+
+      try {
+        const yearToLoad = selectedYear ?? new Date().getFullYear();
+        const combined = await loadCombinedData(yearToLoad);
+        if (!isMounted) {
+          return;
+        }
+        setRealProductionData(combined);
+      } catch (error) {
+        if (isMounted) {
+          setRealProductionData(null);
+          setLoadError(error instanceof Error ? error.message : 'Error cargando datos reales de producción');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingRealData(false);
+        }
+      }
+    };
+
+    fetchRealData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedYear]);
+
+  useEffect(() => {
+    if (realProductionData && useRealData) {
+      generateProductsFromRealData(realProductionData);
+    }
+  }, [realProductionData, useRealData, currentMonth, generateProductsFromRealData]);
 
   // Calcular margen de contribución automáticamente
   useEffect(() => {
@@ -347,7 +397,19 @@ const ProductMixPanel: React.FC<ProductMixPanelProps> = ({
 
               {/* Validaciones */}
               <div className="mb-4 space-y-2">
-                {realProductionData && (
+                {isLoadingRealData && (
+                  <div className="flex items-center gap-2 text-info text-sm p-2 bg-info/10 rounded-lg border border-info/20">
+                    <Database className="w-4 h-4 animate-spin" />
+                    Cargando métricas reales de producción...
+                  </div>
+                )}
+                {loadError && (
+                  <div className="flex items-center gap-2 text-danger text-sm p-2 bg-danger/10 rounded-lg border border-danger/20">
+                    <AlertTriangle className="w-4 h-4" />
+                    No se pudieron sincronizar los datos de producción: {loadError}
+                  </div>
+                )}
+                {realProductionData && !loadError && (
                   <div className="flex items-center gap-2 text-info text-sm p-2 bg-info/10 rounded-lg border border-info/20">
                     <Database className="w-4 h-4" />
                     Datos reales de producción ({currentMonth}) - Precios y costos calculados desde m² vendidos

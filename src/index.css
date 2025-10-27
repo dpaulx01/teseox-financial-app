@@ -144,6 +144,31 @@ body {
   scrollbar-color: var(--color-primary) var(--color-surface);
 }
 
+/* Scrollbar personalizado para dropdowns */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-primary);
+  border-radius: 10px;
+  opacity: 0.5;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  opacity: 1;
+  box-shadow: 0 0 10px var(--color-primary-glow);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--color-primary), var(--color-accent));
+  box-shadow: 0 0 8px var(--color-primary-glow);
+}
+
 /* Efectos de selección de texto */
 ::selection {
   background: var(--color-primary-glow);
@@ -426,6 +451,30 @@ body:not(.dark)::before {
   }
 }
 
+/* Animación de gradiente para tabs activos */
+@keyframes gradient-x {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-gradient-x {
+  animation: gradient-x 3s ease infinite;
+}
+
+/* Efecto text-shadow-glow para tabs activos */
+.text-shadow-glow {
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.8),
+               0 0 20px rgba(255, 255, 255, 0.5),
+               0 0 30px rgba(255, 255, 255, 0.3);
+}
+
 /* Reduce motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
   * {
@@ -433,8 +482,12 @@ body:not(.dark)::before {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  
+
   body::before {
+    animation: none;
+  }
+
+  .animate-gradient-x {
     animation: none;
   }
 }
