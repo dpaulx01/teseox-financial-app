@@ -19,6 +19,7 @@ import api from '../services/api';
 // Componentes del módulo
 import CommercialView from '../modules/salesBI/components/CommercialView';
 import FinancialView from '../modules/salesBI/components/FinancialView';
+import AnalisisGerencial from '../modules/salesBI/components/AnalisisGerencial';
 import SalesDataUploadModal, {
   SalesDataUploadResult,
 } from '../modules/salesBI/components/SalesDataUploadModal';
@@ -147,7 +148,7 @@ const FilterSelect = ({ label, value, onChange, options, disabled, placeholder }
 // ... (keep the rest of the imports)
 
 export default function SalesBIDashboard() {
-  const [activeView, setActiveView] = useState<'commercial' | 'financial'>('commercial');
+  const [activeView, setActiveView] = useState<'commercial' | 'financial' | 'gerencial'>('commercial');
   const [filters, setFilters] = useState<FilterConfig>({});
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     years: [],
@@ -783,12 +784,84 @@ export default function SalesBIDashboard() {
                 />
               )}
             </button>
+
+            {/* Vista Análisis Gerencial */}
+            <button
+              type="button"
+              onClick={() => setActiveView('gerencial')}
+              className={`
+                relative flex-1 group px-6 py-4 rounded-xl font-semibold text-base
+                transition-all duration-300 overflow-hidden
+                ${activeView === 'gerencial'
+                  ? 'text-text-primary shadow-2xl z-10'
+                  : 'text-text-muted hover:text-text-secondary'
+                }
+              `}
+            >
+              {/* Fondo activo con gradiente */}
+              <AnimatePresence>
+                {activeView === 'gerencial' && (
+                  <motion.div
+                    layoutId="activeTab"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    className="absolute inset-0 bg-gradient-to-r from-violet-500 via-purple-500 to-violet-500 bg-[length:200%_100%] animate-gradient-x"
+                    style={{
+                      boxShadow: '0 0 30px rgba(139, 92, 246, 0.4), inset 0 0 20px rgba(139, 92, 246, 0.2)'
+                    }}
+                  />
+                )}
+              </AnimatePresence>
+
+              {/* Efecto hover */}
+              {activeView !== 'gerencial' && (
+                <div className="absolute inset-0 bg-violet-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              )}
+
+              {/* Contenido */}
+              <div className="relative z-10 flex items-center justify-center gap-3">
+                <ChartBarIcon className={`h-6 w-6 transition-all duration-300 ${
+                  activeView === 'gerencial'
+                    ? 'text-white scale-110'
+                    : 'text-text-muted group-hover:text-violet-500 group-hover:scale-105'
+                }`} />
+                <span className={`font-bold tracking-wide ${
+                  activeView === 'gerencial'
+                    ? 'text-white text-shadow-glow'
+                    : ''
+                }`}>
+                  Análisis Gerencial
+                </span>
+
+                {/* Indicador de estado activo */}
+                {activeView === 'gerencial' && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="w-2 h-2 rounded-full bg-white shadow-glow-sm"
+                  />
+                )}
+              </div>
+
+              {/* Barra indicadora inferior */}
+              {activeView === 'gerencial' && (
+                <motion.div
+                  layoutId="activeIndicator"
+                  className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-white to-transparent"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                />
+              )}
+            </button>
           </div>
 
           {/* Contenido de las vistas */}
           <div className="relative">
             <AnimatePresence mode="wait">
-              {activeView === 'commercial' ? (
+              {activeView === 'commercial' && (
                 <motion.div
                   key="commercial"
                   initial={{ opacity: 0, x: -20 }}
@@ -798,7 +871,9 @@ export default function SalesBIDashboard() {
                 >
                   <CommercialView filters={filters} />
                 </motion.div>
-              ) : (
+              )}
+
+              {activeView === 'financial' && (
                 <motion.div
                   key="financial"
                   initial={{ opacity: 0, x: 20 }}
@@ -807,6 +882,18 @@ export default function SalesBIDashboard() {
                   transition={{ duration: 0.3 }}
                 >
                   <FinancialView filters={filters} />
+                </motion.div>
+              )}
+
+              {activeView === 'gerencial' && (
+                <motion.div
+                  key="gerencial"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <AnalisisGerencial filters={filters} />
                 </motion.div>
               )}
             </AnimatePresence>

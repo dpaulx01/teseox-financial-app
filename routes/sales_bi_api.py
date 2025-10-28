@@ -563,3 +563,326 @@ async def save_filter(
         'message': 'Filtro guardado exitosamente',
         'data': saved_filter.to_dict()
     }
+
+
+# ===================================================================
+# ENDPOINTS DE ANÁLISIS GERENCIAL (estilo presentación)
+# ===================================================================
+
+@router.get('/kpis/gerencial')
+async def get_kpis_gerencial(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    categoria: Optional[str] = None,
+    canal: Optional[str] = None,
+    vendedor: Optional[str] = None,
+    cliente: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission('bi', 'view'))
+):
+    """
+    KPIs gerenciales enfocados en m² y eficiencia
+    """
+    query = db.query(
+        func.sum(SalesTransaction.m2).label('total_m2'),
+        func.sum(SalesTransaction.venta_neta).label('venta_neta_total'),
+        func.sum(SalesTransaction.rentabilidad).label('rentabilidad_total'),
+        func.sum(SalesTransaction.costo_venta).label('costo_venta_total'),
+        func.sum(SalesTransaction.descuento).label('descuento_total'),
+        func.sum(SalesTransaction.venta_bruta).label('venta_bruta_total')
+    ).filter(SalesTransaction.company_id == current_user.company_id)
+
+    # Aplicar filtros
+    if year:
+        query = query.filter(SalesTransaction.year == year)
+    if month:
+        query = query.filter(SalesTransaction.month == month)
+    if categoria:
+        query = query.filter(SalesTransaction.categoria_producto == categoria)
+    if canal:
+        query = query.filter(SalesTransaction.canal_comercial == canal)
+    if vendedor:
+        query = query.filter(SalesTransaction.vendedor == vendedor)
+    if cliente:
+        query = query.filter(SalesTransaction.razon_social == cliente)
+
+    result = query.first()
+
+    total_m2 = float(result.total_m2 or 0)
+    venta_neta = float(result.venta_neta_total or 0)
+    rentabilidad = float(result.rentabilidad_total or 0)
+    costo_venta = float(result.costo_venta_total or 0)
+    descuento = float(result.descuento_total or 0)
+    venta_bruta = float(result.venta_bruta_total or 0)
+
+    # Cálculos por m²
+    precio_neto_m2 = (venta_neta / total_m2) if total_m2 > 0 else 0
+    margen_m2 = (rentabilidad / total_m2) if total_m2 > 0 else 0
+    costo_m2 = (costo_venta / total_m2) if total_m2 > 0 else 0
+    porcentaje_descuento = (descuento / venta_bruta * 100) if venta_bruta > 0 else 0
+    margen_porcentaje = (rentabilidad / costo_venta * 100) if costo_venta > 0 else 0
+
+    return {
+        'success': True,
+        'data': {
+            'total_m2': round(total_m2, 2),
+            'venta_neta_total': round(venta_neta, 2),
+            'precio_neto_m2': round(precio_neto_m2, 2),
+            'margen_m2': round(margen_m2, 2),
+            'costo_m2': round(costo_m2, 2),
+            'porcentaje_descuento': round(porcentaje_descuento, 2),
+            'margen_sobre_costo': round(margen_porcentaje, 2),
+            'rentabilidad_total': round(rentabilidad, 2)
+        }
+    }
+
+
+@router.get('/analysis/pareto')
+async def get_pareto_analysis(
+    analysis_type: str = Query('sales', regex='^(sales|volume|profit)$'),
+    dimension: str = Query('producto', regex='^(producto|cliente|categoria)$'),
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    categoria: Optional[str] = None,
+    canal: Optional[str] = None,
+    vendedor: Optional[str] = None,
+    cliente: Optional[str] = None,
+    limit: int = Query(20, ge=5, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission('bi', 'view'))
+):
+    """
+    Análisis Pareto 80/20 por ventas, volumen o rentabilidad
+    """
+    dimension_fields = {
+        'producto': SalesTransaction.producto,
+        'cliente': SalesTransaction.razon_social,
+        'categoria': SalesTransaction.categoria_producto
+    }
+
+    metric_fields = {
+        'sales': func.sum(SalesTransaction.venta_neta).label('value'),
+        'volume': func.sum(SalesTransaction.m2).label('value'),
+        'profit': func.sum(SalesTransaction.rentabilidad).label('value')
+    }
+
+    dimension_field = dimension_fields[dimension]
+    metric_field = metric_fields[analysis_type]
+
+    query = db.query(
+        dimension_field.label('name'),
+        metric_field
+    ).filter(SalesTransaction.company_id == current_user.company_id)
+
+    # Aplicar filtros
+    if year:
+        query = query.filter(SalesTransaction.year == year)
+    if month:
+        query = query.filter(SalesTransaction.month == month)
+    if categoria and dimension != 'categoria':
+        query = query.filter(SalesTransaction.categoria_producto == categoria)
+    if canal:
+        query = query.filter(SalesTransaction.canal_comercial == canal)
+    if vendedor:
+        query = query.filter(SalesTransaction.vendedor == vendedor)
+    if cliente and dimension != 'cliente':
+        query = query.filter(SalesTransaction.razon_social == cliente)
+
+    query = query.group_by(dimension_field).order_by(desc('value')).limit(limit)
+    results = query.all()
+
+    # Calcular total y porcentajes acumulativos
+    total = sum(float(r.value or 0) for r in results)
+    cumulative = 0
+    data = []
+
+    for row in results:
+        value = float(row.value or 0)
+        percentage = (value / total * 100) if total > 0 else 0
+        cumulative += value
+        cumulative_percentage = (cumulative / total * 100) if total > 0 else 0
+
+        data.append({
+            'name': row.name,
+            'value': round(value, 2),
+            'percentage': round(percentage, 2),
+            'cumulative_percentage': round(cumulative_percentage, 2)
+        })
+
+    return {
+        'success': True,
+        'analysis_type': analysis_type,
+        'dimension': dimension,
+        'total': round(total, 2),
+        'count': len(data),
+        'data': data
+    }
+
+
+@router.get('/analysis/evolution')
+async def get_evolution_analysis(
+    metric: str = Query('price', regex='^(price|discount|margin)$'),
+    group_by_period: str = Query('month', regex='^(month|quarter|year)$'),
+    year: Optional[int] = None,
+    categoria: Optional[str] = None,
+    canal: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission('bi', 'view'))
+):
+    """
+    Evolución temporal de precio/m², descuento% o margen
+    """
+    # Campos base
+    if group_by_period == 'year':
+        period_field = SalesTransaction.year
+        period_label = 'year'
+    elif group_by_period == 'quarter':
+        period_field = SalesTransaction.quarter
+        period_label = 'quarter'
+    else:
+        period_field = SalesTransaction.month
+        period_label = 'month'
+
+    query = db.query(
+        SalesTransaction.year,
+        period_field.label(period_label),
+        func.sum(SalesTransaction.venta_neta).label('venta_neta'),
+        func.sum(SalesTransaction.m2).label('total_m2'),
+        func.sum(SalesTransaction.rentabilidad).label('rentabilidad'),
+        func.sum(SalesTransaction.descuento).label('descuento'),
+        func.sum(SalesTransaction.venta_bruta).label('venta_bruta'),
+        func.sum(SalesTransaction.costo_venta).label('costo_venta')
+    ).filter(SalesTransaction.company_id == current_user.company_id)
+
+    # Filtros
+    if year:
+        query = query.filter(SalesTransaction.year == year)
+    if categoria:
+        query = query.filter(SalesTransaction.categoria_producto == categoria)
+    if canal:
+        query = query.filter(SalesTransaction.canal_comercial == canal)
+
+    query = query.group_by(SalesTransaction.year, period_field).order_by(
+        SalesTransaction.year, period_field
+    )
+
+    results = query.all()
+    data = []
+
+    for row in results:
+        total_m2 = float(row.total_m2 or 0)
+        venta_neta = float(row.venta_neta or 0)
+        rentabilidad = float(row.rentabilidad or 0)
+        descuento = float(row.descuento or 0)
+        venta_bruta = float(row.venta_bruta or 0)
+        costo_venta = float(row.costo_venta or 0)
+
+        precio_m2 = (venta_neta / total_m2) if total_m2 > 0 else 0
+        margen_m2 = (rentabilidad / total_m2) if total_m2 > 0 else 0
+        porcentaje_descuento = (descuento / venta_bruta * 100) if venta_bruta > 0 else 0
+        margen_porcentaje = (rentabilidad / costo_venta * 100) if costo_venta > 0 else 0
+
+        period_value = getattr(row, period_label)
+        period_str = f"{row.year}-{str(period_value).zfill(2)}" if period_label != 'year' else str(row.year)
+
+        data.append({
+            'period': period_str,
+            'year': row.year,
+            period_label: period_value,
+            'precio_neto_m2': round(precio_m2, 2),
+            'margen_m2': round(margen_m2, 2),
+            'porcentaje_descuento': round(porcentaje_descuento, 2),
+            'margen_porcentaje': round(margen_porcentaje, 2),
+            'total_m2': round(total_m2, 2),
+            'venta_neta': round(venta_neta, 2)
+        })
+
+    return {
+        'success': True,
+        'metric': metric,
+        'period': group_by_period,
+        'count': len(data),
+        'data': data
+    }
+
+
+@router.get('/analysis/ranking')
+async def get_ranking_analysis(
+    dimension: str = Query('categoria', regex='^(categoria|canal|vendedor|cliente|producto)$'),
+    metric: str = Query('volume', regex='^(volume|sales|profit|margin_m2)$'),
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    limit: int = Query(10, ge=5, le=20),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission('bi', 'view'))
+):
+    """
+    Rankings horizontales por diferentes dimensiones y métricas
+    """
+    dimension_fields = {
+        'categoria': SalesTransaction.categoria_producto,
+        'canal': SalesTransaction.canal_comercial,
+        'vendedor': SalesTransaction.vendedor,
+        'cliente': SalesTransaction.razon_social,
+        'producto': SalesTransaction.producto
+    }
+
+    dimension_field = dimension_fields[dimension]
+
+    # Construir agregaciones según métrica
+    query = db.query(
+        dimension_field.label('name'),
+        func.sum(SalesTransaction.m2).label('total_m2'),
+        func.sum(SalesTransaction.venta_neta).label('venta_neta'),
+        func.sum(SalesTransaction.rentabilidad).label('rentabilidad')
+    ).filter(SalesTransaction.company_id == current_user.company_id)
+
+    # Filtros
+    if year:
+        query = query.filter(SalesTransaction.year == year)
+    if month:
+        query = query.filter(SalesTransaction.month == month)
+
+    query = query.group_by(dimension_field)
+
+    results = query.all()
+
+    # Calcular métrica y ordenar
+    data = []
+    for row in results:
+        total_m2 = float(row.total_m2 or 0)
+        venta_neta = float(row.venta_neta or 0)
+        rentabilidad = float(row.rentabilidad or 0)
+
+        if metric == 'volume':
+            value = total_m2
+        elif metric == 'sales':
+            value = venta_neta
+        elif metric == 'profit':
+            value = rentabilidad
+        else:  # margin_m2
+            value = (rentabilidad / total_m2) if total_m2 > 0 else 0
+
+        data.append({
+            'name': row.name,
+            'value': round(value, 2),
+            'total_m2': round(total_m2, 2),
+            'venta_neta': round(venta_neta, 2),
+            'rentabilidad': round(rentabilidad, 2)
+        })
+
+    # Ordenar y limitar
+    data.sort(key=lambda x: x['value'], reverse=True)
+    data = data[:limit]
+
+    return {
+        'success': True,
+        'dimension': dimension,
+        'metric': metric,
+        'count': len(data),
+        'data': data
+    }
