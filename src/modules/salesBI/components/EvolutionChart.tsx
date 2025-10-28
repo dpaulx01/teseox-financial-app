@@ -3,7 +3,7 @@
  * Usando Chart.js para visualización correcta con colores
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Title } from '@tremor/react';
+import { Title } from '@tremor/react';
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import {
@@ -188,15 +188,7 @@ export default function EvolutionChart({ filters }: EvolutionChartProps) {
   };
 
   return (
-    <Card className="rounded-2xl border border-border/60 bg-dark-card/60 p-6 shadow-inner">
-      <div className="mb-6">
-        <Title className="text-2xl font-display text-primary mb-1">
-          Evolución: Precio Neto vs Descuento
-        </Title>
-        <p className="text-sm text-text-muted">
-          Análisis temporal de la presión sobre el precio
-        </p>
-      </div>
+    <div className="space-y-6">
 
       {loading ? (
         <div className="h-80 flex items-center justify-center">
@@ -288,6 +280,6 @@ export default function EvolutionChart({ filters }: EvolutionChartProps) {
           )}
         </>
       )}
-    </Card>
+    </div>
   );
 }

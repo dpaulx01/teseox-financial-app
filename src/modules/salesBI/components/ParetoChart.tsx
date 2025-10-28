@@ -3,7 +3,7 @@
  * Usando Chart.js para colores correctos en dual-theme
  */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Card, Title } from '@tremor/react';
+import { Title } from '@tremor/react';
 import { motion } from 'framer-motion';
 import {
   Chart as ChartJS,
@@ -228,16 +228,10 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
   };
 
   return (
-    <Card className="rounded-2xl border border-border/60 bg-dark-card/60 p-6 shadow-inner">
+    <div className="space-y-6">
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <Title className="text-2xl font-display text-primary mb-1">
-              Análisis de Pareto
-            </Title>
-            <p className="text-sm text-text-muted">Principio 80/20 - Elementos clave del negocio</p>
-          </div>
-          <div className="text-right">
+          <div className="text-right ml-auto">
             <div className="text-xs text-text-muted uppercase mb-1">Total</div>
             <div className="text-lg font-bold text-accent">
               {valueFormatter(total)}
@@ -338,6 +332,6 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
           </motion.div>
         </div>
       )}
-    </Card>
+    </div>
   );
 }

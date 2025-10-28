@@ -3,7 +3,7 @@
  * Usando Chart.js para colores y nombres completos
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Title } from '@tremor/react';
+import { Title } from '@tremor/react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -143,12 +143,8 @@ export default function RankingChart({ filters }: RankingChartProps) {
   };
 
   return (
-    <Card className="rounded-2xl border border-border/60 bg-dark-card/60 p-6 shadow-inner">
+    <div className="space-y-6">
       <div className="mb-6">
-        <Title className="text-2xl font-display text-primary mb-4">
-          Top 10 Categorías
-        </Title>
-
         {/* Toggle Buttons */}
         <div className="flex flex-wrap gap-2">
           {metrics.map((m) => (
@@ -189,6 +185,6 @@ export default function RankingChart({ filters }: RankingChartProps) {
           <Bar data={chartData} options={chartOptions} />
         </div>
       )}
-    </Card>
+    </div>
   );
 }
