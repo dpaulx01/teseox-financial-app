@@ -1,11 +1,29 @@
 /**
  * RankingChart - Gráfico de ranking horizontal
- * Diseño profesional con nombres completos visibles
+ * Usando Chart.js para colores y nombres completos
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Title, BarChart } from '@tremor/react';
-import { motion } from 'framer-motion';
+import { Card, Title } from '@tremor/react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title as ChartTitle,
+  Tooltip,
+  Legend
+} from 'chart.js';
+import { Bar } from 'react-chartjs-2';
 import api from '../../../services/api';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ChartTitle,
+  Tooltip,
+  Legend
+);
 
 interface RankingChartProps {
   filters: {
@@ -49,25 +67,80 @@ export default function RankingChart({ filters }: RankingChartProps) {
   };
 
   const metrics = [
-    { value: 'volume' as Metric, label: 'Volumen (m²)', color: 'emerald' },
-    { value: 'sales' as Metric, label: 'Ventas (USD)', color: 'sky' },
-    { value: 'profit' as Metric, label: 'Rentabilidad (USD)', color: 'purple' },
-    { value: 'margin_m2' as Metric, label: 'Margen/m²', color: 'amber' }
+    { value: 'volume' as Metric, label: 'Volumen (m²)', color: '#00FF99' },
+    { value: 'sales' as Metric, label: 'Ventas (USD)', color: '#00F0FF' },
+    { value: 'profit' as Metric, label: 'Rentabilidad (USD)', color: '#8000FF' },
+    { value: 'margin_m2' as Metric, label: 'Margen/m²', color: '#FFB800' }
   ];
 
-  const chartData = data.map(item => ({
-    name: item.name,
-    Valor: item.value
-  }));
+  const currentMetric = metrics.find(m => m.value === metric);
 
-  const valueFormatter = (value: number) => {
-    if (metric === 'volume') {
-      return `${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })} m²`;
-    }
-    return `$${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+  const chartData = {
+    labels: data.map(item => item.name),
+    datasets: [
+      {
+        label: 'Valor',
+        data: data.map(item => item.value),
+        backgroundColor: currentMetric?.color + '40',
+        borderColor: currentMetric?.color,
+        borderWidth: 2,
+      }
+    ]
   };
 
-  const currentMetric = metrics.find(m => m.value === metric);
+  const chartOptions = {
+    indexAxis: 'y' as const,
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        backgroundColor: 'rgba(26, 26, 37, 0.95)',
+        titleColor: '#00F0FF',
+        bodyColor: '#E0E7FF',
+        borderColor: 'rgba(0, 240, 255, 0.3)',
+        borderWidth: 1,
+        callbacks: {
+          label: (context: any) => {
+            const value = context.parsed.x;
+            if (metric === 'volume') {
+              return `${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })} m²`;
+            }
+            return `$${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: {
+          color: 'rgba(0, 240, 255, 0.1)',
+        },
+        ticks: {
+          color: '#8B9DC3',
+          callback: (value: any) => {
+            if (metric === 'volume') {
+              return `${(value / 1000).toFixed(0)}k m²`;
+            }
+            return `$${(value / 1000).toFixed(0)}k`;
+          }
+        }
+      },
+      y: {
+        grid: {
+          display: false
+        },
+        ticks: {
+          color: '#8B9DC3',
+          font: {
+            size: 11
+          }
+        }
+      }
+    }
+  };
 
   return (
     <Card className="rounded-2xl border border-border/60 bg-dark-card/60 p-6 shadow-inner">
@@ -112,19 +185,8 @@ export default function RankingChart({ filters }: RankingChartProps) {
           </div>
         </div>
       ) : (
-        <div className="h-96">
-          <BarChart
-            data={chartData}
-            index="name"
-            categories={["Valor"]}
-            colors={[currentMetric?.color || 'sky']}
-            valueFormatter={valueFormatter}
-            layout="vertical"
-            showGridLines={false}
-            showLegend={false}
-            className="h-full"
-            yAxisWidth={200}
-          />
+        <div className="h-96 glass-card p-4 border border-border rounded-lg">
+          <Bar data={chartData} options={chartOptions} />
         </div>
       )}
     </Card>

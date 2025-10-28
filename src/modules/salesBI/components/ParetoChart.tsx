@@ -1,11 +1,34 @@
 /**
  * ParetoChart - Gráfico de Pareto con análisis 80/20
- * Diseño profesional con soporte dual-theme
+ * Usando Chart.js para colores correctos en dual-theme
  */
-import React, { useState, useEffect, useMemo } from 'react';
-import { Card, Title, BarChart, LineChart } from '@tremor/react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Card, Title } from '@tremor/react';
 import { motion } from 'framer-motion';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title as ChartTitle,
+  Tooltip,
+  Legend
+} from 'chart.js';
+import { Bar, Line } from 'react-chartjs-2';
 import api from '../../../services/api';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  ChartTitle,
+  Tooltip,
+  Legend
+);
 
 interface ParetoChartProps {
   filters: {
@@ -61,9 +84,9 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
   };
 
   const analysisTypes = [
-    { value: 'sales' as AnalysisType, label: 'Ventas (USD)', color: 'sky' },
-    { value: 'volume' as AnalysisType, label: 'Volumen (m²)', color: 'emerald' },
-    { value: 'profit' as AnalysisType, label: 'Rentabilidad (USD)', color: 'purple' }
+    { value: 'sales' as AnalysisType, label: 'Ventas (USD)', color: '#00F0FF' },
+    { value: 'volume' as AnalysisType, label: 'Volumen (m²)', color: '#00FF99' },
+    { value: 'profit' as AnalysisType, label: 'Rentabilidad (USD)', color: '#8000FF' }
   ];
 
   const dimensions = [
@@ -72,13 +95,130 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
     { value: 'categoria' as Dimension, label: 'Categoría' }
   ];
 
-  const chartData = useMemo(() => {
-    return data.map(item => ({
-      name: item.name,
-      Valor: item.value,
-      '% Acumulado': item.cumulative_percentage
-    }));
-  }, [data]);
+  const currentAnalysis = analysisTypes.find(t => t.value === analysisType);
+
+  const barChartData = {
+    labels: data.map(item => item.name),
+    datasets: [
+      {
+        label: 'Valor',
+        data: data.map(item => item.value),
+        backgroundColor: currentAnalysis?.color + '40',
+        borderColor: currentAnalysis?.color,
+        borderWidth: 2,
+      }
+    ]
+  };
+
+  const lineChartData = {
+    labels: data.map(item => item.name),
+    datasets: [
+      {
+        label: '% Acumulado',
+        data: data.map(item => item.cumulative_percentage),
+        borderColor: '#FFB800',
+        backgroundColor: 'rgba(255, 184, 0, 0.1)',
+        borderWidth: 3,
+        pointRadius: 5,
+        pointBackgroundColor: '#FFB800',
+        tension: 0.4,
+        fill: true,
+      }
+    ]
+  };
+
+  const barOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        backgroundColor: 'rgba(26, 26, 37, 0.95)',
+        titleColor: '#00F0FF',
+        bodyColor: '#E0E7FF',
+        borderColor: 'rgba(0, 240, 255, 0.3)',
+        borderWidth: 1,
+        callbacks: {
+          label: (context: any) => {
+            const value = context.parsed.y;
+            if (analysisType === 'volume') {
+              return `${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })} m²`;
+            }
+            return `$${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: {
+          color: 'rgba(0, 240, 255, 0.1)',
+        },
+        ticks: {
+          color: '#8B9DC3',
+          maxRotation: 45,
+          minRotation: 45
+        }
+      },
+      y: {
+        grid: {
+          color: 'rgba(0, 240, 255, 0.1)',
+        },
+        ticks: {
+          color: '#8B9DC3',
+          callback: (value: any) => {
+            if (analysisType === 'volume') {
+              return `${(value / 1000).toFixed(0)}k m²`;
+            }
+            return `$${(value / 1000).toFixed(0)}k`;
+          }
+        }
+      }
+    }
+  };
+
+  const lineOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        backgroundColor: 'rgba(26, 26, 37, 0.95)',
+        titleColor: '#00F0FF',
+        bodyColor: '#E0E7FF',
+        callbacks: {
+          label: (context: any) => `${context.parsed.y.toFixed(1)}%`
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: {
+          color: 'rgba(0, 240, 255, 0.1)',
+        },
+        ticks: {
+          color: '#8B9DC3',
+          maxRotation: 45,
+          minRotation: 45
+        }
+      },
+      y: {
+        grid: {
+          color: 'rgba(0, 240, 255, 0.1)',
+        },
+        ticks: {
+          color: '#8B9DC3',
+          callback: (value: any) => `${value}%`
+        },
+        min: 0,
+        max: 100
+      }
+    }
+  };
 
   const valueFormatter = (value: number) => {
     if (analysisType === 'volume') {
@@ -86,10 +226,6 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
     }
     return `$${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
   };
-
-  const percentageFormatter = (value: number) => `${value.toFixed(1)}%`;
-
-  const currentAnalysis = analysisTypes.find(t => t.value === analysisType);
 
   return (
     <Card className="rounded-2xl border border-border/60 bg-dark-card/60 p-6 shadow-inner">
@@ -167,35 +303,18 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
       ) : (
         <div className="space-y-6">
           {/* Gráfico de barras */}
-          <div className="h-96">
-            <BarChart
-              data={chartData}
-              index="name"
-              categories={["Valor"]}
-              colors={[currentAnalysis?.color || 'sky']}
-              valueFormatter={valueFormatter}
-              showGridLines={true}
-              showLegend={false}
-              className="h-full"
-            />
+          <div className="h-96 glass-card p-4 border border-border rounded-lg">
+            <Bar data={barChartData} options={barOptions} />
           </div>
 
           {/* Línea acumulativa */}
-          <div className="h-64">
+          <div className="h-64 glass-card p-4 border border-border rounded-lg">
             <Title className="text-lg mb-3 text-text-secondary">
               Porcentaje Acumulado (Principio 80/20)
             </Title>
-            <LineChart
-              data={chartData}
-              index="name"
-              categories={["% Acumulado"]}
-              colors={["amber"]}
-              valueFormatter={percentageFormatter}
-              showGridLines={true}
-              showLegend={false}
-              className="h-full"
-              yAxisWidth={60}
-            />
+            <div className="h-48">
+              <Line data={lineChartData} options={lineOptions} />
+            </div>
           </div>
 
           {/* Análisis de texto */}

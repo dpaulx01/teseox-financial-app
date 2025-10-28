@@ -1,12 +1,35 @@
 /**
  * EvolutionChart - Gráfico de evolución temporal
- * Muestra precio/m² vs descuento% con diseño profesional
+ * Usando Chart.js para visualización correcta con colores
  */
 import React, { useState, useEffect } from 'react';
-import { Card, Title, LineChart } from '@tremor/react';
+import { Card, Title } from '@tremor/react';
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown } from 'lucide-react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title as ChartTitle,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
+import { Line } from 'react-chartjs-2';
 import api from '../../../services/api';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  ChartTitle,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 interface EvolutionChartProps {
   filters: {
@@ -47,18 +70,121 @@ export default function EvolutionChart({ filters }: EvolutionChartProps) {
     }
   };
 
-  const chartData = data.map(item => ({
-    period: item.period,
-    'Precio/m²': item.precio_neto_m2,
-    'Descuento %': item.porcentaje_descuento
-  }));
+  const chartData = {
+    labels: data.map(item => item.period),
+    datasets: [
+      {
+        label: 'Precio/m²',
+        data: data.map(item => item.precio_neto_m2),
+        borderColor: '#00F0FF',
+        backgroundColor: 'rgba(0, 240, 255, 0.1)',
+        borderWidth: 3,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        pointBackgroundColor: '#00F0FF',
+        pointBorderColor: '#00F0FF',
+        pointBorderWidth: 2,
+        fill: true,
+        tension: 0.4,
+        yAxisID: 'y',
+      },
+      {
+        label: 'Descuento %',
+        data: data.map(item => item.porcentaje_descuento),
+        borderColor: '#FFB800',
+        backgroundColor: 'rgba(255, 184, 0, 0.1)',
+        borderWidth: 3,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        pointBackgroundColor: '#FFB800',
+        pointBorderColor: '#FFB800',
+        pointBorderWidth: 2,
+        fill: true,
+        tension: 0.4,
+        yAxisID: 'y1',
+      }
+    ]
+  };
 
-  // Dual-axis: precio como número, descuento como porcentaje
-  const valueFormatter = (value: number, category: string) => {
-    if (category === 'Descuento %') {
-      return `${value.toFixed(1)}%`;
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'index' as const,
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top' as const,
+        labels: {
+          color: '#E0E7FF',
+          usePointStyle: true,
+          padding: 15
+        }
+      },
+      tooltip: {
+        backgroundColor: 'rgba(26, 26, 37, 0.95)',
+        titleColor: '#00F0FF',
+        bodyColor: '#E0E7FF',
+        borderColor: 'rgba(0, 240, 255, 0.3)',
+        borderWidth: 1,
+        callbacks: {
+          label: (context: any) => {
+            const label = context.dataset.label || '';
+            const value = context.parsed.y;
+            if (label.includes('%')) {
+              return `${label}: ${value.toFixed(1)}%`;
+            }
+            return `${label}: $${value.toFixed(2)}`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: {
+          color: 'rgba(0, 240, 255, 0.1)',
+        },
+        ticks: {
+          color: '#8B9DC3',
+        }
+      },
+      y: {
+        type: 'linear' as const,
+        display: true,
+        position: 'left' as const,
+        grid: {
+          color: 'rgba(0, 240, 255, 0.1)',
+        },
+        ticks: {
+          color: '#8B9DC3',
+          callback: (value: any) => `$${value.toFixed(0)}`
+        },
+        title: {
+          display: true,
+          text: 'Precio/m²',
+          color: '#00F0FF'
+        }
+      },
+      y1: {
+        type: 'linear' as const,
+        display: true,
+        position: 'right' as const,
+        grid: {
+          drawOnChartArea: false,
+        },
+        ticks: {
+          color: '#FFB800',
+          callback: (value: any) => `${value.toFixed(0)}%`
+        },
+        title: {
+          display: true,
+          text: 'Descuento %',
+          color: '#FFB800'
+        }
+      }
     }
-    return `$${value.toFixed(2)}`;
   };
 
   return (
@@ -88,19 +214,8 @@ export default function EvolutionChart({ filters }: EvolutionChartProps) {
         </div>
       ) : (
         <>
-          <div className="h-80 mb-6">
-            <LineChart
-              data={chartData}
-              index="period"
-              categories={["Precio/m²", "Descuento %"]}
-              colors={["sky", "amber"]}
-              valueFormatter={valueFormatter}
-              showGridLines={true}
-              showLegend={true}
-              className="h-full"
-              yAxisWidth={80}
-              curveType="monotone"
-            />
+          <div className="h-80 mb-6 glass-card p-4 border border-border rounded-lg">
+            <Line data={chartData} options={chartOptions} />
           </div>
 
           {/* Insights */}

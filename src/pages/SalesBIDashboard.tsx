@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Card, Title, Text, Tab, TabGroup, TabList, TabPanels, TabPanel,
-  Grid, Flex, Select, SelectItem, Badge, Metric
+  Grid, Flex, Badge, Metric
 } from '@tremor/react';
 import {
   FunnelIcon, ChartBarIcon,
@@ -118,30 +118,7 @@ const KPICard = ({ title, value, subtitle, icon: Icon, color, trend, loading }: 
   );
 };
 
-// Componente de Filtro Mejorado
-const FilterSelect = ({ label, value, onChange, options, disabled, placeholder }: any) => (
-  <motion.div
-    initial={{ opacity: 0, x: -20 }}
-    animate={{ opacity: 1, x: 0 }}
-    className="relative z-10"
-  >
-    <Text className="mb-2 flex items-center gap-2 text-sm font-medium text-text-secondary">
-      <SparklesIcon className="h-4 w-4 text-primary" />
-      {label}
-    </Text>
-    <div className="relative">
-      <Select
-        value={value}
-        onValueChange={onChange}
-        disabled={disabled}
-        placeholder={placeholder}
-        className="rounded-xl border border-border/60 bg-dark-card/95 backdrop-blur-xl text-text-primary transition-all duration-200 focus:border-primary/60 hover:bg-dark-card focus:ring-2 focus:ring-primary/30"
-      >
-        {options}
-      </Select>
-    </div>
-  </motion.div>
-);
+
 
 
 
@@ -467,61 +444,48 @@ export default function SalesBIDashboard() {
           </Flex>
 
           <Grid numItemsLg={3} className="gap-6">
-            <FilterSelect
+            <SearchableSelect
               label="Año"
               value={filters.year?.toString() || ''}
               onChange={(value: string) => handleFilterChange('year', value ? parseInt(value) : undefined)}
-              options={[
-                <SelectItem key="all" value="">Todos los años</SelectItem>,
-                ...filterOptions.years.map(year => (
-                  <SelectItem key={year} value={year.toString()}>
-                    📅 {year}
-                  </SelectItem>
-                ))
-              ]}
+              options={filterOptions.years.map(year => year.toString())}
+              placeholder="Todos los años"
+              icon="📅"
+              emptyMessage="No se encontraron años"
             />
 
-            <FilterSelect
+            <SearchableSelect
               label="Mes"
               value={filters.month?.toString() || ''}
               onChange={(value: string) => handleFilterChange('month', value ? parseInt(value) : undefined)}
               disabled={!filters.year}
-              options={[
-                <SelectItem key="all" value="">Todos los meses</SelectItem>,
-                ...filterOptions.months.map(month => (
-                  <SelectItem key={month} value={month.toString()}>
-                    {new Date(2000, month - 1).toLocaleDateString('es', { month: 'long' })}
-                  </SelectItem>
-                ))
-              ]}
+              options={filterOptions.months.map(month => ({
+                value: month.toString(),
+                label: new Date(2000, month - 1).toLocaleDateString('es', { month: 'long' })
+              }))}
+              placeholder="Todos los meses"
+              icon="🗓️"
+              emptyMessage="No se encontraron meses"
             />
 
-            <FilterSelect
+            <SearchableSelect
               label="Categoría"
               value={filters.categoria || ''}
               onChange={(value: string) => handleFilterChange('categoria', value || undefined)}
-              options={[
-                <SelectItem key="all" value="">Todas las categorías</SelectItem>,
-                ...filterOptions.categorias.map(cat => (
-                  <SelectItem key={cat} value={cat}>
-                    🏷️ {cat}
-                  </SelectItem>
-                ))
-              ]}
+              options={filterOptions.categorias}
+              placeholder="Todas las categorías"
+              icon="🏷️"
+              emptyMessage="No se encontraron categorías"
             />
 
-            <FilterSelect
+            <SearchableSelect
               label="Canal"
               value={filters.canal || ''}
               onChange={(value: string) => handleFilterChange('canal', value || undefined)}
-              options={[
-                <SelectItem key="all" value="">Todos los canales</SelectItem>,
-                ...filterOptions.canales.map(canal => (
-                  <SelectItem key={canal} value={canal}>
-                    📊 {canal}
-                  </SelectItem>
-                ))
-              ]}
+              options={filterOptions.canales}
+              placeholder="Todos los canales"
+              icon="📊"
+              emptyMessage="No se encontraron canales"
             />
 
             <SearchableSelect
