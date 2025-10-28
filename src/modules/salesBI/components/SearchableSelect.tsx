@@ -13,16 +13,27 @@ import {
 } from '@heroicons/react/24/outline';
 import { Text } from '@tremor/react';
 
+// New type for options
+type Option = string | { value: string; label: string };
+
 interface SearchableSelectProps {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: string[];
+  options: Option[];
   placeholder?: string;
   disabled?: boolean;
   icon?: string;
   emptyMessage?: string;
 }
+
+// Helper to get value from option
+const getOptionValue = (option: Option): string =>
+  typeof option === 'string' ? option : option.value;
+
+// Helper to get label from option
+const getOptionLabel = (option: Option): string =>
+  typeof option === 'string' ? option : option.label;
 
 export default function SearchableSelect({
   label,
@@ -46,14 +57,15 @@ export default function SearchableSelect({
 
     const query = searchQuery.toLowerCase();
     return options.filter(option =>
-      option.toLowerCase().includes(query)
+      getOptionLabel(option).toLowerCase().includes(query)
     );
   }, [options, searchQuery]);
 
   // Encontrar el texto del valor seleccionado
   const selectedText = useMemo(() => {
-    return value || '';
-  }, [value]);
+    const selectedOption = options.find(option => getOptionValue(option) === value);
+    return selectedOption ? getOptionLabel(selectedOption) : '';
+  }, [options, value]);
 
   // Cerrar dropdown al hacer clic fuera
   useEffect(() => {
@@ -106,8 +118,8 @@ export default function SearchableSelect({
     setHighlightedIndex(0);
   }, [filteredOptions]);
 
-  const handleSelect = (option: string) => {
-    onChange(option);
+  const handleSelect = (option: Option) => {
+    onChange(getOptionValue(option));
     setIsOpen(false);
     setSearchQuery('');
   };
@@ -229,12 +241,14 @@ export default function SearchableSelect({
                 {/* Opciones filtradas */}
                 {filteredOptions.length > 0 ? (
                   filteredOptions.map((option, index) => {
-                    const isSelected = option === value;
+                    const optionValue = getOptionValue(option);
+                    const optionLabel = getOptionLabel(option);
+                    const isSelected = optionValue === value;
                     const isHighlighted = index === highlightedIndex;
 
                     return (
                       <button
-                        key={option}
+                        key={optionValue}
                         type="button"
                         onClick={() => handleSelect(option)}
                         onMouseEnter={() => setHighlightedIndex(index)}
@@ -250,7 +264,7 @@ export default function SearchableSelect({
                         `}
                       >
                         <span className="text-base">{icon}</span>
-                        <span className="flex-1 truncate">{option}</span>
+                        <span className="flex-1 truncate">{optionLabel}</span>
                         {isSelected && <CheckIcon className="h-4 w-4 text-primary" />}
                       </button>
                     );

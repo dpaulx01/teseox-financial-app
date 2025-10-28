@@ -1,6 +1,6 @@
 /**
  * AnalisisGerencial - Vista gerencial estilo presentación
- * Enfoque en m², eficiencia y análisis Pareto
+ * Diseño profesional con soporte dual-theme
  */
 import React, { useState, useEffect } from 'react';
 import { Grid, Title, Text } from '@tremor/react';
@@ -70,20 +70,17 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
   };
 
   return (
-    <div className="space-y-8 p-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-10"
+        className="text-center mb-6"
       >
-        <div className="inline-flex items-center gap-3 mb-4 px-6 py-3 rounded-2xl bg-gradient-to-r from-violet-500/20 via-purple-500/20 to-pink-500/20 border-2 border-violet-500/30">
-          <span className="text-4xl">📊</span>
-          <Title className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-purple-400 to-pink-400">
-            Análisis Gerencial
-          </Title>
-        </div>
-        <Text className="text-xl text-slate-300 font-medium max-w-3xl mx-auto">
+        <Title className="text-4xl font-display text-primary mb-2">
+          Análisis Gerencial
+        </Title>
+        <Text className="text-lg text-text-secondary">
           Enfoque en eficiencia, m² y el Principio de Pareto 80/20
         </Text>
       </motion.div>
@@ -94,20 +91,16 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        <div className="flex items-center gap-3 mb-6">
-          <div className="h-1 flex-1 bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent rounded-full" />
-          <Title className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">
-            El Panorama General
-          </Title>
-          <div className="h-1 flex-1 bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent rounded-full" />
-        </div>
-        <Grid numItemsLg={4} className="gap-6">
+        <Title className="text-2xl font-display text-primary mb-4">
+          El Panorama General
+        </Title>
+        <Grid numItemsLg={4} className="gap-4">
           <KPICardGerencial
             value={kpiData?.total_m2.toLocaleString('es-CO', { maximumFractionDigits: 0 }) || '0'}
             label="m² Totales"
             subtitle="Volumen producido/vendido"
-            color="primary"
-            icon={<CubeIcon className="h-8 w-8" />}
+            color="emerald"
+            icon={<CubeIcon className="h-6 w-6" />}
             loading={loading}
           />
 
@@ -115,17 +108,17 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
             value={`$${kpiData?.precio_neto_m2.toFixed(2) || '0.00'}`}
             label="Precio Neto/m²"
             subtitle="Precio promedio después de descuentos"
-            color="accent"
-            icon={<CurrencyDollarIcon className="h-8 w-8" />}
+            color="sky"
+            icon={<CurrencyDollarIcon className="h-6 w-6" />}
             loading={loading}
           />
 
           <KPICardGerencial
-            value={`~${kpiData?.margen_sobre_costo.toFixed(0) || '0'}%`}
+            value={`${kpiData?.margen_sobre_costo.toFixed(1) || '0'}%`}
             label="Margen sobre Costo"
             subtitle="Rentabilidad vs costo de venta"
-            color="success"
-            icon={<ChartBarSquareIcon className="h-8 w-8" />}
+            color="purple"
+            icon={<ChartBarSquareIcon className="h-6 w-6" />}
             loading={loading}
           />
 
@@ -133,8 +126,8 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
             value={`${kpiData?.porcentaje_descuento.toFixed(1) || '0.0'}%`}
             label="Descuento Promedio"
             subtitle="% sobre precio bruto"
-            color="warning"
-            icon={<ReceiptPercentIcon className="h-8 w-8" />}
+            color="amber"
+            icon={<ReceiptPercentIcon className="h-6 w-6" />}
             loading={loading}
           />
         </Grid>
@@ -146,73 +139,43 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6"
+          className="grid grid-cols-1 md:grid-cols-3 gap-4"
         >
-          <motion.div
-            whileHover={{ scale: 1.03, y: -5 }}
-            className="p-6 rounded-2xl bg-gradient-to-br from-cyan-500/20 via-blue-500/10 to-transparent border-2 border-cyan-500/30 shadow-[0_0_25px_rgba(6,182,212,0.3)] hover:shadow-[0_0_35px_rgba(6,182,212,0.5)] transition-all duration-300"
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <div className="p-2 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <div className="text-xs font-bold text-cyan-400 uppercase tracking-wider">
-                Margen por m²
-              </div>
+          <div className="rounded-xl border border-border/60 bg-dark-card/40 p-4">
+            <div className="text-xs font-semibold text-sky-400 uppercase mb-1">
+              Margen por m²
             </div>
-            <div className="text-4xl font-black text-white mb-2 drop-shadow-[0_0_10px_rgba(6,182,212,0.8)]">
+            <div className="text-2xl font-bold text-text-primary">
               ${kpiData.margen_m2.toFixed(2)}
             </div>
-            <p className="text-sm text-slate-400 font-medium">
+            <p className="text-xs text-text-muted mt-1">
               Rentabilidad unitaria
             </p>
-          </motion.div>
+          </div>
 
-          <motion.div
-            whileHover={{ scale: 1.03, y: -5 }}
-            className="p-6 rounded-2xl bg-gradient-to-br from-purple-500/20 via-pink-500/10 to-transparent border-2 border-purple-500/30 shadow-[0_0_25px_rgba(168,85,247,0.3)] hover:shadow-[0_0_35px_rgba(168,85,247,0.5)] transition-all duration-300"
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500 to-pink-600">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
-                </svg>
-              </div>
-              <div className="text-xs font-bold text-purple-400 uppercase tracking-wider">
-                Costo por m²
-              </div>
+          <div className="rounded-xl border border-border/60 bg-dark-card/40 p-4">
+            <div className="text-xs font-semibold text-purple-400 uppercase mb-1">
+              Costo por m²
             </div>
-            <div className="text-4xl font-black text-white mb-2 drop-shadow-[0_0_10px_rgba(168,85,247,0.8)]">
+            <div className="text-2xl font-bold text-text-primary">
               ${kpiData.costo_m2.toFixed(2)}
             </div>
-            <p className="text-sm text-slate-400 font-medium">
+            <p className="text-xs text-text-muted mt-1">
               Costo de venta unitario
             </p>
-          </motion.div>
+          </div>
 
-          <motion.div
-            whileHover={{ scale: 1.03, y: -5 }}
-            className="p-6 rounded-2xl bg-gradient-to-br from-emerald-500/20 via-green-500/10 to-transparent border-2 border-emerald-500/30 shadow-[0_0_25px_rgba(16,185,129,0.3)] hover:shadow-[0_0_35px_rgba(16,185,129,0.5)] transition-all duration-300"
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                Ventas Totales
-              </div>
+          <div className="rounded-xl border border-border/60 bg-dark-card/40 p-4">
+            <div className="text-xs font-semibold text-emerald-400 uppercase mb-1">
+              Ventas Totales
             </div>
-            <div className="text-4xl font-black text-white mb-2 drop-shadow-[0_0_10px_rgba(16,185,129,0.8)]">
+            <div className="text-2xl font-bold text-text-primary">
               ${kpiData.venta_neta_total.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
             </div>
-            <p className="text-sm text-slate-400 font-medium">
+            <p className="text-xs text-text-muted mt-1">
               Venta neta del período
             </p>
-          </motion.div>
+          </div>
         </motion.div>
       )}
 
@@ -249,27 +212,16 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
-        className="relative overflow-hidden text-center p-10 rounded-3xl bg-gradient-to-br from-violet-500/30 via-purple-500/20 to-pink-500/30 border-2 border-violet-400/50 shadow-[0_0_40px_rgba(139,92,246,0.4)]"
+        className="text-center p-6 rounded-2xl bg-primary/10 border border-primary/30"
       >
-        {/* Efecto de brillo superior */}
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
-
-        <div className="relative">
-          <div className="text-6xl mb-4">💡</div>
-          <Title className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-violet-300 via-purple-300 to-pink-300 mb-4">
-            Enfoque en lo que Genera Valor
-          </Title>
-          <Text className="text-lg text-slate-200 max-w-3xl mx-auto leading-relaxed font-medium">
-            El análisis de Pareto demuestra que un número reducido de productos, clientes o categorías
-            impulsa la mayor parte del negocio. <span className="text-violet-300 font-bold">Concentrar esfuerzos en estos elementos clave</span> maximiza
-            la rentabilidad y eficiencia operativa.
-          </Text>
-        </div>
-
-        {/* Partículas decorativas */}
-        <div className="absolute top-6 right-6 w-3 h-3 rounded-full bg-violet-400/40 animate-pulse" />
-        <div className="absolute bottom-6 left-6 w-2 h-2 rounded-full bg-pink-400/40 animate-pulse" style={{ animationDelay: '0.5s' }} />
-        <div className="absolute top-1/2 left-1/4 w-2 h-2 rounded-full bg-purple-400/40 animate-pulse" style={{ animationDelay: '1s' }} />
+        <Title className="text-2xl font-display text-primary mb-2">
+          Enfoque en lo que Genera Valor
+        </Title>
+        <Text className="text-text-secondary max-w-3xl mx-auto">
+          El análisis de Pareto demuestra que un número reducido de productos, clientes o categorías
+          impulsa la mayor parte del negocio. Concentrar esfuerzos en estos elementos clave maximiza
+          la rentabilidad y eficiencia operativa.
+        </Text>
       </motion.div>
     </div>
   );
