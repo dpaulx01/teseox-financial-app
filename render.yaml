@@ -1,0 +1,60 @@
+services:
+  # Backend FastAPI
+  - type: web
+    name: artyco-financial-api
+    runtime: python
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn api_server_rbac:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PORT
+        value: 10000
+      # Database - Configurar en Render Dashboard
+      - key: DB_HOST
+        sync: false  # Manual configuration required
+      - key: DB_PORT
+        value: 3306
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      # JWT Secret - CAMBIAR en producción
+      - key: JWT_SECRET_KEY
+        generateValue: true  # Render generará automáticamente
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_EXPIRATION_HOURS
+        value: 24
+      # CORS - Dominio del frontend
+      - key: CORS_ORIGINS
+        value: https://cfg.artycoec.com,http://localhost:3001
+      # Security
+      - key: BCRYPT_ROUNDS
+        value: 12
+      # Optional: Brain System
+      - key: ANTHROPIC_API_KEY
+        sync: false  # Configurar si se necesita
+    healthCheckPath: /health
+    autoDeploy: true
+
+# INSTRUCCIONES DE DEPLOYMENT:
+#
+# 1. Crear cuenta en Render.com
+# 2. Conectar repositorio Git
+# 3. Render detectará automáticamente este archivo render.yaml
+# 4. Configurar variables de entorno marcadas como 'sync: false':
+#    - DB_HOST, DB_NAME, DB_USER, DB_PASSWORD (base de datos MySQL)
+# 5. El servicio se desplegará automáticamente en https://artyco-financial-api.onrender.com
+# 6. Configurar el frontend para usar esta URL como VITE_API_URL
+#
+# NOTA: El plan gratuito tiene las siguientes limitaciones:
+# - 750 horas/mes de cómputo
+# - Sleep automático tras 15 minutos de inactividad
+# - Wake-up en primera request (~30 segundos de delay)
+# - 512 MB RAM

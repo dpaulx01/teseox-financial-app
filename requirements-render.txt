@@ -1,0 +1,53 @@
+# Artyco Financial App - Production Requirements for Render.com
+# Solo dependencias necesarias para producción (sin dev tools)
+
+# ================================
+# API SERVER (FastAPI)
+# ================================
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# ================================
+# AI BRAIN SYSTEM (Opcional)
+# ================================
+anthropic>=0.25.0
+sentence-transformers>=2.2.0
+aiohttp>=3.8.0
+httpx>=0.25.0
+
+# ================================
+# FINANCIAL CALCULATIONS
+# ================================
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+scikit-learn>=1.3.0
+matplotlib>=3.7.0
+plotly>=5.17.0
+
+# ================================
+# DATABASE & STORAGE
+# ================================
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+pymysql>=1.1.0
+# redis>=5.0.0  # Descomentar si necesitas caching
+
+# ================================
+# RBAC & AUTHENTICATION
+# ================================
+PyJWT>=2.8.0
+passlib[bcrypt]>=1.7.4
+
+# ================================
+# UTILITIES
+# ================================
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+jinja2>=3.1.0
+
+# ================================
+# PRODUCTION SERVER
+# ================================
+gunicorn>=21.2.0  # Alternative WSGI server (opcional)

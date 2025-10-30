@@ -38,11 +38,14 @@ class Config:
     API_PORT = int(os.getenv('API_PORT', '8001' if not IS_SITEGROUND else '8000'))
     
     # CORS Configuration
-    if IS_SITEGROUND:
-        # In production, use your actual domain
-        CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'https://yourdomain.com').split(',')
+    if IS_PRODUCTION:
+        # Production: allow frontend domain and localhost for testing
+        default_origins = 'https://cfg.artycoec.com,http://localhost:3001,http://localhost:5173'
+        CORS_ORIGINS = os.getenv('CORS_ORIGINS', default_origins).split(',')
     else:
-        CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3001').split(',')
+        # Development: allow all common dev ports
+        default_origins = 'http://localhost:3001,http://localhost:5173,http://localhost:3000'
+        CORS_ORIGINS = os.getenv('CORS_ORIGINS', default_origins).split(',')
     
     # Security
     BCRYPT_ROUNDS = int(os.getenv('BCRYPT_ROUNDS', '12'))
