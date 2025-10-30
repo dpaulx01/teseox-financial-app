@@ -1,0 +1,13 @@
+MySQL
+
+usuario:
+u6ugyggyggw7u
+
+pass:
+WBfwbn-yPeYp7d5
+
+base de datos:
+dbhvwc3icpvb0z
+
+subdominio:
+cfg.artycoec.com	

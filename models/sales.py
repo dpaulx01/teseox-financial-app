@@ -1,7 +1,7 @@
 """
 Modelos SQLAlchemy para módulo BI de ventas
 """
-from sqlalchemy import Column, Integer, String, Date, DECIMAL, DateTime, Enum, Boolean, Text, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Date, DECIMAL, DateTime, Enum, Boolean, Text, ForeignKey, JSON, Computed
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database.connection import Base
@@ -15,9 +15,9 @@ class SalesTransaction(Base):
 
     # Información temporal
     fecha_emision = Column(Date, nullable=False, index=True)
-    year = Column(Integer, index=True)
-    month = Column(Integer, index=True)
-    quarter = Column(Integer)
+    year = Column(Integer, Computed("YEAR(fecha_emision)"), index=True)
+    month = Column(Integer, Computed("MONTH(fecha_emision)"), index=True)
+    quarter = Column(Integer, Computed("QUARTER(fecha_emision)"))
 
     # Información comercial
     categoria_producto = Column(String(100), nullable=False, index=True)

@@ -58,10 +58,14 @@ class Config:
     
     # File paths
     if IS_SITEGROUND:
-        # SiteGround specific paths
-        BASE_DIR = '/home/customer/www/artyco-financial-app-rbac'
-        UPLOAD_DIR = '/home/customer/www/artyco-financial-app-rbac/uploads'
-        LOG_DIR = '/home/customer/www/artyco-financial-app-rbac/logs'
+        # Permitir configurar la ruta raíz vía variable de entorno
+        SITEGROUND_ROOT = os.getenv(
+            'SITEGROUND_PROJECT_ROOT',
+            '/home/customer/www/artyco-financial-app-rbac'
+        )
+        BASE_DIR = SITEGROUND_ROOT
+        UPLOAD_DIR = os.path.join(SITEGROUND_ROOT, 'uploads')
+        LOG_DIR = os.path.join(SITEGROUND_ROOT, 'logs')
     else:
         # Local paths
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))

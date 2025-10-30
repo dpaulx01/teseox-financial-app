@@ -2,7 +2,7 @@
 API REST para módulo BI de Ventas con filtros dinámicos
 Enfoque Comercial y Financiero
 """
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, extract, desc, asc, case
 from typing import List, Optional, Dict, Any
@@ -45,7 +45,7 @@ async def get_dashboard_summary(
         func.sum(SalesTransaction.descuento).label('descuento_total'),
         func.count(func.distinct(SalesTransaction.numero_factura)).label('num_facturas'),
         func.count(func.distinct(SalesTransaction.razon_social)).label('num_clientes'),
-        func.sum(SalesTransaction.cantidad_facturada).label('unidades_vendidas')
+        func.sum(SalesTransaction.m2).label('metros_cuadrados')
     ).filter(SalesTransaction.company_id == current_user.company_id)
 
     # Aplicar filtros dinámicos
@@ -83,7 +83,8 @@ async def get_dashboard_summary(
             'margen_bruto_porcentaje': round(margen_bruto, 2),
             'num_facturas': result.num_facturas,
             'num_clientes': result.num_clientes,
-            'unidades_vendidas': float(result.unidades_vendidas or 0),
+            'metros_cuadrados': float(result.metros_cuadrados or 0),
+            'unidades_vendidas': float(result.metros_cuadrados or 0),
             'ticket_promedio': round(ticket_promedio, 2)
         }
     }
@@ -122,7 +123,7 @@ async def get_commercial_analysis(
         func.sum(SalesTransaction.venta_neta).label('venta_neta'),
         func.sum(SalesTransaction.descuento).label('descuento'),
         func.count(func.distinct(SalesTransaction.numero_factura)).label('num_facturas'),
-        func.sum(SalesTransaction.cantidad_facturada).label('unidades')
+        func.sum(SalesTransaction.m2).label('metros_cuadrados')
     ).filter(SalesTransaction.company_id == current_user.company_id)
 
     # Aplicar filtros dinámicos (solo si no se está agrupando por esa dimensión)
@@ -153,7 +154,8 @@ async def get_commercial_analysis(
             'venta_neta': round(venta_neta, 2),
             'descuento': round(descuento, 2),
             'num_facturas': row.num_facturas,
-            'unidades': float(row.unidades or 0),
+            'metros_cuadrados': float(row.metros_cuadrados or 0),
+            'unidades': float(row.metros_cuadrados or 0),
             'ticket_promedio': round(venta_neta / row.num_facturas, 2) if row.num_facturas > 0 else 0,
             'porcentaje_descuento': round(descuento / (venta_neta + descuento) * 100, 2) if (venta_neta + descuento) > 0 else 0
         })
@@ -356,6 +358,151 @@ async def get_filter_options(
     }
 
 
+@router.get('/filters/dynamic-options')
+async def get_dynamic_filter_options(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    categoria: Optional[str] = None,
+    canal: Optional[str] = None,
+    vendedor: Optional[str] = None,
+    cliente: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(require_permission('bi', 'view'))
+):
+    """
+    Obtener opciones de filtros dinámicos basadas en los filtros ya aplicados (cascada)
+    Cada filtro devuelve solo las opciones disponibles según los filtros previos
+    """
+    company_id = current_user.company_id
+
+    # Construir query base con filtros aplicados
+    base_query = db.query(SalesTransaction).filter(
+        SalesTransaction.company_id == company_id
+    )
+
+    if year:
+        base_query = base_query.filter(SalesTransaction.year == year)
+    if month:
+        base_query = base_query.filter(SalesTransaction.month == month)
+    if categoria:
+        base_query = base_query.filter(SalesTransaction.categoria_producto == categoria)
+    if canal:
+        base_query = base_query.filter(SalesTransaction.canal_comercial == canal)
+    if vendedor:
+        base_query = base_query.filter(SalesTransaction.vendedor == vendedor)
+    if cliente:
+        base_query = base_query.filter(SalesTransaction.razon_social == cliente)
+
+    # Años disponibles (sin filtrar por year)
+    years_query = db.query(SalesTransaction.year).filter(
+        SalesTransaction.company_id == company_id
+    )
+    if month:
+        years_query = years_query.filter(SalesTransaction.month == month)
+    if categoria:
+        years_query = years_query.filter(SalesTransaction.categoria_producto == categoria)
+    if canal:
+        years_query = years_query.filter(SalesTransaction.canal_comercial == canal)
+    if vendedor:
+        years_query = years_query.filter(SalesTransaction.vendedor == vendedor)
+    if cliente:
+        years_query = years_query.filter(SalesTransaction.razon_social == cliente)
+
+    years = years_query.distinct().order_by(desc(SalesTransaction.year)).all()
+
+    # Meses disponibles (filtrados por year si está presente)
+    months_query = db.query(SalesTransaction.month).filter(
+        SalesTransaction.company_id == company_id
+    )
+    if year:
+        months_query = months_query.filter(SalesTransaction.year == year)
+    if categoria:
+        months_query = months_query.filter(SalesTransaction.categoria_producto == categoria)
+    if canal:
+        months_query = months_query.filter(SalesTransaction.canal_comercial == canal)
+    if vendedor:
+        months_query = months_query.filter(SalesTransaction.vendedor == vendedor)
+    if cliente:
+        months_query = months_query.filter(SalesTransaction.razon_social == cliente)
+
+    months = months_query.distinct().order_by(SalesTransaction.month).all()
+
+    # Categorías disponibles (filtradas por filtros previos)
+    categorias_query = base_query.with_entities(SalesTransaction.categoria_producto)
+    if categoria:
+        # Si ya hay categoria seleccionada, remover ese filtro para mostrar todas las categorías disponibles
+        categorias_query = db.query(SalesTransaction.categoria_producto).filter(
+            SalesTransaction.company_id == company_id
+        )
+        if year:
+            categorias_query = categorias_query.filter(SalesTransaction.year == year)
+        if month:
+            categorias_query = categorias_query.filter(SalesTransaction.month == month)
+    categorias = categorias_query.distinct().order_by(SalesTransaction.categoria_producto).all()
+
+    # Canales disponibles (filtrados por filtros previos)
+    canales_query = base_query.with_entities(SalesTransaction.canal_comercial)
+    if canal:
+        # Si ya hay canal seleccionado, remover ese filtro
+        canales_query = db.query(SalesTransaction.canal_comercial).filter(
+            SalesTransaction.company_id == company_id
+        )
+        if year:
+            canales_query = canales_query.filter(SalesTransaction.year == year)
+        if month:
+            canales_query = canales_query.filter(SalesTransaction.month == month)
+        if categoria:
+            canales_query = canales_query.filter(SalesTransaction.categoria_producto == categoria)
+    canales = canales_query.distinct().order_by(SalesTransaction.canal_comercial).all()
+
+    # Vendedores disponibles (filtrados por filtros previos)
+    vendedores_query = base_query.with_entities(SalesTransaction.vendedor)
+    if vendedor:
+        vendedores_query = db.query(SalesTransaction.vendedor).filter(
+            SalesTransaction.company_id == company_id
+        )
+        if year:
+            vendedores_query = vendedores_query.filter(SalesTransaction.year == year)
+        if month:
+            vendedores_query = vendedores_query.filter(SalesTransaction.month == month)
+        if categoria:
+            vendedores_query = vendedores_query.filter(SalesTransaction.categoria_producto == categoria)
+        if canal:
+            vendedores_query = vendedores_query.filter(SalesTransaction.canal_comercial == canal)
+    vendedores = vendedores_query.distinct().order_by(SalesTransaction.vendedor).all()
+
+    # Clientes disponibles (filtrados por todos los filtros previos)
+    clientes_query = base_query.with_entities(SalesTransaction.razon_social)
+    if cliente:
+        clientes_query = db.query(SalesTransaction.razon_social).filter(
+            SalesTransaction.company_id == company_id
+        )
+        if year:
+            clientes_query = clientes_query.filter(SalesTransaction.year == year)
+        if month:
+            clientes_query = clientes_query.filter(SalesTransaction.month == month)
+        if categoria:
+            clientes_query = clientes_query.filter(SalesTransaction.categoria_producto == categoria)
+        if canal:
+            clientes_query = clientes_query.filter(SalesTransaction.canal_comercial == canal)
+        if vendedor:
+            clientes_query = clientes_query.filter(SalesTransaction.vendedor == vendedor)
+    clientes = clientes_query.distinct().order_by(SalesTransaction.razon_social).all()
+
+    return {
+        'success': True,
+        'filters': {
+            'years': [y[0] for y in years],
+            'months': [m[0] for m in months],
+            'categorias': [c[0] for c in categorias if c[0]],
+            'canales': [c[0] for c in canales if c[0]],
+            'vendedores': [v[0] for v in vendedores if v[0]],
+            'clientes': [c[0] for c in clientes if c[0]]
+        }
+    }
+
+
 # ===================================================================
 # ENDPOINTS DE CARGA DE DATOS
 # ===================================================================
@@ -363,6 +510,7 @@ async def get_filter_options(
 @router.post('/upload/csv')
 async def upload_sales_csv(
     file: UploadFile = File(...),
+    overwrite: bool = Form(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: None = Depends(require_permission('sales', 'upload'))
@@ -370,75 +518,178 @@ async def upload_sales_csv(
     """
     Cargar datos de ventas desde archivo CSV
     """
+    print("--- Iniciando carga de CSV de ventas ---")
+    print(f"Usuario: {current_user.email}, Empresa: {current_user.company_id}")
+    print(f"Archivo: {file.filename}, Content-Type: {file.content_type}")
+
     if not file.filename.endswith('.csv'):
+        print("Error: El archivo no es CSV.")
         raise HTTPException(status_code=400, detail='El archivo debe ser CSV')
 
     try:
+        deleted_records = 0
+        if overwrite:
+            print("Modo sobreescritura activo: eliminando registros previos de la empresa...")
+            deleted_records = db.query(SalesTransaction).filter(
+                SalesTransaction.company_id == current_user.company_id
+            ).delete(synchronize_session=False)
+            db.commit()
+            print(f"Registros eliminados: {deleted_records}")
+
         # Leer contenido del archivo
         contents = await file.read()
         csv_data = contents.decode('utf-8-sig')
         csv_reader = csv.DictReader(io.StringIO(csv_data), delimiter=';')
+        
+        rows = list(csv_reader)
+        print(f"Se encontraron {len(rows)} filas en el CSV.")
 
         transactions = []
         errors = []
+        duplicates_skipped = 0
+        warnings = []
 
-        for idx, row in enumerate(csv_reader, start=2):
+        existing_keys = set()
+        if not overwrite:
+            # Buscar duplicados potenciales solo para las facturas incluidas en el CSV
+            # Usando clave única más específica: factura + producto + fecha + cantidad + venta_neta
+            invoice_numbers = {row.get('# Factura', '').strip() for row in rows if row.get('# Factura')}
+            if invoice_numbers:
+                print(f"Buscando duplicados para {len(invoice_numbers)} facturas presentes en el CSV...")
+                existing_records = db.query(
+                    SalesTransaction.numero_factura,
+                    SalesTransaction.producto,
+                    SalesTransaction.fecha_emision,
+                    SalesTransaction.cantidad_facturada,
+                    SalesTransaction.venta_neta
+                ).filter(
+                    SalesTransaction.company_id == current_user.company_id,
+                    SalesTransaction.numero_factura.in_(invoice_numbers)
+                ).all()
+                existing_keys = {
+                    (num, prod, fecha.isoformat() if fecha else '', float(cant or 0), float(venta or 0))
+                    for num, prod, fecha, cant, venta in existing_records
+                }
+                if existing_keys:
+                    warnings.append(
+                        f"Se encontraron {len(existing_keys)} registros idénticos ya registrados. "
+                        "Se omitirán del nuevo archivo."
+                    )
+                    print(f"Duplicados detectados: {len(existing_keys)} registros idénticos existentes.")
+                else:
+                    print("No se detectaron duplicados previos en la base de datos para estas facturas.")
+            else:
+                print("El archivo no contiene números de factura válidos para validar duplicados.")
+        else:
+            print("Sobrescritura solicitada, se omite validación de duplicados previa.")
+
+        processed_keys = set()
+
+        for idx, row in enumerate(rows, start=2):
             try:
                 # Convertir formato de fecha (dd/mm/yyyy)
-                fecha_parts = row.get('Fecha de Emisión', '').split('/')
+                fecha_str = row.get('Fecha de Emisión', '').strip()
+                if not fecha_str:
+                    errors.append(f"Línea {idx}: La columna 'Fecha de Emisión' está vacía.")
+                    continue
+                
+                fecha_parts = fecha_str.split('/')
                 if len(fecha_parts) != 3:
-                    errors.append(f"Línea {idx}: Fecha inválida")
+                    errors.append(f"Línea {idx}: Fecha '{fecha_str}' no tiene el formato dd/mm/yyyy.")
                     continue
 
-                fecha_emision = date(int(fecha_parts[2]), int(fecha_parts[1]), int(fecha_parts[0]))
+                day, month, year = int(fecha_parts[0]), int(fecha_parts[1]), int(fecha_parts[2])
+                fecha_emision = date(year, month, day)
 
                 # Convertir valores numéricos (formato latino: coma decimal)
-                def parse_decimal(value):
-                    if not value or value.strip() == '':
+                def parse_decimal(value_str: Optional[str]) -> Decimal:
+                    if not value_str or not value_str.strip():
                         return Decimal('0')
-                    return Decimal(value.replace('.', '').replace(',', '.'))
+                    # Limpiar el valor: quitar puntos de miles y reemplazar coma decimal por punto
+                    cleaned_value = value_str.strip().replace('.', '').replace(',', '.')
+                    return Decimal(cleaned_value)
+
+                invoice_number = row.get('# Factura', '').strip()
+                product_name = row.get('Producto', '').strip()
+
+                # Obtener valores numéricos para la clave única
+                cantidad = parse_decimal(row.get('Cantidad Facturada'))
+                venta_neta = parse_decimal(row.get('Venta Neta $'))
+
+                # Clave única más específica: factura + producto + fecha + cantidad + venta_neta
+                key = (invoice_number, product_name, fecha_emision.isoformat(), float(cantidad), float(venta_neta))
+
+                if key in processed_keys:
+                    duplicates_skipped += 1
+                    continue
+
+                if not overwrite and key in existing_keys:
+                    duplicates_skipped += 1
+                    continue
+
+                processed_keys.add(key)
 
                 transaction = SalesTransaction(
                     fecha_emision=fecha_emision,
                     categoria_producto=row.get('Categoría Producto', '').strip(),
                     vendedor=row.get('Vendedor', '').strip(),
-                    numero_factura=row.get('# Factura', '').strip(),
+                    numero_factura=invoice_number,
                     canal_comercial=row.get('Canal Comercial', '').strip(),
                     razon_social=row.get('Razón Social', '').strip(),
-                    producto=row.get('Producto', '').strip(),
-                    cantidad_facturada=parse_decimal(row.get('Cantidad Facturada', '0')),
+                    producto=product_name,
+                    cantidad_facturada=parse_decimal(row.get('Cantidad Facturada')),
                     factor_conversion=parse_decimal(row.get('Factor Conversión', '1')),
-                    m2=parse_decimal(row.get('M2', '0')),
-                    venta_bruta=parse_decimal(row.get('Venta Bruta $', '0')),
-                    descuento=parse_decimal(row.get('Descuento $', '0')),
-                    venta_neta=parse_decimal(row.get('Venta Neta $', '0')),
-                    costo_venta=parse_decimal(row.get('Costo Venta $', '0')),
-                    costo_unitario=parse_decimal(row.get('Costo Uni.$', '0')),
-                    rentabilidad=parse_decimal(row.get('Rentabilidad $', '0')),
+                    m2=parse_decimal(row.get('M2')),
+                    venta_bruta=parse_decimal(row.get('Venta Bruta $')),
+                    descuento=parse_decimal(row.get('Descuento $')),
+                    venta_neta=parse_decimal(row.get('Venta Neta $')),
+                    costo_venta=parse_decimal(row.get('Costo Venta $')),
+                    costo_unitario=parse_decimal(row.get('Costo Uni.$')),
+                    rentabilidad=parse_decimal(row.get('Rentabilidad $')),
                     company_id=current_user.company_id
                 )
-
                 transactions.append(transaction)
 
+            except (ValueError, TypeError, IndexError) as e:
+                errors.append(f"Línea {idx}: Error de formato o dato inválido - {str(e)}. Fila: {row}")
             except Exception as e:
-                errors.append(f"Línea {idx}: {str(e)}")
+                errors.append(f"Línea {idx}: Error inesperado - {str(e)}. Fila: {row}")
+
+        print(f"Procesamiento finalizado. {len(transactions)} transacciones válidas, {len(errors)} errores.")
 
         # Insertar en base de datos
         if transactions:
+            print(f"Insertando {len(transactions)} registros en la base de datos...")
             db.bulk_save_objects(transactions)
             db.commit()
+            print("Inserción completada y commit realizado.")
+        else:
+            print("No hay transacciones válidas para insertar.")
 
-        return {
-            'success': True,
-            'message': f'Se cargaron {len(transactions)} transacciones exitosamente',
+        response_payload = {
+            'success': len(errors) == 0,
+            'message': f'Se procesaron {len(transactions)} de {len(rows)} transacciones.',
             'total_uploaded': len(transactions),
             'errors_count': len(errors),
-            'errors': errors[:10]  # Máximo 10 errores
+            'errors': errors[:20]
         }
+
+        if overwrite:
+            response_payload['deleted_previous'] = deleted_records
+
+        if duplicates_skipped:
+            response_payload['duplicates_skipped_count'] = duplicates_skipped
+            warnings.append(f"Se omitieron {duplicates_skipped} filas por duplicado.")
+
+        if warnings:
+            response_payload['warnings'] = warnings
+
+        return response_payload
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f'Error al procesar CSV: {str(e)}')
+        print(f"--- ERROR FATAL en la carga de CSV: {str(e)} ---")
+        raise HTTPException(status_code=500, detail=f'Error fatal al procesar CSV: {str(e)}')
 
 
 @router.delete('/data/clear')

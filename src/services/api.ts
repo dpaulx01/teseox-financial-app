@@ -116,15 +116,19 @@ class FinancialAPIService {
   // FINANCIAL TOOLS ENDPOINTS
   // ===============================
 
-  async uploadSalesCSV(file: File): Promise<{
+  async uploadSalesCSV(file: File, options?: { overwrite?: boolean }): Promise<{
     success: boolean;
     message: string;
     total_uploaded: number;
     errors_count: number;
     errors?: string[];
+    deleted_previous?: number;
+    duplicates_skipped_count?: number;
+    warnings?: string[];
   }> {
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('overwrite', options?.overwrite ? 'true' : 'false');
 
     const response = await this.api.post('/api/sales-bi/upload/csv', formData, {
       headers: {

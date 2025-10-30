@@ -139,13 +139,21 @@ export default function SalesBIDashboard() {
   const [loading, setLoading] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [lastImport, setLastImport] = useState<SalesDataUploadResult | null>(null);
+  const [showKpis, setShowKpis] = useState({
+    commercial: true,
+    financial: true,
+    gerencial: true,
+  });
 
   const formatCurrency = (value: number = 0) =>
-    new Intl.NumberFormat('es-CO', {
+    new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'COP',
-      maximumFractionDigits: 0,
+      currency: 'USD',
+      maximumFractionDigits: 2,
     }).format(value ?? 0);
+
+  const formatNumber = (value: number = 0) =>
+    (value ?? 0).toLocaleString('es-CO');
 
   useEffect(() => {
     loadFilterOptions();
@@ -153,6 +161,7 @@ export default function SalesBIDashboard() {
 
   useEffect(() => {
     loadSummaryData();
+    loadDynamicFilterOptions();
   }, [filters]);
 
   const loadFilterOptions = async () => {
@@ -163,6 +172,25 @@ export default function SalesBIDashboard() {
       }
     } catch (error) {
       console.error('Error loading filter options:', error);
+    }
+  };
+
+  const loadDynamicFilterOptions = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.year) params.append('year', filters.year.toString());
+      if (filters.month) params.append('month', filters.month.toString());
+      if (filters.categoria) params.append('categoria', filters.categoria);
+      if (filters.canal) params.append('canal', filters.canal);
+      if (filters.vendedor) params.append('vendedor', filters.vendedor);
+      if (filters.cliente) params.append('cliente', filters.cliente);
+
+      const response = await api.get(`/api/sales-bi/filters/dynamic-options?${params.toString()}`);
+      if (response.data.success) {
+        setFilterOptions(response.data.filters);
+      }
+    } catch (error) {
+      console.error('Error loading dynamic filter options:', error);
     }
   };
 
@@ -203,6 +231,13 @@ export default function SalesBIDashboard() {
     setFilters(prev => ({ ...prev }));
   };
 
+  const toggleKpisVisibility = () => {
+    setShowKpis(prev => ({
+      ...prev,
+      [activeView]: !prev[activeView],
+    }));
+  };
+
   const handleDownloadTemplate = () => {
     if (typeof window === 'undefined') return;
 
@@ -240,33 +275,206 @@ export default function SalesBIDashboard() {
 
   const activeFilterCount = Object.keys(filters).filter(k => filters[k as keyof FilterConfig]).length;
 
-  const insightCards = useMemo(() => {
-    if (!summaryData) return [];
+  const kpiGroups = useMemo(() => {
+    if (!summaryData) {
+      return {
+        commercial: [],
+        financial: [],
+        gerencial: [],
+      };
+    }
 
-    return [
-      {
-        title: 'Margen bruto',
-        value: `${(summaryData.margen_bruto_porcentaje || 0).toFixed(1)}%`,
-        description: 'Relación entre rentabilidad y ventas netas',
-        color: 'emerald',
-        icon: ArrowTrendingUpIcon,
-      },
-      {
-        title: 'Ticket promedio',
-        value: formatCurrency(summaryData.ticket_promedio || 0),
-        description: 'Valor promedio por factura emitida',
-        color: 'blue',
-        icon: ShoppingCartIcon,
-      },
-      {
-        title: 'Clientes activos',
-        value: (summaryData.num_clientes || 0).toLocaleString('es-CO'),
-        description: 'Clientes únicos en el período filtrado',
-        color: 'violet',
-        icon: UsersIcon,
-      },
-    ];
+    const ventaNeta = Number(summaryData.venta_neta_total ?? 0);
+    const rentabilidad = Number(summaryData.rentabilidad_total ?? 0);
+    const costoVenta = Number(summaryData.costo_venta_total ?? 0);
+    const descuento = Number(summaryData.descuento_total ?? 0);
+    const facturas = Number(summaryData.num_facturas ?? 0);
+    const clientes = Number(summaryData.num_clientes ?? 0);
+    const metros = Number(summaryData.metros_cuadrados ?? summaryData.unidades_vendidas ?? 0);
+    const margen = Number(summaryData.margen_bruto_porcentaje ?? 0);
+    const ticket = Number(summaryData.ticket_promedio ?? 0);
+
+    return {
+      commercial: [
+        {
+          title: 'Venta Neta Total',
+          value: formatCurrency(ventaNeta),
+          subtitle: `${formatNumber(facturas)} facturas`,
+          icon: CurrencyDollarIcon,
+          color: 'blue',
+        },
+        {
+          title: 'Clientes activos',
+          value: formatNumber(clientes),
+          subtitle: `${formatNumber(facturas)} transacciones`,
+          icon: UsersIcon,
+          color: 'green',
+        },
+        {
+          title: 'Ticket promedio',
+          value: formatCurrency(ticket),
+          subtitle: `${formatNumber(metros)} m²`,
+          icon: ShoppingCartIcon,
+          color: 'amber',
+        },
+        {
+          title: 'Descuento aplicado',
+          value: formatCurrency(descuento),
+          subtitle: 'Inversión comercial en promociones',
+          icon: ArrowTrendingDownIcon,
+          color: 'purple',
+        },
+      ],
+      financial: [
+        {
+          title: 'Rentabilidad total',
+          value: formatCurrency(rentabilidad),
+          subtitle: `Margen ${margen.toFixed(1)}%`,
+          icon: ArrowTrendingUpIcon,
+          color: 'green',
+        },
+        {
+          title: 'Costo de venta',
+          value: formatCurrency(costoVenta),
+          subtitle: 'Inversión asociada a las ventas',
+          icon: ArrowTrendingDownIcon,
+          color: 'amber',
+        },
+        {
+          title: 'Venta Neta Total',
+          value: formatCurrency(ventaNeta),
+          subtitle: `${formatNumber(facturas)} facturas`,
+          icon: CurrencyDollarIcon,
+          color: 'blue',
+        },
+        {
+          title: 'Descuento aplicado',
+          value: formatCurrency(descuento),
+          subtitle: 'Impacto total de descuentos concedidos',
+          icon: SparklesIcon,
+          color: 'purple',
+        },
+      ],
+      gerencial: [
+        {
+          title: 'Margen bruto',
+          value: `${margen.toFixed(1)}%`,
+          subtitle: 'Relación entre rentabilidad y venta neta',
+          icon: ArrowTrendingUpIcon,
+          color: 'green',
+        },
+        {
+          title: 'Clientes activos',
+          value: formatNumber(clientes),
+          subtitle: `${formatNumber(facturas)} interacciones`,
+          icon: UsersIcon,
+          color: 'amber',
+        },
+        {
+          title: 'Ticket promedio',
+          value: formatCurrency(ticket),
+          subtitle: `${formatNumber(metros)} m²`,
+          icon: ShoppingCartIcon,
+          color: 'purple',
+        },
+        {
+          title: 'Venta Neta Total',
+          value: formatCurrency(ventaNeta),
+          subtitle: 'Resultado consolidado del período',
+          icon: CurrencyDollarIcon,
+          color: 'blue',
+        },
+      ],
+    };
   }, [summaryData]);
+
+  const insightGroups = useMemo(() => {
+    if (!summaryData) {
+      return {
+        commercial: [],
+        financial: [],
+        gerencial: [],
+      };
+    }
+
+    const ventaNeta = Number(summaryData.venta_neta_total ?? 0);
+    const rentabilidad = Number(summaryData.rentabilidad_total ?? 0);
+    const costoVenta = Number(summaryData.costo_venta_total ?? 0);
+    const descuento = Number(summaryData.descuento_total ?? 0);
+    const clientes = Number(summaryData.num_clientes ?? 0);
+    const facturas = Number(summaryData.num_facturas ?? 0);
+    const metros = Number(summaryData.metros_cuadrados ?? summaryData.unidades_vendidas ?? 0);
+    const margen = Number(summaryData.margen_bruto_porcentaje ?? 0);
+    const ticket = Number(summaryData.ticket_promedio ?? 0);
+    const costoSobreVenta = ventaNeta > 0 ? (costoVenta / ventaNeta) * 100 : 0;
+
+    return {
+      commercial: [
+        {
+          title: 'Margen bruto',
+          value: `${margen.toFixed(1)}%`,
+          description: 'Relación entre rentabilidad y ventas netas',
+          icon: ArrowTrendingUpIcon,
+        },
+        {
+          title: 'Ticket promedio',
+          value: formatCurrency(ticket),
+          description: 'Valor promedio por factura emitida',
+          icon: ShoppingCartIcon,
+        },
+        {
+          title: 'Clientes activos',
+          value: formatNumber(clientes),
+          description: 'Clientes únicos en el período filtrado',
+          icon: UsersIcon,
+        },
+      ],
+      financial: [
+        {
+          title: 'Rentabilidad total',
+          value: formatCurrency(rentabilidad),
+          description: 'Utilidad neta generada en el período',
+          icon: CurrencyDollarIcon,
+        },
+        {
+          title: 'Costo sobre venta',
+          value: `${costoSobreVenta.toFixed(1)}%`,
+          description: 'Participación del costo en la venta neta',
+          icon: ArrowTrendingDownIcon,
+        },
+        {
+          title: 'Descuento total',
+          value: formatCurrency(descuento),
+          description: 'Inversión en descuentos concedidos',
+          icon: SparklesIcon,
+        },
+      ],
+      gerencial: [
+        {
+          title: 'Venta neta total',
+          value: formatCurrency(ventaNeta),
+          description: `${formatNumber(facturas)} facturas procesadas`,
+          icon: CurrencyDollarIcon,
+        },
+        {
+          title: 'Rentabilidad total',
+          value: formatCurrency(rentabilidad),
+          description: `Margen consolidado del ${margen.toFixed(1)}%`,
+          icon: ArrowTrendingUpIcon,
+        },
+        {
+          title: 'Volumen vendido',
+          value: `${formatNumber(metros)} m²`,
+          description: 'Metros cuadrados vendidos en el período',
+          icon: ChartBarIcon,
+        },
+      ],
+    };
+  }, [summaryData]);
+
+  const activeKpis = kpiGroups[activeView] ?? [];
+  const activeInsights = insightGroups[activeView] ?? [];
+  const showCurrentKpis = showKpis[activeView];
 
   return (
     <>
@@ -330,6 +538,18 @@ export default function SalesBIDashboard() {
                   <CloudArrowUpIcon className="h-5 w-5" />
                   Importar ventas CSV
                 </button>
+                <button
+                  type="button"
+                  onClick={toggleKpisVisibility}
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 ${
+                    showCurrentKpis
+                      ? 'border border-primary/60 bg-primary/10 text-primary hover:bg-primary/20'
+                      : 'border border-border/70 bg-dark-card/80 text-text-secondary hover:border-primary/50 hover:text-text-primary'
+                  }`}
+                >
+                  <SparklesIcon className="h-5 w-5" />
+                  {showCurrentKpis ? 'Ocultar KPIs inteligentes' : 'Mostrar KPIs inteligentes'}
+                </button>
               </div>
               <div className="glass-panel inline-flex items-center gap-3 rounded-2xl border border-border/50 bg-dark-card/70 px-4 py-3 text-sm text-text-muted shadow-hologram">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -369,12 +589,26 @@ export default function SalesBIDashboard() {
             </div>
             <div>
               <p className="text-base font-semibold">{lastImport.message}</p>
-              <p className="mt-1 text-sm text-text-muted">
-                Registros procesados: {lastImport.total_uploaded}.{' '}
-                {lastImport.errors_count > 0
-                  ? `Observaciones detectadas: ${lastImport.errors_count}. Revisa el detalle en el panel de importación.`
-                  : 'Todos los registros fueron importados correctamente.'}
-              </p>
+              <div className="mt-1 space-y-1 text-sm text-text-muted">
+                <p>
+                  Registros agregados: {lastImport.total_uploaded.toLocaleString('es-CO')}
+                </p>
+                {typeof lastImport.deleted_previous === 'number' && (
+                  <p>Se limpiaron {lastImport.deleted_previous.toLocaleString('es-CO')} registros previos antes de importar.</p>
+                )}
+                {lastImport.duplicates_skipped_count ? (
+                  <p>
+                    Se omitieron {lastImport.duplicates_skipped_count.toLocaleString('es-CO')} filas ya existentes en la base de datos.
+                  </p>
+                ) : null}
+                {lastImport.errors_count > 0 ? (
+                  <p>
+                    Observaciones detectadas: {lastImport.errors_count}. Revisa el detalle en el panel de importación.
+                  </p>
+                ) : (
+                  <p>El proceso finalizó sin errores.</p>
+                )}
+              </div>
             </div>
           </div>
           <button
@@ -511,14 +745,14 @@ export default function SalesBIDashboard() {
         </Card>
       </motion.div>
 
-      {insightCards.length > 0 && (
+      {showCurrentKpis && activeInsights.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
         >
           <Grid numItemsSm={1} numItemsLg={3} className="gap-6">
-            {insightCards.map((insight, idx) => {
+            {activeInsights.map((insight, idx) => {
               const Icon = insight.icon;
               return (
                 <motion.div
@@ -549,49 +783,25 @@ export default function SalesBIDashboard() {
         </motion.div>
       )}
 
-      {/* KPIs Mejorados */}
-      {summaryData && (
+      {/* KPIs Inteligentes */}
+      {showCurrentKpis && summaryData && activeKpis.length > 0 && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
         >
           <Grid numItemsLg={4} className="gap-6">
-            <KPICard
-              title="Venta Neta Total"
-              value={`$${summaryData.venta_neta_total?.toLocaleString() || '0'}`}
-              subtitle={`${summaryData.num_facturas || 0} facturas`}
-              icon={CurrencyDollarIcon}
-              color="blue"
-              loading={loading}
-            />
-
-            <KPICard
-              title="Rentabilidad"
-              value={`$${summaryData.rentabilidad_total?.toLocaleString() || '0'}`}
-              subtitle={`Margen: ${summaryData.margen_bruto_porcentaje || 0}%`}
-              icon={ArrowTrendingUpIcon}
-              color="green"
-              loading={loading}
-            />
-
-            <KPICard
-              title="Clientes"
-              value={summaryData.num_clientes?.toLocaleString() || '0'}
-              subtitle={`${summaryData.num_facturas || 0} transacciones`}
-              icon={UsersIcon}
-              color="purple"
-              loading={loading}
-            />
-
-            <KPICard
-              title="Ticket Promedio"
-              value={`$${summaryData.ticket_promedio?.toLocaleString() || '0'}`}
-              subtitle={`${summaryData.unidades_vendidas?.toLocaleString() || 0} unidades`}
-              icon={ShoppingCartIcon}
-              color="amber"
-              loading={loading}
-            />
+            {activeKpis.map(card => (
+              <KPICard
+                key={`${card.title}-${card.color}`}
+                title={card.title}
+                value={card.value}
+                subtitle={card.subtitle}
+                icon={card.icon}
+                color={card.color}
+                loading={loading}
+              />
+            ))}
           </Grid>
         </motion.div>
       )}

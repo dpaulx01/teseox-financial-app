@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Badge,
@@ -25,6 +25,9 @@ interface UploadResult {
   total_uploaded: number;
   errors_count: number;
   errors?: string[];
+  deleted_previous?: number;
+  duplicates_skipped_count?: number;
+  warnings?: string[];
 }
 
 interface SalesDataUploadModalProps {
@@ -47,12 +50,14 @@ export default function SalesDataUploadModal({
   const [status, setStatus] = useState<UploadState>('idle');
   const [result, setResult] = useState<UploadResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [overwriteExisting, setOverwriteExisting] = useState(false);
 
   const resetState = () => {
     setFile(null);
     setStatus('idle');
     setResult(null);
     setErrorMessage(null);
+    setOverwriteExisting(false);
     if (inputRef.current) {
       inputRef.current.value = '';
     }
@@ -62,6 +67,22 @@ export default function SalesDataUploadModal({
     resetState();
     onClose();
   };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        handleClose();
+      }
+    };
+
+    if (open) {
+      document.addEventListener('keydown', handleKeyDown);
+    };
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open, handleClose]);
 
   const selectFile = () => {
     inputRef.current?.click();
@@ -82,13 +103,24 @@ export default function SalesDataUploadModal({
 
   const handleUpload = async () => {
     if (!file || status === 'uploading') {
+      if (!file) {
+        setErrorMessage('Selecciona un archivo CSV antes de importar.');
+        setStatus('error');
+      }
       return;
     }
 
     setStatus('uploading');
     setErrorMessage(null);
     try {
-      const response = await financialAPI.uploadSalesCSV(file);
+      console.log('🔄 Subiendo archivo de ventas:', {
+        fileName: file.name,
+        size: file.size,
+        overwrite: overwriteExisting,
+      });
+      const response = await financialAPI.uploadSalesCSV(file, {
+        overwrite: overwriteExisting,
+      });
       setResult(response);
       if (response.success) {
         setStatus('success');
@@ -132,8 +164,8 @@ export default function SalesDataUploadModal({
             className="relative w-full max-w-2xl"
           >
             <Card className="relative overflow-hidden border border-primary/20 bg-gradient-to-br from-slate-900/90 via-slate-900/60 to-slate-900/90 shadow-2xl">
-              <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-primary/20 blur-3xl" />
-              <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-br from-primary/10 via-transparent to-accent/10 opacity-40" />
+              <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full bg-primary/20 blur-3xl" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-gradient-to-br from-primary/10 via-transparent to-accent/10 opacity-40" />
 
               <Flex justifyContent="between" alignItems="start" className="mb-6">
                 <div className="space-y-2">
@@ -193,8 +225,12 @@ export default function SalesDataUploadModal({
                 )}
               </div>
 
-              <Flex justifyContent="between" alignItems="center" className="mt-6">
-                <div>
+              <Flex
+                justifyContent="between"
+                alignItems="start"
+                className="mt-6 flex-col gap-6 lg:flex-row"
+              >
+                <div className="flex-1 space-y-4">
                   {status === 'uploading' && (
                     <Callout
                       title="Procesando archivo..."
@@ -220,6 +256,11 @@ export default function SalesDataUploadModal({
                             : ''}
                         </Text>
                       )}
+                      {result.duplicates_skipped_count ? (
+                        <Text className="mt-2 text-emerald-200">
+                          {`${result.duplicates_skipped_count.toLocaleString('es-CO')} registros duplicados se omitieron automáticamente.`}
+                        </Text>
+                      ) : null}
                     </Callout>
                   )}
 
@@ -232,43 +273,100 @@ export default function SalesDataUploadModal({
                       <Text className="text-slate-100">{errorMessage}</Text>
                     </Callout>
                   )}
+
+                  {result?.warnings && result.warnings.length > 0 && (
+                    <div className="rounded-xl border border-primary/30 bg-primary/10 p-4">
+                      <Text className="font-medium text-primary">Avisos</Text>
+                      <ul className="mt-3 space-y-2 text-sm text-primary/90">
+                        {result.warnings.map((warning, idx) => (
+                          <li
+                            key={`warning-${idx}`}
+                            className="rounded-lg border border-primary/20 bg-primary/5 p-2"
+                          >
+                            {warning}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {result?.deleted_previous !== undefined && (
+                    <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-100">
+                      Se eliminaron {result.deleted_previous.toLocaleString('es-CO')} registros antes de la importación.
+                    </div>
+                  )}
+
+                  {result?.errors && result.errors.length > 0 && (
+                    <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4">
+                      <Flex justifyContent="between" alignItems="center">
+                        <Text className="font-medium text-yellow-200">
+                          Observaciones encontradas
+                        </Text>
+                        <Badge color="yellow">{result.errors_count}</Badge>
+                      </Flex>
+                      <ul className="mt-4 space-y-2 text-left text-sm text-yellow-100">
+                        {result.errors.slice(0, 10).map((err, idx) => (
+                          <li
+                            key={idx}
+                            className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-2"
+                          >
+                            {err}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
 
-                <Flex className="gap-3">
-                  <Button variant="secondary" color="gray" onClick={resetState}>
-                    Restablecer
-                  </Button>
-                  <Button
-                    icon={CloudArrowUpIcon}
-                    disabled={!file || status === 'uploading'}
-                    loading={status === 'uploading'}
-                    onClick={handleUpload}
-                  >
-                    {status === 'uploading' ? 'Cargando...' : 'Importar CSV'}
-                  </Button>
-                </Flex>
-              </Flex>
+                <div className="flex w-full flex-col gap-3 lg:max-w-xs">
+                  <label className="inline-flex items-center gap-3 rounded-xl border border-border/50 bg-dark-card/80 px-3 py-2 text-sm text-text-muted transition hover:border-primary/50 hover:text-text-primary">
+                    <input
+                      type="checkbox"
+                      className="form-checkbox h-4 w-4 rounded border-border/60 bg-dark-card text-primary focus:ring-primary"
+                      checked={overwriteExisting}
+                      onChange={(event) => setOverwriteExisting(event.target.checked)}
+                      disabled={status === 'uploading'}
+                    />
+                    Sobrescribir datos anteriores
+                  </label>
 
-              {result?.errors && result.errors.length > 0 && (
-                <div className="mt-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4">
-                  <Flex justifyContent="between" alignItems="center">
-                    <Text className="font-medium text-yellow-200">
-                      Observaciones encontradas
-                    </Text>
-                    <Badge color="yellow">{result.errors_count}</Badge>
+                  {overwriteExisting ? (
+                    <Callout
+                      title="Se eliminarán los registros actuales antes de importar"
+                      icon={ExclamationTriangleIcon}
+                      color="yellow"
+                    >
+                      <Text className="text-sm text-yellow-100">
+                        Esta acción limpia todos los registros de ventas existentes para tu empresa antes de cargar el nuevo archivo.
+                      </Text>
+                    </Callout>
+                  ) : (
+                    <Callout
+                      title="Los duplicados se omitirán automáticamente"
+                      icon={CheckCircleIcon}
+                      color="emerald"
+                    >
+                      <Text className="text-sm text-emerald-100">
+                        Mantendremos los registros actuales y solo agregaremos filas nuevas. Facturas ya cargadas se saltarán sin generar errores.
+                      </Text>
+                    </Callout>
+                  )}
+
+                  <Flex className="gap-3">
+                    <Button variant="secondary" color="gray" onClick={resetState}>
+                      Restablecer
+                    </Button>
+                    <Button
+                      icon={CloudArrowUpIcon}
+                      disabled={!file || status === 'uploading'}
+                      loading={status === 'uploading'}
+                      onClick={handleUpload}
+                    >
+                      {status === 'uploading' ? 'Cargando...' : 'Importar CSV'}
+                    </Button>
                   </Flex>
-                  <ul className="mt-4 space-y-2 text-left text-sm text-yellow-100">
-                    {result.errors.slice(0, 10).map((err, idx) => (
-                      <li
-                        key={idx}
-                        className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-2"
-                      >
-                        {err}
-                      </li>
-                    ))}
-                  </ul>
                 </div>
-              )}
+              </Flex>
             </Card>
           </motion.div>
         </motion.div>

@@ -38,19 +38,18 @@ export default defineConfig({
       'recharts',
       'lucide-react',
       'chart.js',
-      'react-chartjs-2'
+      'react-chartjs-2',
+      'framer-motion'
     ],
-    exclude: ['framer-motion'],
+    exclude: [],
     force: false,
     esbuildOptions: {
-      mainFields: ['module', 'jsnext:main', 'jsnext', 'browser', 'main']
+      mainFields: ['browser', 'module', 'main']
     }
   },
   resolve: {
     conditions: ['import', 'module', 'browser', 'default'],
-    alias: {
-      'framer-motion': path.resolve(__dirname, 'node_modules/framer-motion/dist/es/index.mjs')
-    }
+    mainFields: ['browser', 'module', 'main']
   },
   esbuild: {
     logOverride: { 'this-is-undefined-in-esm': 'silent' }
