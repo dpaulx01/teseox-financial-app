@@ -75,6 +75,7 @@ COPY routes ./routes
 COPY database ./database
 COPY auth ./auth
 COPY brain ./brain
+COPY models ./models
 
 # Create necessary directories
 RUN mkdir -p logs uploads && \
