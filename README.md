@@ -1,148 +1,284 @@
-# Artyco Financial App - Comprehensive Documentation
+# 🏢 Artyco Financial App - RBAC System
 
-## 1. Project Overview
+A comprehensive financial management platform with advanced analytics, production tracking, and role-based access control (RBAC).
 
-The Artyco Financial App is a full-stack web application designed for advanced financial analysis, reporting, and data visualization. It integrates a sophisticated AI-powered "Brain System" to offer intelligent insights, risk assessment, and automated financial advice. The application is built with a modern architecture, featuring a React-based frontend, a Python/FastAPI backend, and a MySQL database, all containerized with Docker for streamlined development and deployment. A core feature of the application is its robust Role-Based Access Control (RBAC) system, ensuring secure data access and functionality tailored to different user roles.
+## 🌟 Features
 
-## 2. Features
+### 💼 Financial Management
+- **P&L Analysis**: Complete Profit & Loss analysis with vertical and horizontal views
+- **Break-Even Analysis**: Advanced break-even calculations with scenario modeling
+- **KPI Dashboard**: Customizable financial KPIs with real-time tracking
+- **What-If Scenarios**: Financial projections and scenario simulation
 
-*   **Interactive Financial Dashboard:** Rich, interactive data visualizations and reports.
-*   **AI Brain System:** An AI-powered assistant for financial analysis, risk assessment, and reporting.
-*   **Role-Based Access Control (RBAC):** Granular control over application features and data based on user roles.
-*   **Data Import/Export:** Support for importing data from CSV and Excel files.
-*   **Financial Scenario Analysis:** Tools for creating and comparing different financial scenarios.
-*   **Secure Authentication:** JWT-based authentication to protect user accounts and data.
-*   **"Status Producción" Module:** A module for tracking the status of production orders.
+### 📊 Sales Business Intelligence
+- **Sales Analytics**: Comprehensive sales data analysis with interactive charts
+- **Pareto Analysis**: ABC classification and Pareto charts for product/client analysis
+- **Ranking Dashboard**: Top performers tracking (products, clients, sellers)
+- **Commercial & Financial Views**: Dual-perspective analysis for decision making
 
-## 3. Architecture
+### 🏭 Production Management
+- **Production Status**: Real-time production tracking and monitoring
+- **Stock Planning**: Inventory management and planning tools
+- **Production Calendar**: Visual production scheduling and timeline
+- **Operational KPIs**: Key performance indicators for production efficiency
 
-The application follows a microservices-oriented architecture, with three main components orchestrated by Docker Compose:
+### 🔐 Security & Access Control
+- **Role-Based Access Control (RBAC)**: Granular permissions system
+- **User Management**: Complete user administration panel
+- **JWT Authentication**: Secure token-based authentication
+- **Multi-role Support**: Admin, User, Viewer roles with custom permissions
 
-*   **Frontend:** A single-page application (SPA) built with **React** and **Vite**. It communicates with the backend via a REST API.
-*   **Backend:** A **Python** API server built with the **FastAPI** framework. It handles business logic, data processing, and communication with the database. It also hosts the **AI Brain System**.
-*   **Database:** A **MySQL** database for storing all application data, including user information, financial data, and RBAC policies.
+### 🤖 AI-Powered Insights (Optional)
+- **Financial Brain**: AI-powered financial analysis using Anthropic Claude
+- **Intelligent Suggestions**: Automated insights and recommendations
+- **Pattern Recognition**: Anomaly detection and trend analysis
 
-```
-┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
-│  React Frontend  │   │  FastAPI Backend │   │   MySQL Database │
-│ (Vite)           │   │ (Python)         │   │                  │
-└──────────────────┘   └──────────────────┘   └──────────────────┘
-        │                    ▲                      ▲
-        │ (HTTP Requests)    │                      │
-        └───────────────────►│ (Database Queries)   │
-                             └─────────────────────►│
-```
-
-## 4. Technologies
+## 🛠️ Tech Stack
 
 ### Frontend
-
-*   **Framework:** React 18
-*   **Build Tool:** Vite
-*   **Styling:** Tailwind CSS, Tremor
-*   **Charting:** Chart.js, Recharts
-*   **HTTP Client:** Axios
-*   **Routing:** React Router
+- **Framework**: React 18 + TypeScript
+- **Build Tool**: Vite 4
+- **UI Components**: Custom components with Tailwind CSS
+- **Charts**: Chart.js, Recharts
+- **State Management**: React Context API
+- **Routing**: React Router v6
 
 ### Backend
+- **Framework**: FastAPI (Python 3.9+)
+- **Database**: MySQL 8.0
+- **ORM**: SQLAlchemy 2.0
+- **Authentication**: JWT with PassLib
+- **API Docs**: Automatic OpenAPI/Swagger
 
-*   **Framework:** FastAPI
-*   **AI/ML:** Anthropic, OpenAI, Pandas, NumPy, Scikit-learn
-*   **Database ORM:** SQLAlchemy
-*   **Authentication:** PyJWT, Passlib
-*   **Web Server:** Uvicorn
+### DevOps & Deployment
+- **Containerization**: Docker & Docker Compose
+- **Cloud**: Google Cloud Run (recommended)
+- **Database**: Cloud SQL for MySQL
+- **CI/CD**: GitHub Actions
 
-### Database
+## 🚀 Quick Start
 
-*   **Database:** MySQL 8.0
+### Prerequisites
+- Node.js 16+ and npm
+- Python 3.9+
+- MySQL 8.0 (or Docker)
+- Git
 
-### DevOps
+### Local Development Setup
 
-*   **Containerization:** Docker, Docker Compose
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/artyco-financial-app-rbac.git
+   cd artyco-financial-app-rbac
+   ```
 
-## 5. Getting Started
+2. **Setup Environment Variables**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
 
-To run the application in a local development environment, you need to have Docker and Docker Compose installed.
+3. **Install Frontend Dependencies**
+   ```bash
+   npm install
+   ```
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url>
-    cd artyco-financial-app-rbac
-    ```
+4. **Install Backend Dependencies**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
 
-2.  **Start the application:**
-    ```bash
-    docker-compose up --build
-    ```
+5. **Setup Database**
+   ```bash
+   # Using Docker (recommended for development)
+   docker-compose up -d mysql
 
-This command will build the Docker images for the frontend and backend services, start all the containers, and set up the necessary network connections.
+   # Run migrations
+   mysql -u root -p < sql/01-create-financial-tables.sql
+   mysql -u root -p < sql/02-create-raw-table.sql
+   mysql -u root -p < sql/03-rbac-schema.sql
+   # ... (continue with other SQL files)
+   ```
 
-The application will be available at the following URLs:
+6. **Start Development Servers**
 
-*   **Frontend:** `http://localhost:3001`
-*   **Backend API:** `http://localhost:8001`
-*   **API Docs:** `http://localhost:8001/docs`
-*   **phpMyAdmin:** `http://localhost:8082`
+   Terminal 1 - Backend:
+   ```bash
+   source .venv/bin/activate
+   python api_server_rbac.py
+   ```
+
+   Terminal 2 - Frontend:
+   ```bash
+   npm run dev
+   ```
+
+7. **Access the Application**
+   - Frontend: http://localhost:3001
+   - API Docs: http://localhost:8000/docs
+   - Health Check: http://localhost:8000/health
 
 ### Default Credentials
+```
+Username: admin
+Password: admin
+```
+**⚠️ IMPORTANT:** Change these credentials immediately in production!
 
-*   **Username:** `admin`
-*   **Password:** `admin123`
+## 📁 Project Structure
 
-## 6. Development
-
-### Code Style
-
-*   **Python:** Black for code formatting, Flake8 for linting, and MyPy for type checking.
-*   **TypeScript/JavaScript:** Prettier for code formatting.
-
-### Running Tests
-
-The project includes a testing suite for the backend. To run the tests, you can execute the following command:
-
-```bash
-docker-compose exec api-rbac pytest
+```
+artyco-financial-app-rbac/
+├── src/                          # Frontend React application
+│   ├── components/               # Reusable UI components
+│   ├── contexts/                 # React Context providers
+│   ├── modules/                  # Feature modules
+│   │   ├── salesBI/             # Sales Business Intelligence
+│   │   └── statusProduccion/    # Production Management
+│   ├── pages/                    # Page components
+│   └── services/                 # API services
+├── routes/                       # FastAPI route handlers
+│   ├── auth.py                  # Authentication endpoints
+│   ├── users.py                 # User management
+│   ├── financial_data.py        # Financial data APIs
+│   └── sales_bi_api.py          # Sales BI APIs
+├── database/                     # Database models & connection
+├── auth/                         # Authentication utilities
+├── brain/                        # AI Brain system (optional)
+├── sql/                          # Database schemas and migrations
+├── deploy/                       # Deployment configurations
+├── api_server_rbac.py           # Main FastAPI application
+├── config.py                    # Application configuration
+└── requirements.txt             # Python dependencies
 ```
 
-## 7. AI Brain System
+## 🔧 Configuration
 
-The AI Brain System is a core component of the application, providing intelligent financial analysis capabilities. It is designed with a modular architecture:
+### Environment Variables
+All configuration is done via environment variables. See `.env.example` for a complete list.
 
-*   **Core:** The central logic of the AI brain.
-*   **Memory:** Manages contextual memory for financial decisions.
-*   **Tools:** A collection of specialized tools for financial analysis (e.g., calculators, file readers).
-*   **Reasoning:** A reasoning engine for risk assessment and evaluation.
-*   **Learning:** Adapts and learns from user feedback.
+Key variables:
+- `DATABASE_URL`: MySQL connection string
+- `JWT_SECRET_KEY`: Secret for JWT tokens (generate with `openssl rand -hex 32`)
+- `VITE_API_BASE_URL`: Frontend API endpoint
+- `ANTHROPIC_API_KEY`: For AI features (optional)
 
-The Brain System is integrated into the FastAPI backend and can be accessed through dedicated API endpoints.
+### Database Configuration
+The app supports multiple database configurations:
+- **Local/Docker**: MySQL on localhost
+- **Cloud SQL**: Google Cloud SQL for MySQL
+- **Remote MySQL**: Any remote MySQL instance
 
-## 8. Role-Based Access Control (RBAC)
+## 🐳 Docker Deployment
 
-The application implements a comprehensive RBAC system to control access to different features and data. The RBAC system is configured in the database and managed through the backend API.
+### Using Docker Compose (Development)
+```bash
+docker-compose up -d
+```
 
-### Default Roles
+This starts:
+- MySQL database
+- phpMyAdmin (optional)
+- Application containers
 
-*   **Admin:** Full access to all system features.
-*   **Manager:** Access to financial management and analysis features.
-*   **Analyst:** Access to data analysis and reporting features.
-*   **Viewer:** Read-only access to most features.
+### Building for Production
+```bash
+# Build frontend
+npm run build
 
-### Permissions
+# Build Docker image
+docker build -t artyco-financial-app .
 
-Permissions are granular and assigned to roles. For example, the `Manager` role has permissions for `financial_data:read`, `financial_data:write`, and `pyg_analysis:execute`, while the `Analyst` role only has `financial_data:read` and `pyg_analysis:read`.
+# Run container
+docker run -p 8000:8000 --env-file .env artyco-financial-app
+```
 
-## 9. "Status Producción" Module
+## ☁️ Cloud Deployment (Google Cloud Run)
 
-This module provides a real-time overview of production orders. Its key features include:
+See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed cloud deployment instructions.
 
-*   **Smart Quotation Upload:** Drag and drop PDF or Excel files to automatically parse quotation details.
-*   **Interactive Matrix:** Edit delivery dates, operational status, production notes, and billing information.
-*   **Integrated Payment Management:** Track advance payments and balances for each quotation.
-*   **Visual Progress Tracking:** A dynamic progress bar based on the order's start and estimated delivery dates.
+Quick overview:
+1. Build Docker image
+2. Push to Google Container Registry
+3. Deploy to Cloud Run
+4. Configure Cloud SQL connection
+5. Set environment variables
+6. Configure custom domain
 
-## 10. Troubleshooting
+## 📊 API Documentation
 
-*   **Port in use:** Ensure that ports `3307`, `8001`, `3001`, and `8082` are free on your system.
-*   **Container fails to start:** Check the container logs using `docker-compose logs <service-name>`.
-*   **Database connection error:** Wait for the MySQL container to fully initialize before starting the other services.
-*   **Invalid token:** Make sure the `JWT_SECRET_KEY` is the same in the frontend and backend configurations.
+Once the backend is running, visit:
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+
+### Main API Endpoints
+
+**Authentication:**
+- `POST /api/auth/login` - User login
+- `POST /api/auth/register` - User registration
+- `GET /api/auth/me` - Get current user
+
+**Financial Data:**
+- `GET /api/financial/data` - Get financial data
+- `POST /api/financial/upload` - Upload financial CSV
+- `GET /api/financial/kpis` - Get KPIs
+
+**Sales BI:**
+- `GET /api/sales-bi/summary` - Sales summary
+- `GET /api/sales-bi/rankings` - Product/client rankings
+- `GET /api/sales-bi/pareto` - Pareto analysis
+
+**Production:**
+- `GET /api/production/status` - Production status
+- `GET /api/production/kpis` - Production KPIs
+
+## 🧪 Testing
+
+```bash
+# Backend tests
+pytest
+
+# Frontend tests (if configured)
+npm test
+```
+
+## 🔒 Security
+
+- JWT-based authentication with secure token handling
+- Password hashing with bcrypt
+- CORS configuration for API security
+- SQL injection prevention via SQLAlchemy ORM
+- Environment-based secrets management
+- Role-based access control (RBAC)
+
+## 📝 License
+
+This project is proprietary software. All rights reserved.
+
+## 🤝 Contributing
+
+This is a private project. For internal contributions:
+
+1. Create a feature branch
+2. Make your changes
+3. Submit a pull request
+4. Wait for code review
+
+## 📧 Support
+
+For issues or questions, please contact the development team.
+
+## 🎯 Roadmap
+
+- [ ] Advanced AI-powered forecasting
+- [ ] Multi-company support
+- [ ] Mobile responsive improvements
+- [ ] Export to Excel/PDF enhancements
+- [ ] Real-time collaboration features
+- [ ] Advanced reporting templates
+
+---
+
+**Built with ❤️ for financial excellence**

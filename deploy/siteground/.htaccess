@@ -1,9 +1,10 @@
 Options -Indexes
 
-# Passenger configuration (ajusta las rutas a tu carpeta real dentro de public_html)
+# Passenger configuration for cfg.artycoec.com
 PassengerEnabled on
-PassengerAppRoot /home/customer/www/artyco-financial-app-rbac
-PassengerPython /home/customer/www/artyco-financial-app-rbac/venv/bin/python
+PassengerAppRoot /home/customer/www/cfg.artycoec.com/public_html
+PassengerPython /home/customer/www/cfg.artycoec.com/public_html/venv/bin/python
+PassengerStartupFile passenger_wsgi.py
 
 <IfModule mod_rewrite.c>
     RewriteEngine On

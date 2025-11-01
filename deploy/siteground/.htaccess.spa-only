@@ -1,0 +1,85 @@
+# .htaccess para servir solo SPA (Single Page Application)
+# Usar DESPUÉS de migrar el backend a Render.com
+
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Servir archivos estáticos directamente (assets, CSS, JS, imágenes)
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Fallback a index.html para SPA routing
+    # Todas las rutas no existentes se redirigen al index.html
+    # React Router manejará el routing interno
+    RewriteRule ^.*$ /dist/index.html [L]
+</IfModule>
+
+# Headers de seguridad
+<IfModule mod_headers.c>
+    # Prevenir MIME type sniffing
+    Header set X-Content-Type-Options "nosniff"
+
+    # Protección contra clickjacking
+    Header set X-Frame-Options "DENY"
+
+    # Protección XSS (legacy, para navegadores antiguos)
+    Header set X-XSS-Protection "1; mode=block"
+
+    # Política de referrer
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Content Security Policy (opcional, ajustar según necesidades)
+    # Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+</IfModule>
+
+# Compresión GZIP para mejorar performance
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# Cacheo de archivos estáticos
+<IfModule mod_expires.c>
+    ExpiresActive On
+
+    # Imágenes - 1 año
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+
+    # CSS y JavaScript - 1 mes
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType text/javascript "access plus 1 month"
+
+    # Fonts - 1 año
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType font/ttf "access plus 1 year"
+    ExpiresByType font/otf "access plus 1 year"
+
+    # HTML - sin cache (para SPA)
+    ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
+# Protección de archivos sensibles (por si quedan algunos)
+<FilesMatch "\.(env|log|sql|db|sqlite|py|pyc|sh|conf)$">
+    Require all denied
+</FilesMatch>
+
+# Permitir acceso a archivos del frontend
+<FilesMatch "\.(html|css|js|json|jpg|jpeg|png|gif|svg|webp|woff|woff2|ttf|otf|ico)$">
+    Require all granted
+</FilesMatch>

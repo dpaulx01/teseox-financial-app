@@ -69,8 +69,8 @@ export default function RankingChart({ filters }: RankingChartProps) {
   const metrics = [
     { value: 'volume' as Metric, label: 'Volumen (m²)', color: '#00FF99' },
     { value: 'sales' as Metric, label: 'Ventas (USD)', color: '#00F0FF' },
-    { value: 'profit' as Metric, label: 'Rentabilidad (USD)', color: '#8000FF' },
-    { value: 'margin_m2' as Metric, label: 'Margen/m²', color: '#FFB800' }
+    { value: 'profit' as Metric, label: 'Rentabilidad MP (USD)', color: '#8000FF' },
+    { value: 'margin_m2' as Metric, label: 'Margen MP/m²', color: '#FFB800' }
   ];
 
   const currentMetric = metrics.find(m => m.value === metric);

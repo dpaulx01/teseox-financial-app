@@ -1,0 +1,45 @@
+# Artyco Financial App - SiteGround Optimized Requirements
+# Versiones específicas para compatibilidad con hosting compartido
+
+# ================================
+# API SERVER (FastAPI)
+# ================================
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+a2wsgi==1.10.4  # ASGI to WSGI adapter for Passenger
+
+# ================================
+# DATABASE & STORAGE
+# ================================
+sqlalchemy==2.0.23
+pymysql==1.1.0
+cryptography==41.0.7  # Requerido por pymysql
+
+# ================================
+# RBAC & AUTHENTICATION
+# ================================
+PyJWT==2.8.0
+passlib==1.7.4
+bcrypt==4.1.1
+
+# ================================
+# FILE PROCESSING (mínimo necesario)
+# ================================
+openpyxl==3.1.2  # Excel processing
+python-multipart==0.0.6  # File uploads
+pdfplumber==0.10.4  # PDF parsing
+
+# ================================
+# UTILITIES
+# ================================
+python-dotenv==1.0.0
+httpx==0.25.2
+typing-extensions==4.9.0
+
+# ================================
+# OPCIONAL: Pandas ligero (solo si es estrictamente necesario)
+# Si falla la instalación de pandas, comentar esta línea
+# y modificar el código para no depender de pandas
+# ================================
+# pandas==2.1.4

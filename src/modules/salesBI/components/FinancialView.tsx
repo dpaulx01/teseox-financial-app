@@ -72,7 +72,7 @@ interface Section {
 
 const SECTIONS: Section[] = [
   { id: 'trends', label: 'Tendencias Mensuales', icon: <ArrowTrendingUpIcon className="h-5 w-5" /> },
-  { id: 'profitability', label: 'Análisis de Rentabilidad', icon: <BanknotesIcon className="h-5 w-5" /> },
+  { id: 'profitability', label: 'Rentabilidad (MP)', icon: <BanknotesIcon className="h-5 w-5" /> },
   { id: 'detail', label: 'Detalle Financiero', icon: <TableCellsIcon className="h-5 w-5" /> },
 ];
 
@@ -336,7 +336,7 @@ export default function FinancialView({ filters }: Props) {
           pointRadius: 0,
         },
         {
-          label: 'Rentabilidad',
+          label: 'Rentabilidad (MP)',
           data: trendsData.map((item: any) => item.rentabilidad || 0),
           borderColor: '#10B981',
           backgroundColor: 'rgba(16, 185, 129, 0.18)',
@@ -345,7 +345,7 @@ export default function FinancialView({ filters }: Props) {
           pointRadius: 0,
         },
         {
-          label: 'Costo Venta',
+          label: 'Costo MP',
           data: trendsData.map((item: any) => item.costo_venta || 0),
           borderColor: '#F472B6',
           backgroundColor: 'rgba(244, 114, 182, 0.18)',
@@ -421,7 +421,7 @@ export default function FinancialView({ filters }: Props) {
           borderRadius: 8,
         },
         {
-          label: 'Costo Venta',
+          label: 'Costo MP',
           data: data.map((item: any) => item.costo_venta || 0),
           backgroundColor: 'rgba(244, 114, 182, 0.35)',
           borderColor: '#F472B6',
@@ -430,7 +430,7 @@ export default function FinancialView({ filters }: Props) {
           borderRadius: 8,
         },
         {
-          label: 'Rentabilidad',
+          label: 'Rentabilidad (MP)',
           data: data.map((item: any) => item.rentabilidad || 0),
           backgroundColor: 'rgba(16, 185, 129, 0.45)',
           borderColor: '#10B981',
@@ -502,22 +502,28 @@ export default function FinancialView({ filters }: Props) {
         {
           data: donutData.map((item: any) => item.rentabilidad || 0),
           backgroundColor: [
-            'rgba(0, 240, 255, 0.8)',
-            'rgba(16, 185, 129, 0.8)',
-            'rgba(99, 102, 241, 0.8)',
-            'rgba(244, 114, 182, 0.8)',
-            'rgba(251, 191, 36, 0.8)',
-            'rgba(236, 72, 153, 0.8)',
+            'rgba(0, 240, 255, 0.85)',    // Cyan brillante
+            'rgba(0, 255, 153, 0.85)',    // Verde esmeralda
+            'rgba(147, 51, 234, 0.85)',   // Púrpura vibrante
+            'rgba(255, 184, 0, 0.85)',    // Naranja dorado
+            'rgba(236, 72, 153, 0.85)',   // Rosa fucsia
+            'rgba(59, 130, 246, 0.85)',   // Azul brillante
+            'rgba(239, 68, 68, 0.85)',    // Rojo vibrante
+            'rgba(16, 185, 129, 0.85)',   // Verde agua
           ],
           borderColor: [
             '#00F0FF',
-            '#10B981',
-            '#6366F1',
-            '#F472B6',
-            '#FBBF24',
+            '#00FF99',
+            '#9333EA',
+            '#FFB800',
             '#EC4899',
+            '#3B82F6',
+            '#EF4444',
+            '#10B981'
           ],
-          borderWidth: 2,
+          borderWidth: 3,
+          hoverOffset: 10,
+          hoverBorderWidth: 4,
         },
       ],
     }),
@@ -528,24 +534,74 @@ export default function FinancialView({ filters }: Props) {
     () => ({
       responsive: true,
       maintainAspectRatio: false,
+      cutout: '70%',
+      animation: {
+        animateRotate: true,
+        animateScale: true,
+      },
+      interaction: {
+        mode: 'index' as const,
+        intersect: false,
+      },
       plugins: {
         legend: {
           display: true,
-          position: 'bottom' as const,
+          position: 'right' as const,
+          align: 'center' as const,
           labels: {
             color: chartPalette.text,
-            padding: 12,
+            padding: 15,
             font: {
-              size: 11,
+              size: 13,
+              weight: '500' as const
             },
+            usePointStyle: true,
+            pointStyle: 'circle',
+            generateLabels: (chart: any) => {
+              const data = chart.data;
+              if (data.labels.length && data.datasets.length) {
+                const dataset = data.datasets[0];
+                const total = dataset.data.reduce((acc: number, val: number) => acc + val, 0);
+
+                return data.labels.map((label: string, i: number) => {
+                  const value = dataset.data[i];
+                  const percentage = ((value / total) * 100).toFixed(1);
+
+                  return {
+                    text: `${label} (${percentage}%)`,
+                    fillStyle: dataset.backgroundColor[i],
+                    strokeStyle: dataset.borderColor[i],
+                    lineWidth: 2,
+                    hidden: false,
+                    index: i,
+                    fontColor: chartPalette.text
+                  };
+                });
+              }
+              return [];
+            }
           },
         },
         tooltip: {
           backgroundColor: chartPalette.tooltipBg,
           titleColor: chartPalette.tooltipText,
           bodyColor: chartPalette.tooltipText,
+          borderColor: chartPalette.tooltipBorder,
+          borderWidth: 1,
+          padding: 12,
+          titleFont: {
+            size: 14,
+            weight: 'bold' as const
+          },
+          bodyFont: {
+            size: 13
+          },
           callbacks: {
-            label: (context: any) => `${context.label}: ${currencyFormatter(context.parsed)}`,
+            label: (context: any) => {
+              const total = context.dataset.data.reduce((acc: number, val: number) => acc + val, 0);
+              const percentage = ((context.parsed / total) * 100).toFixed(1);
+              return `${currencyFormatter(context.parsed)} (${percentage}%)`;
+            },
           },
         },
       },
@@ -672,7 +728,10 @@ export default function FinancialView({ filters }: Props) {
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8">
           <Title className="text-4xl font-display text-primary mb-2">Vista Financiera</Title>
           <Text className="text-lg text-text-secondary">
-            Seguimiento de tendencias, rentabilidad y salud financiera por segmentos
+            Análisis de tendencias, rentabilidad y márgenes financieros
+          </Text>
+          <Text className="text-sm text-text-muted mt-1">
+            * Rentabilidad calculada basándose únicamente en el costo de materia prima
           </Text>
         </motion.div>
 
@@ -713,8 +772,8 @@ export default function FinancialView({ filters }: Props) {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <CollapsibleSection
             id="profitability"
-            title="Análisis de Rentabilidad"
-            subtitle={`Comparativo por ${groupBy} con enfoque en margen y eficiencia`}
+            title="Indicadores de Rentabilidad (Materia Prima)"
+            subtitle={`Análisis de márgenes calculados solo con costo de materia prima por ${groupBy}`}
           >
             <Card className="glass-panel relative overflow-hidden border border-border/60 bg-dark-card/75 shadow-hologram">
               <div className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-emerald-400/20 blur-3xl" />
@@ -816,14 +875,19 @@ export default function FinancialView({ filters }: Props) {
                     </div>
                   </div>
 
-                  <div className="mt-6 h-56">
-                    {donutData.length > 0 ? (
-                      <Doughnut data={doughnutChartData} options={doughnutOptions} />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-text-muted">
-                        No hay segmentos suficientes para mostrar el reparto.
-                      </div>
-                    )}
+                  <div className="mt-6">
+                    <Text className="text-xs uppercase tracking-wide text-text-muted mb-3">
+                      Distribución de rentabilidad por segmento
+                    </Text>
+                    <div className="h-80">
+                      {donutData.length > 0 ? (
+                        <Doughnut data={doughnutChartData} options={doughnutOptions} />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-text-muted">
+                          No hay segmentos suficientes para mostrar el reparto.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </Card>
               </Grid>
@@ -868,7 +932,7 @@ export default function FinancialView({ filters }: Props) {
                           onClick={() => handleSort('costo_venta')}
                           className="inline-flex w-full items-center justify-end gap-1 hover:text-primary transition-colors"
                         >
-                          <span>Costo Venta</span>
+                          <span>Costo MP</span>
                           {renderSortIcon('costo_venta')}
                         </button>
                       </TableHeaderCell>
@@ -878,7 +942,7 @@ export default function FinancialView({ filters }: Props) {
                           onClick={() => handleSort('rentabilidad')}
                           className="inline-flex w-full items-center justify-end gap-1 hover:text-primary transition-colors"
                         >
-                          <span>Rentabilidad</span>
+                          <span>Rentabilidad (MP)</span>
                           {renderSortIcon('rentabilidad')}
                         </button>
                       </TableHeaderCell>

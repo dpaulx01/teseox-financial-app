@@ -327,16 +327,16 @@ export default function SalesBIDashboard() {
       ],
       financial: [
         {
-          title: 'Rentabilidad total',
+          title: 'Rentabilidad (materia prima)',
           value: formatCurrency(rentabilidad),
-          subtitle: `Margen ${margen.toFixed(1)}%`,
+          subtitle: `Margen ${margen.toFixed(1)}% | Solo MP`,
           icon: ArrowTrendingUpIcon,
           color: 'green',
         },
         {
-          title: 'Costo de venta',
+          title: 'Costo materia prima',
           value: formatCurrency(costoVenta),
-          subtitle: 'Inversión asociada a las ventas',
+          subtitle: 'Costo de MP utilizada en ventas',
           icon: ArrowTrendingDownIcon,
           color: 'amber',
         },
@@ -431,15 +431,15 @@ export default function SalesBIDashboard() {
       ],
       financial: [
         {
-          title: 'Rentabilidad total',
+          title: 'Rentabilidad (materia prima)',
           value: formatCurrency(rentabilidad),
-          description: 'Utilidad neta generada en el período',
+          description: 'Utilidad neta basada solo en costo de materia prima',
           icon: CurrencyDollarIcon,
         },
         {
-          title: 'Costo sobre venta',
+          title: 'Costo MP sobre venta',
           value: `${costoSobreVenta.toFixed(1)}%`,
-          description: 'Participación del costo en la venta neta',
+          description: 'Participación del costo de materia prima en la venta',
           icon: ArrowTrendingDownIcon,
         },
         {
@@ -457,9 +457,9 @@ export default function SalesBIDashboard() {
           icon: CurrencyDollarIcon,
         },
         {
-          title: 'Rentabilidad total',
+          title: 'Rentabilidad (materia prima)',
           value: formatCurrency(rentabilidad),
-          description: `Margen consolidado del ${margen.toFixed(1)}%`,
+          description: `Margen consolidado del ${margen.toFixed(1)}% | Solo MP`,
           icon: ArrowTrendingUpIcon,
         },
         {
@@ -500,11 +500,10 @@ export default function SalesBIDashboard() {
                 Inteligencia de Negocios
               </div>
               <Title className="text-4xl font-bold text-text-primary neon-text leading-tight">
-                Insights comerciales y financieros con la misma estética pro de Status Producción
+                Análisis Comercial, Financiero y Gerencial
               </Title>
               <Text className="text-base text-text-muted leading-relaxed">
-                Centraliza métricas clave, descubre oportunidades de crecimiento y actualiza el cerebro
-                financiero importando datos frescos en segundos.
+                Panel de inteligencia de negocios para análisis estratégico de ventas, rentabilidad y desempeño comercial. Centraliza métricas clave y descubre oportunidades de crecimiento en tiempo real.
               </Text>
               <Flex className="flex-wrap gap-3">
                 <div className="glass-badge inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary shadow-glow-sm">

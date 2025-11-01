@@ -86,7 +86,7 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
   const analysisTypes = [
     { value: 'sales' as AnalysisType, label: 'Ventas (USD)', color: '#00F0FF' },
     { value: 'volume' as AnalysisType, label: 'Volumen (m²)', color: '#00FF99' },
-    { value: 'profit' as AnalysisType, label: 'Rentabilidad (USD)', color: '#8000FF' }
+    { value: 'profit' as AnalysisType, label: 'Rentabilidad MP (USD)', color: '#8000FF' }
   ];
 
   const dimensions = [

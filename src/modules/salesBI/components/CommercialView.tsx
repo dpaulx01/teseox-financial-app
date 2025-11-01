@@ -273,7 +273,11 @@ export default function CommercialView({ filters }: Props) {
     [data]
   );
 
-  const topClientsData = useMemo(() => clientsData.slice(0, 6), [clientsData]);
+  // Muestra inteligentemente hasta 10 clientes, o menos si hay menos disponibles
+  const topClientsData = useMemo(() => {
+    const maxClients = Math.min(10, clientsData.length);
+    return clientsData.slice(0, maxClients);
+  }, [clientsData]);
 
   const sortedData = useMemo(() => {
     const rows = [...data];
@@ -554,7 +558,7 @@ export default function CommercialView({ filters }: Props) {
   };
 
   // Opciones modernas para gráficos Doughnut y Pie
-  const getDoughnutOptions = (isM2Chart: boolean = false) => ({
+  const getDoughnutOptions = useMemo(() => (isM2Chart: boolean = false) => ({
     responsive: true,
     maintainAspectRatio: false,
     cutout: '70%', // Para Doughnut, hace el agujero más grande y moderno
@@ -596,7 +600,8 @@ export default function CommercialView({ filters }: Props) {
                   strokeStyle: dataset.borderColor[i],
                   lineWidth: 2,
                   hidden: false,
-                  index: i
+                  index: i,
+                  fontColor: chartPalette.text
                 };
               });
             }
@@ -632,9 +637,9 @@ export default function CommercialView({ filters }: Props) {
         }
       }
     }
-  });
+  }), [chartPalette, currencyFormatter, numberFormatter]);
 
-  const getPieOptions = (isM2Chart: boolean = false) => ({
+  const getPieOptions = useMemo(() => (isM2Chart: boolean = false) => ({
     responsive: true,
     maintainAspectRatio: false,
     animation: {
@@ -675,7 +680,8 @@ export default function CommercialView({ filters }: Props) {
                   strokeStyle: dataset.borderColor[i],
                   lineWidth: 2,
                   hidden: false,
-                  index: i
+                  index: i,
+                  fontColor: chartPalette.text
                 };
               });
             }
@@ -711,7 +717,7 @@ export default function CommercialView({ filters }: Props) {
         }
       }
     }
-  });
+  }), [chartPalette, currencyFormatter, numberFormatter]);
 
   // Gráfico de evolución mensual - Line Chart con una línea por año
   const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -1141,7 +1147,7 @@ export default function CommercialView({ filters }: Props) {
                     <Title className="text-lg font-semibold text-text-primary">
                       Composición por Valor
                     </Title>
-                    <Text className="text-xs text-text-muted">Top 6 clientes por ventas</Text>
+                    <Text className="text-xs text-text-muted">Top {topClientsData.length} clientes por ventas</Text>
                   </div>
                 </Flex>
                 <div className="h-96">
@@ -1166,7 +1172,7 @@ export default function CommercialView({ filters }: Props) {
                     <Title className="text-lg font-semibold text-text-primary">
                       Composición por Volumen
                     </Title>
-                    <Text className="text-xs text-text-muted">Top 6 clientes por m²</Text>
+                    <Text className="text-xs text-text-muted">Top {topClientsData.length} clientes por m²</Text>
                   </div>
                 </Flex>
                 <div className="h-96">

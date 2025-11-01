@@ -79,3 +79,40 @@ brain_memory.json
 build/
 dist/
 *.egg-info/
+
+# ===================================
+# ARTYCO SPECIFIC - Data & Credentials
+# ===================================
+
+# Data files (CSV, Excel con datos reales)
+*.csv
+*.xls
+*.xlsx
+!**/example*.csv
+!**/template*.csv
+!**/sample*.csv
+
+# Credentials and sensitive info
+Datos*.txt
+*credenciales*.txt
+*password*.txt
+*secret*.txt
+
+# Deployment artifacts
+deploy/**/build/
+deploy/**/*.zip
+*.zip
+
+# Production environment files
+.env.production
+.env.staging
+
+# Documentation with sensitive info
+git-commits.txt
+RUTAS_ARCHIVOS_ANALISIS.txt
+
+# HTML exports (pueden contener datos sensibles)
+*.html
+
+# Claude AI workspace
+.claude/

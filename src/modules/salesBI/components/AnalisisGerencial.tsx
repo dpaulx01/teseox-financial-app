@@ -59,6 +59,205 @@ const SECTIONS: Section[] = [
   { id: 'ranking', label: 'Top 10 Categorías', icon: <Bars3BottomLeftIcon className="h-5 w-5" /> }
 ];
 
+// Componente de Insights Inteligentes
+interface InsightsInteligentesProps {
+  kpiData: KPIData;
+  filters: any;
+}
+
+function InsightsInteligentes({ kpiData, filters }: InsightsInteligentesProps) {
+  const [paretoData, setParetoData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadParetoInsights();
+  }, [filters]);
+
+  const loadParetoInsights = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ dimension: 'producto', analysis_type: 'sales' });
+      if (filters.year) params.append('year', filters.year);
+      if (filters.month) params.append('month', filters.month);
+      if (filters.categoria) params.append('categoria', filters.categoria);
+      if (filters.canal) params.append('canal', filters.canal);
+
+      const response = await api.get(`/api/sales-bi/analysis/pareto?${params}`);
+      if (response.data.success) {
+        setParetoData(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error loading pareto insights:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Generar insights inteligentes basados en datos reales
+  const generateInsights = () => {
+    if (!kpiData || loading || !paretoData) return [];
+
+    const insights: Array<{type: 'warning' | 'success' | 'info' | 'alert', message: string}> = [];
+
+    // 1. Análisis de Margen sobre Costo MP
+    const margenCosto = kpiData.margen_sobre_costo;
+    if (margenCosto < 20) {
+      insights.push({
+        type: 'alert',
+        message: `⚠️ Margen sobre costo MP crítico (${margenCosto.toFixed(1)}%). Los costos de materia prima están consumiendo más del 80% del precio de venta. Evalúe renegociación con proveedores o ajuste de precios.`
+      });
+    } else if (margenCosto < 35) {
+      insights.push({
+        type: 'warning',
+        message: `📊 Margen sobre costo MP moderado (${margenCosto.toFixed(1)}%). Existe oportunidad de optimización. Considere análisis de proveedores alternativos o economías de escala.`
+      });
+    } else if (margenCosto >= 50) {
+      insights.push({
+        type: 'success',
+        message: `✅ Excelente margen sobre costo MP (${margenCosto.toFixed(1)}%). El control de costos de materia prima es sólido y genera alta rentabilidad.`
+      });
+    }
+
+    // 2. Análisis de Descuentos
+    const descuento = kpiData.porcentaje_descuento;
+    if (descuento > 15) {
+      insights.push({
+        type: 'warning',
+        message: `💰 Nivel de descuentos elevado (${descuento.toFixed(1)}%). Esto representa una pérdida significativa de margen. Revise política comercial y condiciones de negociación con clientes principales.`
+      });
+    } else if (descuento > 10) {
+      insights.push({
+        type: 'info',
+        message: `📉 Descuentos en nivel medio (${descuento.toFixed(1)}%). Monitoree que no erosionen la rentabilidad objetivo. Considere descuentos por volumen estructurados.`
+      });
+    } else {
+      insights.push({
+        type: 'success',
+        message: `✨ Política de descuentos controlada (${descuento.toFixed(1)}%). Se mantiene una buena disciplina de precios que protege los márgenes.`
+      });
+    }
+
+    // 3. Análisis de Concentración (Pareto)
+    if (paretoData && paretoData.length > 0) {
+      const top3 = paretoData.slice(0, 3);
+      const top3Sales = top3.reduce((sum: number, item: any) => sum + (item.value || 0), 0);
+      const totalSales = paretoData.reduce((sum: number, item: any) => sum + (item.value || 0), 0);
+      const concentracion = (top3Sales / totalSales) * 100;
+
+      if (concentracion > 70) {
+        insights.push({
+          type: 'alert',
+          message: `🎯 Alta concentración del negocio: El top 3 representa ${concentracion.toFixed(0)}% de las ventas. Existe riesgo de dependencia excesiva. Estrategia recomendada: diversificar cartera y desarrollar nuevos productos/clientes.`
+        });
+      } else if (concentracion > 50) {
+        insights.push({
+          type: 'warning',
+          message: `📊 Concentración moderada: El top 3 genera ${concentracion.toFixed(0)}% de las ventas. Balancee enfoque en estrellas con desarrollo de nuevas oportunidades.`
+        });
+      } else {
+        insights.push({
+          type: 'success',
+          message: `🌟 Cartera diversificada: El top 3 representa ${concentracion.toFixed(0)}% de ventas. Buena distribución de riesgo, aunque identifique los drivers principales para maximizar eficiencia.`
+        });
+      }
+    }
+
+    // 4. Análisis de Rentabilidad por m²
+    const margenM2 = kpiData.margen_m2;
+    const precioNetoM2 = kpiData.precio_neto_m2;
+    const eficienciaRentabilidad = (margenM2 / precioNetoM2) * 100;
+
+    if (eficienciaRentabilidad < 25) {
+      insights.push({
+        type: 'warning',
+        message: `📐 Eficiencia por m² mejorable: El margen es ${eficienciaRentabilidad.toFixed(1)}% del precio neto/m². Analice mix de productos y optimice hacia mayor valor agregado por unidad de volumen.`
+      });
+    } else if (eficienciaRentabilidad >= 35) {
+      insights.push({
+        type: 'success',
+        message: `🏆 Excelente eficiencia por m²: Está generando ${eficienciaRentabilidad.toFixed(1)}% de margen sobre precio neto/m². El mix de productos está bien optimizado.`
+      });
+    }
+
+    // 5. Recomendación Estratégica Principal
+    if (margenCosto >= 35 && descuento < 10 && concentracion <= 60) {
+      insights.push({
+        type: 'success',
+        message: `🎯 Operación saludable: KPIs en rangos óptimos. Estrategia recomendada: Mantener disciplina operativa y explorar crecimiento en segmentos de alto margen.`
+      });
+    } else if (margenCosto < 30 || descuento > 12) {
+      insights.push({
+        type: 'alert',
+        message: `🔍 Acción inmediata requerida: Los márgenes están bajo presión. Priorice: 1) Renegociación de costos MP con proveedores, 2) Revisión de política de descuentos, 3) Análisis de rentabilidad por cliente/producto.`
+      });
+    }
+
+    return insights;
+  };
+
+  const insights = generateInsights();
+
+  if (loading) {
+    return (
+      <div className="text-center p-8 rounded-2xl bg-gradient-to-br from-primary/10 to-accent/10 border border-primary/30">
+        <div className="animate-pulse">
+          <div className="h-6 bg-primary/20 rounded w-64 mx-auto mb-4"></div>
+          <div className="h-4 bg-primary/10 rounded w-96 mx-auto"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (insights.length === 0) return null;
+
+  const getIconForType = (type: string) => {
+    switch (type) {
+      case 'success': return '✅';
+      case 'warning': return '⚠️';
+      case 'alert': return '🚨';
+      default: return '💡';
+    }
+  };
+
+  const getColorForType = (type: string) => {
+    switch (type) {
+      case 'success': return 'from-emerald-500/10 to-emerald-400/5 border-emerald-500/30';
+      case 'warning': return 'from-amber-500/10 to-amber-400/5 border-amber-500/30';
+      case 'alert': return 'from-red-500/10 to-red-400/5 border-red-500/30';
+      default: return 'from-sky-500/10 to-sky-400/5 border-sky-500/30';
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="text-center mb-6">
+        <Title className="text-2xl font-display text-primary mb-2">
+          💡 Insights & Recomendaciones Estratégicas
+        </Title>
+        <Text className="text-text-muted">
+          Análisis inteligente basado en tus datos actuales
+        </Text>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4">
+        {insights.map((insight, idx) => (
+          <motion.div
+            key={idx}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: idx * 0.1 }}
+            className={`p-4 rounded-xl bg-gradient-to-r ${getColorForType(insight.type)} border backdrop-blur-sm`}
+          >
+            <Text className="text-text-primary leading-relaxed">
+              {insight.message}
+            </Text>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
   const [kpiData, setKpiData] = useState<KPIData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -336,8 +535,8 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
 
               <KPICardGerencial
                 value={`${kpiData?.margen_sobre_costo.toFixed(1) || '0'}%`}
-                label="Margen sobre Costo"
-                subtitle="Rentabilidad vs costo de venta"
+                label="Margen sobre Costo MP"
+                subtitle="Rentabilidad vs costo materia prima"
                 color="purple"
                 icon={<ChartBarSquareIcon className="h-6 w-6" />}
                 loading={loading}
@@ -364,19 +563,19 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
                     ${kpiData.margen_m2.toFixed(2)}
                   </div>
                   <p className="text-xs text-text-muted mt-1">
-                    Rentabilidad unitaria
+                    Rentabilidad unitaria (MP)
                   </p>
                 </div>
 
                 <div className="rounded-xl border border-border/60 bg-dark-card/40 p-4">
                   <div className="text-xs font-semibold text-purple-400 uppercase mb-1">
-                    Costo por m²
+                    Costo MP por m²
                   </div>
                   <div className="text-2xl font-bold text-text-primary">
                     ${kpiData.costo_m2.toFixed(2)}
                   </div>
                   <p className="text-xs text-text-muted mt-1">
-                    Costo de venta unitario
+                    Costo materia prima unitario
                   </p>
                 </div>
 
@@ -441,22 +640,16 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
           </CollapsibleSection>
         </motion.div>
 
-        {/* Mensaje final inspirador */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="text-center p-6 rounded-2xl bg-primary/10 border border-primary/30"
-        >
-          <Title className="text-2xl font-display text-primary mb-2">
-            Enfoque en lo que Genera Valor
-          </Title>
-          <Text className="text-text-secondary max-w-3xl mx-auto">
-            El análisis de Pareto demuestra que un número reducido de productos, clientes o categorías
-            impulsa la mayor parte del negocio. Concentrar esfuerzos en estos elementos clave maximiza
-            la rentabilidad y eficiencia operativa.
-          </Text>
-        </motion.div>
+        {/* Insights Inteligentes - Análisis Dinámico */}
+        {kpiData && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+          >
+            <InsightsInteligentes kpiData={kpiData} filters={filters} />
+          </motion.div>
+        )}
       </div>
     </div>
   );

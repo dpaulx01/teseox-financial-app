@@ -23,15 +23,18 @@ if load_dotenv:
     if env_path.exists():
         load_dotenv(env_path)
 
-# Importar la app FastAPI como WSGI
+# Importar la app FastAPI y convertirla a WSGI para Passenger
 try:
-    from fastapi.middleware.wsgi import WSGIMiddleware
+    from a2wsgi import ASGIMiddleware
     from api_server_rbac import app as fastapi_app
 
     # Passenger espera un objeto WSGI llamado 'application'
-    application = WSGIMiddleware(fastapi_app)
+    # FastAPI es ASGI nativo, usamos a2wsgi para convertir a WSGI
+    application = ASGIMiddleware(fastapi_app)
 except Exception as exc:  # pragma: no cover - logging en producción
     # Registrar el error en stdout para Passenger
     sys.stderr.write(f"Error al iniciar la aplicación: {exc}\n")
+    import traceback
+    traceback.print_exc(file=sys.stderr)
     raise
 
