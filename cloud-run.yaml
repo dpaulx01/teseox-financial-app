@@ -1,0 +1,97 @@
+# Google Cloud Run Service Configuration
+# This file defines the deployment configuration for Cloud Run
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: artyco-financial-app
+  labels:
+    app: artyco-financial
+    environment: production
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+spec:
+  template:
+    metadata:
+      annotations:
+        # Auto-scaling configuration
+        autoscaling.knative.dev/minScale: '0'  # Scale to zero when idle (save money)
+        autoscaling.knative.dev/maxScale: '10' # Max 10 instances
+
+        # CPU allocation
+        run.googleapis.com/cpu-throttling: 'true'
+
+        # Startup probe configuration
+        run.googleapis.com/startup-cpu-boost: 'true'
+
+        # Cloud SQL connection (update with your instance)
+        # run.googleapis.com/cloudsql-instances: PROJECT:REGION:INSTANCE
+
+      labels:
+        app: artyco-financial
+        version: v1
+    spec:
+      serviceAccountName: cloudrun-sa  # Create this service account
+      containerConcurrency: 80
+      timeoutSeconds: 300  # 5 minutes timeout
+      containers:
+      - name: artyco-financial-app
+        image: gcr.io/PROJECT_ID/artyco-financial-app:latest
+        ports:
+        - name: http1
+          containerPort: 8080
+
+        # Environment variables
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: PORT
+          value: "8080"
+
+        # Secrets from Secret Manager (recommended)
+        # - name: JWT_SECRET_KEY
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: jwt-secret
+        #       key: latest
+        # - name: DB_PASSWORD
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: db-password
+        #       key: latest
+
+        resources:
+          limits:
+            # Memory: 512MB (adjust based on usage)
+            memory: 512Mi
+            # CPU: 1 vCPU
+            cpu: '1'
+          requests:
+            memory: 256Mi
+            cpu: '0.5'
+
+        # Liveness probe
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Startup probe
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 30
+
+      # Volume mounts for Cloud SQL (if needed)
+      # volumes:
+      # - name: cloudsql
+      #   emptyDir: {}

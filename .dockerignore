@@ -1,21 +1,98 @@
-node_modules
-npm-debug.log
+# ===================================
+# Git & Version Control
+# ===================================
 .git
 .gitignore
-*.md
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.gitattributes
+
+# ===================================
+# Dependencies (installed during build)
+# ===================================
+node_modules
+.venv
+venv
+env
+ENV
+
+# ===================================
+# Build outputs (created during build)
+# ===================================
 dist
 build
+*.egg-info
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# ===================================
+# Environment & Secrets
+# ===================================
+.env
+.env.*
+!.env.example
+
+# ===================================
+# IDE & Editors
+# ===================================
 .vscode
 .idea
-*.log
-.venv
 .DS_Store
-uploads/
-logs/
-*.sqlite
+*.swp
+*.swo
+*~
+.claude
+
+# ===================================
+# Documentation
+# ===================================
+*.md
+!README.md
+docs/
+*.txt
+!requirements.txt
+!requirements*.txt
+
+# ===================================
+# Data Files (should not be in image)
+# ===================================
+*.csv
+*.xls
+*.xlsx
 *.db
+*.sqlite
+*.sqlite3
+
+# ===================================
+# Logs & Temporary Files
+# ===================================
+*.log
+logs/
+uploads/
+tmp/
+temp/
+*.tmp
+
+# ===================================
+# Testing & CI
+# ===================================
+.pytest_cache
+.coverage
+.mypy_cache
+.cache
+htmlcov/
+*.cover
+
+# ===================================
+# Deployment artifacts
+# ===================================
+deploy/
+Dockerfile.*
+docker-compose*.yml
+.dockerignore
+
+# ===================================
+# OS specific
+# ===================================
+Thumbs.db
+*:Zone.Identifier

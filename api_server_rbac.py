@@ -5,9 +5,12 @@ Solo autenticación, usuarios y funcionalidades básicas
 """
 
 import os
+from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import uvicorn
 
 # Configuración
@@ -135,6 +138,40 @@ async def api_status():
             "admin_panel": True
         }
     }
+
+# ===================================
+# SERVE FRONTEND STATIC FILES
+# ===================================
+# Mount static files (for production when frontend is built)
+dist_path = Path(__file__).parent / "dist"
+if dist_path.exists():
+    print(f"📦 Serving frontend from: {dist_path}")
+
+    # Serve static assets (JS, CSS, images, etc.)
+    app.mount("/assets", StaticFiles(directory=str(dist_path / "assets")), name="assets")
+
+    # Catch-all route for SPA - must be last
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """Serve the React SPA for all non-API routes"""
+        # Avoid serving API routes as frontend
+        if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("redoc"):
+            raise HTTPException(status_code=404, detail="Not found")
+
+        # Try to serve file if it exists, otherwise serve index.html (SPA)
+        file_path = dist_path / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+
+        # Default to index.html for SPA routing
+        index_path = dist_path / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+
+        raise HTTPException(status_code=404, detail="Frontend not found")
+else:
+    print("⚠️  Frontend dist/ folder not found. Running in API-only mode.")
+    print("   Build frontend with: npm run build")
 
 if __name__ == "__main__":
     print("🚀 Starting Artyco Financial API Server - RBAC System...")
