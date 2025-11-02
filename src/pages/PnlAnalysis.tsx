@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronsRight, ChevronsDown, HelpCircle, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, HelpCircle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Grid3X3, Settings, Plus, Sparkles } from 'lucide-react';
 // react-grid-layout imports (now available in Docker)
@@ -8,11 +8,197 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
 // Performance optimizations
-import OptimizedHierarchicalTree from '../components/performance/OptimizedHierarchicalTree';
-import { usePerformanceMonitor, useMemoryMonitor, useDebouncedSearch } from '../utils/performanceOptimization';
+import { useDebouncedSearch } from '../utils/performanceOptimization';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 const hasGridLayout = true;
+
+const collectAllCodes = (nodes: AccountNode[]): Set<string> => {
+  const codes = new Set<string>();
+  const traverse = (node: AccountNode) => {
+    codes.add(node.code);
+    if (node.children.length) {
+      node.children.forEach(traverse);
+    }
+  };
+  nodes.forEach(traverse);
+  return codes;
+};
+
+const collectRootCodes = (nodes: AccountNode[]): Set<string> =>
+  new Set(nodes.map((node) => node.code));
+
+const nodeMatchesSearchTerm = (node: AccountNode, normalizedTerm: string): boolean => {
+  if (!normalizedTerm) {
+    return true;
+  }
+  if (
+    node.name.toLowerCase().includes(normalizedTerm) ||
+    node.code.toLowerCase().includes(normalizedTerm)
+  ) {
+    return true;
+  }
+  return node.children.some((child) => nodeMatchesSearchTerm(child, normalizedTerm));
+};
+
+const directNodeMatch = (node: AccountNode, normalizedTerm: string): boolean => {
+  if (!normalizedTerm) {
+    return false;
+  }
+  return (
+    node.name.toLowerCase().includes(normalizedTerm) ||
+    node.code.toLowerCase().includes(normalizedTerm)
+  );
+};
+
+interface PnlTreeProps {
+  nodes: AccountNode[];
+  expandedNodes: Set<string>;
+  onToggle: (code: string) => void;
+  showVertical: boolean;
+  showHorizontal: boolean;
+  insights: PnlInsight[];
+  searchTerm: string;
+  formatCurrencyFn: (value: number) => string;
+}
+
+const PnlTreeView: React.FC<PnlTreeProps> = ({
+  nodes,
+  expandedNodes,
+  onToggle,
+  showVertical,
+  showHorizontal,
+  insights,
+  searchTerm,
+  formatCurrencyFn,
+}) => {
+  const normalizedTerm = searchTerm.trim().toLowerCase();
+  const insightMap = useMemo(() => {
+    const map = new Map<string, PnlInsight>();
+    insights.forEach((insight) => {
+      if (insight.targetCode) {
+        map.set(insight.targetCode, insight);
+      }
+    });
+    return map;
+  }, [insights]);
+
+  const renderNode = (node: AccountNode): React.ReactNode => {
+    if (!nodeMatchesSearchTerm(node, normalizedTerm)) {
+      return null;
+    }
+
+    const childElements = node.children
+      .map(renderNode)
+      .filter((child): child is React.ReactNode => child !== null);
+
+    const hasChildren = node.children.length > 0;
+    const isExpanded = expandedNodes.has(node.code);
+    const directMatch = directNodeMatch(node, normalizedTerm);
+    const level = Math.max(1, node.code.split('.').length);
+    const nodeInsight = insightMap.get(node.code);
+    const isExcluded = Boolean(node.excluded);
+    const displayValue = isExcluded ? node.originalValue ?? 0 : node.value;
+    const valueTone = displayValue >= 0 ? 'text-accent' : 'text-danger';
+    const rowHighlight = directMatch ? 'ring-1 ring-primary/40 shadow-glow-sm' : '';
+    const baseBackground =
+      level === 1
+        ? 'bg-gradient-to-r from-primary/12 to-accent/10 border border-primary/40 shadow-inner-glow'
+        : 'bg-dark-card/60 border border-border/40';
+
+    return (
+      <li key={node.code}>
+        <div
+          className={`flex items-center justify-between px-4 py-2 rounded-xl mb-2 transition-colors duration-300 ${baseBackground} ${rowHighlight} ${
+            isExcluded ? 'opacity-60' : ''
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {hasChildren && (
+              <button
+                type="button"
+                onClick={() => onToggle(node.code)}
+                className="p-1 rounded hover:bg-dark-bg/50 transition-colors"
+                aria-label={isExpanded ? 'Contraer cuenta' : 'Expandir cuenta'}
+              >
+                {isExpanded ? (
+                  <ChevronDown className="w-4 h-4 text-primary" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-primary" />
+                )}
+              </button>
+            )}
+            <span className="font-mono text-xs text-primary/80">{node.code}</span>
+            <span
+              className={`text-sm ${
+                directMatch ? 'text-text-primary font-semibold' : 'text-text-secondary'
+              }`}
+            >
+              {node.name}
+            </span>
+            {nodeInsight && (
+              <InsightBubble type={nodeInsight.type} message={nodeInsight.message} />
+            )}
+            {isExcluded && (
+              <span className="ml-2 text-[0.65rem] uppercase tracking-wide text-warning">
+                Ajustado
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            {showVertical && node.verticalPercentage !== undefined && (
+              <span className="text-xs font-mono text-text-muted">
+                {node.verticalPercentage.toFixed(2)}%
+              </span>
+            )}
+            {showHorizontal && node.horizontalChange && (
+              <span
+                className={`text-xs font-mono ${
+                  node.horizontalChange.absolute >= 0 ? 'text-accent' : 'text-danger'
+                }`}
+              >
+                {`${formatCurrencyFn(node.horizontalChange.absolute)} (${node.horizontalChange.percentage.toFixed(1)}%)`}
+              </span>
+            )}
+            <SafeAnimationWrapper
+              fallback={
+                <span className={`font-mono font-semibold ${valueTone}`}>
+                  {formatCurrencyFn(displayValue)}
+                </span>
+              }
+            >
+              <AnimatedCounter
+                value={displayValue}
+                formatFn={formatCurrencyFn}
+                className={`font-mono font-semibold ${valueTone}`}
+                duration={0.4}
+              />
+            </SafeAnimationWrapper>
+          </div>
+        </div>
+        {hasChildren && isExpanded && childElements.length > 0 && (
+          <div className="pl-6">
+            <ul className="space-y-2">{childElements}</ul>
+          </div>
+        )}
+      </li>
+    );
+  };
+
+  const renderedNodes = nodes
+    .map(renderNode)
+    .filter((element): element is React.ReactNode => element !== null);
+
+  if (!renderedNodes.length) {
+    return (
+      <div className="px-4 py-6 text-sm text-text-muted">
+        No se encontraron cuentas que coincidan con tu búsqueda.
+      </div>
+    );
+  }
+
+  return <ul className="space-y-2">{renderedNodes}</ul>;
+};
 
 // Animation Components
 import ParticleBackground from '../components/animations/ParticleBackground';
@@ -41,7 +227,6 @@ import WidgetContainer from '../components/dashboard/WidgetContainer';
 import TableWidget from '../components/dashboard/TableWidget';
 import PredictiveWidget from '../components/dashboard/PredictiveWidget';
 import ScenariosWidget from '../components/dashboard/ScenariosWidget';
-import PerformanceMonitor from '../components/performance/PerformanceMonitor';
 
 // ResponsiveGridLayout is imported conditionally above
 
@@ -61,19 +246,15 @@ const PnlAnalysis: React.FC = () => {
   const { isAnimationEnabled } = useAnimations();
 
   // Performance monitoring
-  const { getRenderCount } = usePerformanceMonitor('PnlAnalysis');
-  const memoryUsage = useMemoryMonitor(3000); // Check every 3 seconds
-  
   const [view, setView] = useState<PnlViewType>('contable');
   const [selectedMonth, setSelectedMonth] = useState<string>('Anual');
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [showVertical, setShowVertical] = useState(false);
   const [showHorizontal, setShowHorizontal] = useState(false);
   const [selectedComparisonMonth, setSelectedComparisonMonth] = useState<string>('');
   const [expandAll, setExpandAll] = useState<boolean>(false);
   const [isDashboardMode, setIsDashboardMode] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState<string | null>(null);
-  const [useVirtualization, setUseVirtualization] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>('');
   
   // Debounced search for better performance
@@ -183,43 +364,85 @@ const PnlAnalysis: React.FC = () => {
 
     calculateInsights();
   }, [pnlResult, showHorizontal, data, view, mixedCosts, comparisonMonth, analysisConfig]);
-
-
-  const toggle = useCallback((key: string) => {
-    setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
+  const toggleNode = useCallback((code: string) => {
+    setExpandedNodes((previous) => {
+      const next = new Set(previous);
+      if (next.has(code)) {
+        next.delete(code);
+      } else {
+        next.add(code);
+      }
+      return next;
+    });
   }, []);
 
-  // Toggle all nodes expanded/collapsed with performance optimization
-  const toggleAll = useCallback(() => {
+  const handleToggleAll = useCallback(() => {
     if (!pnlResult) return;
-    
-    const newState = !expandAll;
-    
-    // For performance, only collect codes when needed
-    if (newState) {
-      const allNodeCodes: string[] = [];
-      const collectAllNodeCodes = (node: any) => {
-        allNodeCodes.push(node.code);
-        if (node.children && node.children.length > 0) {
-          node.children.forEach(collectAllNodeCodes);
-        }
-      };
-      
-      pnlResult.treeData.forEach(collectAllNodeCodes);
-      
-      const newExpanded: Record<string, boolean> = {};
-      allNodeCodes.forEach(code => {
-        newExpanded[code] = true;
-      });
-      
-      setExpanded(newExpanded);
+    const allCodes = collectAllCodes(pnlResult.treeData);
+    if (expandedNodes.size >= allCodes.size && allCodes.size > 0) {
+      const rootCodes = collectRootCodes(pnlResult.treeData);
+      setExpandedNodes(new Set(rootCodes));
     } else {
-      // Collapse all - just clear the expanded state
-      setExpanded({});
+      setExpandedNodes(new Set(allCodes));
     }
-    
-    setExpandAll(newState);
-  }, [pnlResult, expandAll]);
+  }, [expandedNodes, pnlResult]);
+
+  useEffect(() => {
+    if (!pnlResult) {
+      setExpandedNodes(new Set());
+      setExpandAll(false);
+      return;
+    }
+    const validCodes = collectAllCodes(pnlResult.treeData);
+    const rootCodes = collectRootCodes(pnlResult.treeData);
+    setExpandedNodes((previous) => {
+      const next = new Set<string>();
+      previous.forEach((code) => {
+        if (validCodes.has(code)) {
+          next.add(code);
+        }
+      });
+      rootCodes.forEach((code) => next.add(code));
+      return next;
+    });
+  }, [pnlResult]);
+
+  useEffect(() => {
+    if (!pnlResult) {
+      setExpandAll(false);
+      return;
+    }
+    const allCodes = collectAllCodes(pnlResult.treeData);
+    const isFullyExpanded = expandedNodes.size >= allCodes.size && allCodes.size > 0;
+    setExpandAll(isFullyExpanded);
+  }, [expandedNodes, pnlResult]);
+
+  useEffect(() => {
+    if (!pnlResult) return;
+    const term = debouncedSearchTerm.trim().toLowerCase();
+    if (!term) return;
+
+    const codesToExpand = new Set<string>();
+    const visit = (node: AccountNode, ancestors: string[]) => {
+      const matches =
+        node.name.toLowerCase().includes(term) || node.code.toLowerCase().includes(term);
+      if (matches) {
+        ancestors.forEach((code) => codesToExpand.add(code));
+        codesToExpand.add(node.code);
+      }
+      node.children.forEach((child) => visit(child, [...ancestors, node.code]));
+    };
+
+    pnlResult.treeData.forEach((node) => visit(node, []));
+
+    if (codesToExpand.size > 0) {
+      setExpandedNodes((previous) => {
+        const next = new Set(previous);
+        codesToExpand.forEach((code) => next.add(code));
+        return next;
+      });
+    }
+  }, [debouncedSearchTerm, pnlResult]);
 
   // Render widget based on type
   const renderWidget = (widget: any) => {
@@ -238,6 +461,7 @@ const PnlAnalysis: React.FC = () => {
             <WaterfallChart 
               data={pnlResult?.waterfallData || []}
               title=""
+              view={view === 'caja' ? 'ebitda' : 'contable'}
               className="h-full"
             />
           </WidgetContainer>
@@ -262,9 +486,18 @@ const PnlAnalysis: React.FC = () => {
           <WidgetContainer widget={widget}>
             <div className="h-full overflow-y-auto">
               <h4 className="text-sm font-semibold text-purple-400 mb-3">Análisis Jerárquico</h4>
-              <div className="text-xs">
-                {pnlResult && pnlResult.treeData.map(node => renderNode(node))}
-              </div>
+              {pnlResult && (
+                <PnlTreeView
+                  nodes={pnlResult.treeData}
+                  expandedNodes={expandedNodes}
+                  onToggle={toggleNode}
+                  showVertical={showVertical}
+                  showHorizontal={showHorizontal}
+                  insights={insights}
+                  searchTerm={debouncedSearchTerm}
+                  formatCurrencyFn={formatCurrency}
+                />
+              )}
             </div>
           </WidgetContainer>
         );
@@ -301,66 +534,6 @@ const PnlAnalysis: React.FC = () => {
       }
     });
   };
-
-  const renderNode = useCallback((node: AccountNode): React.ReactNode => {
-    // Use expandAll state to determine if nodes should be expanded
-    const isExpanded = expandAll || expanded[node.code];
-    const hasChildren = node.children.length > 0;
-    const nodeInsight = insights.find(i => i.targetCode === node.code);
-    const isExcluded = node.excluded || false;
-
-    // Crear key única que force re-render cuando cambian los datos
-    const uniqueKey = `${node.code}_${view}_${node.value}_${node.excluded}_${(node as any)._recalculated || 0}`;
-    
-    return (
-      <div key={uniqueKey}>
-        <div 
-          onClick={hasChildren ? () => toggle(node.code) : undefined}
-          className={`flex justify-between items-center p-3 transition-all duration-300 group relative ${isExcluded ? 'opacity-50 line-through text-gray-500' : ''} ${hasChildren ? 'cursor-pointer hover:bg-glass hover:shadow-glow-sm' : ''} ${node.code.length <= 3 ? 'bg-gradient-to-r from-primary/10 to-accent/5 font-bold border-b-2 border-primary/30 backdrop-blur-sm' : 'border-b border-border/30 hover:border-primary/20'}`}>
-          <div className="flex items-center">
-            {hasChildren && (
-              isExpanded ? <ChevronsDown className="h-4 w-4 mr-2 text-primary shadow-glow-primary transition-all duration-300" /> : <ChevronsRight className="h-4 w-4 mr-2 text-text-muted hover:text-primary transition-all duration-300" />
-            )}
-            {nodeInsight && (
-              <InsightBubble type={nodeInsight.type} message={nodeInsight.message} />
-            )}
-            <span className="font-mono text-sm mr-2 text-primary/80 font-semibold">{node.code}</span>
-            <span className="text-text-secondary group-hover:text-light transition-colors duration-300">{node.name}</span>
-          </div>
-          <div className="flex items-center">
-            {showVertical && node.verticalPercentage !== undefined && (
-              <span className="text-xs text-gray-400 mr-4">{node.verticalPercentage.toFixed(2)}%</span>
-            )}
-            {showHorizontal && node.horizontalChange && (
-              <span className={`text-xs mr-4 ${node.horizontalChange.absolute >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {formatCurrency(node.horizontalChange.absolute)}
-                ({node.horizontalChange.percentage.toFixed(1)}%)
-              </span>
-            )}
-            <SafeAnimationWrapper 
-              fallback={
-                <span className={`font-mono font-bold transition-all duration-300 ${node.value >= 0 ? 'text-accent shadow-glow-accent group-hover:text-glow' : 'text-danger shadow-glow-danger group-hover:text-glow'}`}>
-                  {isExcluded ? formatCurrency(node.originalValue || 0) : formatCurrency(node.value)}
-                </span>
-              }
-            >
-              <AnimatedCounter
-                value={isExcluded ? (node.originalValue || 0) : node.value}
-                formatFn={(value) => formatCurrency(value)}
-                className={`font-mono font-bold transition-all duration-300 ${node.value >= 0 ? 'text-accent shadow-glow-accent group-hover:text-glow' : 'text-danger shadow-glow-danger group-hover:text-glow'}`}
-                duration={0.3}
-              />
-            </SafeAnimationWrapper>
-          </div>
-        </div>
-        {hasChildren && isExpanded && (
-          <div className="pl-4 animate-slide-up">
-            {node.children.map(child => renderNode(child))}
-          </div>
-        )}
-      </div>
-    );
-  }, [expandAll, expanded, insights, view, showVertical, showHorizontal, toggle]);
 
   if (!data || !pnlResult) {
     return (
@@ -660,6 +833,7 @@ const PnlAnalysis: React.FC = () => {
           <WaterfallChart 
             data={pnlResult.waterfallData}
             title={`Estado de Resultados: ${pnlResult.analysisType === 'contable' ? 'P.E. Contable - Estándar' : pnlResult.analysisType === 'operativo' ? 'P.E. Operativo - EBIT' : 'P.E. de Caja - EBITDA'}`}
+            view={view === 'caja' ? 'ebitda' : 'contable'}
             className="animate-scale-in hologram-card p-6 rounded-xl shadow-hologram hover:shadow-glow-xl transition-all duration-500 relative overflow-hidden"
           />
 
@@ -673,7 +847,7 @@ const PnlAnalysis: React.FC = () => {
           </h3>
           <div className="flex items-center space-x-2">
             <MorphingButton
-              onClick={toggleAll}
+              onClick={handleToggleAll}
               variant="secondary"
               size="sm"
               className="text-xs"
@@ -683,31 +857,13 @@ const PnlAnalysis: React.FC = () => {
           </div>
         </div>
         <div className="glass-card border border-border rounded-lg relative">
-          {/* Performance toggle */}
-          <div className="flex justify-between items-center p-2 border-b border-border/30">
-            <div className="flex items-center space-x-2">
-              <label className="flex items-center space-x-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={useVirtualization}
-                  onChange={(e) => setUseVirtualization(e.target.checked)}
-                  className="rounded"
-                />
-                <span>Virtualización</span>
-              </label>
-              {memoryUsage && (
-                <span className="text-xs text-gray-400">
-                  RAM: {memoryUsage.percentage.toFixed(1)}%
-                </span>
-              )}
-            </div>
-            <div className="text-xs text-gray-500">
-              Renders: {getRenderCount()}
-            </div>
+          <div className="flex justify-between items-center px-4 py-2 border-b border-border/30 bg-dark-card/40 rounded-t-lg">
+            <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              Visor Jerárquico
+            </span>
           </div>
           
-          {/* Search bar for filtering */}
-          <div className="p-2 border-b border-border/30">
+          <div className="p-3 border-b border-border/30">
             <input
               type="text"
               placeholder="Buscar cuentas..."
@@ -717,33 +873,18 @@ const PnlAnalysis: React.FC = () => {
             />
           </div>
 
-          {/* Optimized hierarchical tree */}
-          {useVirtualization ? (
-            <OptimizedHierarchicalTree
-              treeData={pnlResult.treeData}
-              expanded={expanded}
-              expandAll={expandAll}
-              onToggle={toggle}
+          <div className="max-h-96 overflow-y-auto px-2 py-3">
+            <PnlTreeView
+              nodes={pnlResult.treeData}
+              expandedNodes={expandedNodes}
+              onToggle={toggleNode}
               showVertical={showVertical}
               showHorizontal={showHorizontal}
               insights={insights}
-              viewType={view}
-              height={400}
               searchTerm={debouncedSearchTerm}
-              className="optimized-tree-container"
+              formatCurrencyFn={formatCurrency}
             />
-          ) : (
-            <div className="max-h-96 overflow-y-auto">
-              {pnlResult.treeData
-                .filter(node => 
-                  !debouncedSearchTerm || 
-                  node.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-                  node.code.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
-                )
-                .map(node => renderNode(node))
-              }
-            </div>
-          )}
+          </div>
         </div>
         <div className="border-t-2 border-primary bg-gradient-to-r from-primary/10 to-accent/10 p-4 font-bold backdrop-blur-sm relative">
           <div className="flex justify-between items-center">
@@ -762,17 +903,6 @@ const PnlAnalysis: React.FC = () => {
         </StaggerContainer>
       )}
 
-      {/* Performance Monitor */}
-      <PerformanceMonitor 
-        isVisible={useVirtualization || (memoryUsage?.percentage || 0) > 70}
-        maxDataPoints={30}
-        warningThresholds={{
-          renderTime: 16,
-          memoryPercentage: 75,
-          fps: 30
-        }}
-      />
-      
       {/* Floating Action Button - Safe */}
       {isDashboardMode && isEditMode && (
         <SafeAnimationWrapper>

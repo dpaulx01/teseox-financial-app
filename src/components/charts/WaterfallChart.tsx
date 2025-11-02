@@ -50,6 +50,33 @@ export const WaterfallChart: React.FC<WaterfallChartProps> = ({
 }) => {
   const chartRef = useRef<ChartJS<'bar'>>(null);
 
+  const palette = {
+    positive: {
+      gradientTop: 'rgba(56, 189, 248, 0.85)',
+      gradientBottom: 'rgba(56, 189, 248, 0.35)',
+      border: '#38bdf8',
+      legendClass: 'bg-gradient-to-r from-sky-400 to-sky-500/70',
+    },
+    negative: {
+      gradientTop: 'rgba(249, 115, 22, 0.85)',
+      gradientBottom: 'rgba(249, 115, 22, 0.35)',
+      border: '#f97316',
+      legendClass: 'bg-gradient-to-r from-amber-500 to-amber-400/70',
+    },
+    totalPositive: {
+      gradientTop: 'rgba(168, 85, 247, 0.9)',
+      gradientBottom: 'rgba(168, 85, 247, 0.45)',
+      border: '#a855f7',
+      legendClass: 'bg-gradient-to-r from-fuchsia-500 to-fuchsia-400/70',
+    },
+    totalNegative: {
+      gradientTop: 'rgba(236, 72, 153, 0.9)',
+      gradientBottom: 'rgba(236, 72, 153, 0.45)',
+      border: '#ec4899',
+      legendClass: 'bg-gradient-to-r from-rose-500 to-rose-400/70',
+    },
+  };
+
   // Process data for waterfall effect
   const processedData = data.reduce((acc, item, index) => {
     const prevTotal = index > 0 ? acc[index - 1].runningTotal : 0;
@@ -235,17 +262,17 @@ export const WaterfallChart: React.FC<WaterfallChartProps> = ({
         data: processedData.map(d => d.stackValue || Math.abs(d.value)),
         backgroundColor: processedData.map(d => {
           if (d.isTotal) {
-            return d.isNegative
-              ? 'rgba(255, 0, 128, 0.9)' // danger
-              : 'rgba(0, 240, 255, 0.9)'; // primary
+            const colors = d.isNegative ? palette.totalNegative : palette.totalPositive;
+            return colors.gradientTop;
           }
-          return d.isNegative
-            ? 'rgba(255, 0, 128, 0.8)' // danger
-            : 'rgba(0, 255, 153, 0.8)'; // accent
+          const colors = d.isNegative ? palette.negative : palette.positive;
+          return colors.gradientTop;
         }),
         borderColor: processedData.map(d => {
-          if (d.isTotal) return '#00F0FF'; // primary
-          return d.isNegative ? '#FF0080' : '#00FF99'; // danger : accent
+          if (d.isTotal) {
+            return d.isNegative ? palette.totalNegative.border : palette.totalPositive.border;
+          }
+          return d.isNegative ? palette.negative.border : palette.positive.border;
         }),
         borderWidth: 2,
         borderRadius: 6,
@@ -255,38 +282,47 @@ export const WaterfallChart: React.FC<WaterfallChartProps> = ({
     ]
   };
 
+  const overlayGradientClass = (() => {
+    switch (view) {
+      case 'ebitda':
+        return 'from-amber-400/25 via-transparent to-primary/10';
+      default:
+        return 'from-primary/20 via-transparent to-sky-500/10';
+    }
+  })();
+
   // Custom gradient creation
   useEffect(() => {
     if (chartRef.current) {
       const chart = chartRef.current;
       const ctx = chart.ctx;
+      const gradientHeight = chart.chartArea ? chart.chartArea.bottom : 400;
       
       // Update bar colors with gradients
       chart.data.datasets[1].backgroundColor = processedData.map((d, index) => {
-        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-        
+        const gradient = ctx.createLinearGradient(0, 0, 0, gradientHeight);
+        const colors = d.isTotal
+          ? (d.isNegative ? palette.totalNegative : palette.totalPositive)
+          : (d.isNegative ? palette.negative : palette.positive);
+
         if (d.isTotal) {
-          if (d.isNegative) {
-            gradient.addColorStop(0, 'rgba(255, 0, 128, 0.9)'); // danger
-            gradient.addColorStop(1, 'rgba(255, 0, 128, 0.6)'); // danger
-          } else {
-            gradient.addColorStop(0, 'rgba(0, 240, 255, 0.9)'); // primary
-            gradient.addColorStop(1, 'rgba(0, 240, 255, 0.6)'); // primary
-          }
+          gradient.addColorStop(0, colors.gradientTop);
+          gradient.addColorStop(1, colors.gradientBottom);
         } else {
-          if (d.isNegative) {
-            gradient.addColorStop(0, 'rgba(255, 0, 128, 0.8)'); // danger
-            gradient.addColorStop(1, 'rgba(255, 0, 128, 0.4)'); // danger
-          }
-          else {
-            gradient.addColorStop(0, 'rgba(0, 255, 153, 0.8)'); // accent
-            gradient.addColorStop(1, 'rgba(0, 255, 153, 0.4)'); // accent
-          }
+          gradient.addColorStop(0, colors.gradientTop);
+          gradient.addColorStop(1, colors.gradientBottom);
         }
         
         return gradient;
       });
       
+      (chart.data.datasets[1] as any).borderColor = processedData.map((d) => {
+        if (d.isTotal) {
+          return d.isNegative ? palette.totalNegative.border : palette.totalPositive.border;
+        }
+        return d.isNegative ? palette.negative.border : palette.positive.border;
+      });
+
       chart.update('none');
     }
   }, [processedData]);
@@ -299,7 +335,7 @@ export const WaterfallChart: React.FC<WaterfallChartProps> = ({
       transition={{ duration: 0.8, ease: "easeOut" }}
     >
       {/* Animated background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 animate-hologram" />
+      <div className={`absolute inset-0 bg-gradient-to-br ${overlayGradientClass} animate-hologram`} />
       
       {/* Scan line effect */}
       <motion.div
@@ -347,15 +383,15 @@ export const WaterfallChart: React.FC<WaterfallChartProps> = ({
         {/* Legend */}
         <div className="flex justify-center mt-4 space-x-6 text-sm font-mono">
           <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-gradient-to-r from-accent to-accent/60 rounded border border-accent/50"></div>
+            <div className={`w-4 h-4 ${palette.positive.legendClass} rounded border border-sky-400/60`}></div>
             <span className="text-text-secondary">Ingresos/Positivos</span>
           </div>
           <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-gradient-to-r from-danger to-danger/60 rounded border border-danger/50"></div>
+            <div className={`w-4 h-4 ${palette.negative.legendClass} rounded border border-amber-500/60`}></div>
             <span className="text-text-secondary">Costos/Negativos</span>
           </div>
           <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-gradient-to-r from-primary to-primary/60 rounded border border-primary/50"></div>
+            <div className={`w-4 h-4 ${palette.totalPositive.legendClass} rounded border border-fuchsia-500/60`}></div>
             <span className="text-text-secondary">Resultado Final</span>
           </div>
         </div>

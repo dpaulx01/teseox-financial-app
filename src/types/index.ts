@@ -87,6 +87,74 @@ export interface OperationalMetrics {
   eficienciaVentas: number; // metros vendidos vs producidos
 }
 
+export interface BalanceUploadRow {
+  code: string;
+  name: string;
+  value: number;
+}
+
+export interface BalanceNode {
+  code: string;
+  name: string;
+  value: number;
+  level: number;
+  children: BalanceNode[];
+}
+
+export interface BalanceMetrics {
+  activos: number;
+  pasivos: number;
+  patrimonio: number;
+  capital_trabajo: number;
+  liquidez_corriente?: number | null;
+  razon_rapida?: number | null;
+  endeudamiento?: number | null;
+  deuda_capital?: number | null;
+  balance_check: number;
+}
+
+export interface BalanceDataResponse {
+  totals: Record<string, number>;
+  metrics: BalanceMetrics;
+  tree: BalanceNode[];
+  lastUpdated?: string | null;
+}
+
+export interface BalanceFinancialSummary {
+  ingresos: number;
+  utilidad_neta: number;
+  utilidad_operacional: number;
+}
+
+export interface BalanceRatios extends BalanceMetrics {
+  roe?: number | null;
+  roa?: number | null;
+  operating_margin?: number | null;
+  profit_margin?: number | null;
+  assets_to_equity?: number | null;
+  debt_to_equity?: number | null;
+  financials: BalanceFinancialSummary;
+}
+
+export interface BalanceTrendPoint {
+  year: number;
+  month?: number | null;
+  activos: number;
+  pasivos: number;
+  patrimonio: number;
+  capital_trabajo: number;
+  liquidez_corriente?: number | null;
+  razon_rapida?: number | null;
+  balance_check: number;
+}
+
+export interface BalanceSummary {
+  hasBalanceData: boolean;
+  records: number;
+  hasConfig: boolean;
+  lastUpdated: string | null;
+}
+
 // === TIPOS PARA INSIGHTS ===
 
 export interface FinancialDataMonthly {
