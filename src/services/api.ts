@@ -33,8 +33,31 @@ class FinancialAPIService {
   constructor() {
     // Vite expone variables con prefijo VITE_
     // Usamos VITE_API_BASE_URL para configurar la URL base del backend
-    this.baseURL = (import.meta as any)?.env?.VITE_API_BASE_URL || 'http://localhost:8001';
-    
+    // En producción, usa URLs relativas (misma URL del frontend)
+    // En desarrollo, usa localhost:8001
+    const isDevelopment = (import.meta as any)?.env?.DEV;
+    const envBaseUrl = ((import.meta as any)?.env?.VITE_API_BASE_URL || '').trim();
+
+    if (envBaseUrl) {
+      const normalized = envBaseUrl.replace(/\/+$/, '');
+      // Evitar apuntar al mismo puerto del frontend en desarrollo
+      if (
+        isDevelopment &&
+        (normalized === 'http://localhost:3001' || normalized === 'https://localhost:3001')
+      ) {
+        this.baseURL = 'http://localhost:8001';
+      } else {
+        this.baseURL = normalized;
+      }
+    } else if (isDevelopment) {
+      this.baseURL = 'http://localhost:8001';
+    } else if (typeof window !== 'undefined' && window.location) {
+      // En despliegue detrás de un proxy (nginx) usamos la misma raíz del frontend
+      this.baseURL = `${window.location.origin}`;
+    } else {
+      this.baseURL = '';
+    }
+
     this.api = axios.create({
       baseURL: this.baseURL,
       timeout: 30000, // 30 seconds for complex calculations
