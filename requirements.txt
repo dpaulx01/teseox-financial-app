@@ -6,6 +6,7 @@
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.0.0
+email-validator>=2.1.0  # For Pydantic email validation
 
 # ================================
 # AI BRAIN SYSTEM
@@ -43,6 +44,7 @@ redis>=5.0.0  # Caching and sessions
 # RBAC & AUTHENTICATION
 # ================================
 PyJWT>=2.8.0  # JWT token handling
+bcrypt>=4.0.0  # Bcrypt password hashing backend
 passlib[bcrypt]>=1.7.4  # Password hashing
 
 # ================================
@@ -52,6 +54,7 @@ python-dotenv>=1.0.0  # Environment variable management
 python-multipart>=0.0.6  # File upload support
 jinja2>=3.1.0  # Template engine
 tqdm>=4.65.0  # Progress bars
+pdfplumber>=0.10.0  # PDF processing for financial documents
 
 # ================================
 # DEVELOPMENT & TESTING
