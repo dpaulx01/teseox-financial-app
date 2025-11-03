@@ -36,12 +36,127 @@ def get_db() -> Generator[Session, None, None]:
     finally:
         db.close()
 
+def seed_initial_data():
+    """
+    Seed initial data (roles, permissions, admin user)
+    """
+    from models import User, Role, Permission
+    from auth.password import PasswordHandler
+
+    db = SessionLocal()
+    try:
+        # Check if admin user already exists
+        admin_exists = db.query(User).filter(User.username == "admin").first()
+        if admin_exists:
+            print("ℹ️  Admin user already exists")
+            return
+
+        print("📝 Creating initial roles and permissions...")
+
+        # Create permissions
+        permissions_data = [
+            ("users", "read", "View users"),
+            ("users", "write", "Create/update users"),
+            ("users", "delete", "Delete users"),
+            ("financial", "read", "View financial data"),
+            ("financial", "write", "Edit financial data"),
+            ("financial", "delete", "Delete financial data"),
+            ("admin", "read", "View admin panel"),
+            ("admin", "write", "Manage system settings"),
+        ]
+
+        permissions = {}
+        for resource, action, description in permissions_data:
+            perm = db.query(Permission).filter(
+                Permission.resource == resource,
+                Permission.action == action
+            ).first()
+
+            if not perm:
+                perm = Permission(
+                    resource=resource,
+                    action=action,
+                    description=description
+                )
+                db.add(perm)
+                db.flush()
+            permissions[f"{resource}:{action}"] = perm
+
+        # Create roles
+        roles_data = [
+            ("admin", "Administrator with full access", [
+                "users:read", "users:write", "users:delete",
+                "financial:read", "financial:write", "financial:delete",
+                "admin:read", "admin:write"
+            ]),
+            ("manager", "Manager with financial write access", [
+                "users:read", "financial:read", "financial:write"
+            ]),
+            ("analyst", "Analyst with financial read access", [
+                "financial:read"
+            ]),
+            ("viewer", "Viewer with read-only access", [
+                "financial:read"
+            ])
+        ]
+
+        roles = {}
+        for name, description, perms in roles_data:
+            role = db.query(Role).filter(Role.name == name).first()
+            if not role:
+                role = Role(name=name, description=description)
+                db.add(role)
+                db.flush()
+
+                # Assign permissions
+                for perm_key in perms:
+                    if perm_key in permissions:
+                        role.permissions.append(permissions[perm_key])
+
+                roles[name] = role
+            else:
+                roles[name] = role
+
+        # Create default admin user
+        print("👤 Creating default admin user...")
+        admin_user = User(
+            username="admin",
+            email="admin@artyco.com",
+            password_hash=PasswordHandler.hash_password("admin123"),
+            first_name="System",
+            last_name="Administrator",
+            is_active=True,
+            is_superuser=True
+        )
+        db.add(admin_user)
+        db.flush()
+
+        # Assign admin role
+        if "admin" in roles:
+            admin_user.roles.append(roles["admin"])
+
+        db.commit()
+        print("✅ Initial data seeded successfully")
+        print("   📧 Admin email: admin@artyco.com")
+        print("   🔑 Admin password: admin123")
+        print("   ⚠️  IMPORTANT: Change the default password after first login!")
+
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error seeding initial data: {e}")
+        raise
+    finally:
+        db.close()
+
 def init_db():
     """
     Initialize database tables
     """
     # Import all models here to ensure they are registered
     from models import user, role, permission, production  # noqa: F401
-    
+
     # Create all tables
     Base.metadata.create_all(bind=engine)
+
+    # Seed initial data
+    seed_initial_data()
