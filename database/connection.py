@@ -48,8 +48,24 @@ def seed_initial_data():
         # Check if admin user already exists
         admin_exists = db.query(User).filter(User.username == "admin").first()
         if admin_exists:
-            print("ℹ️  Admin user already exists")
-            return
+            print("ℹ️  Admin user already exists - verifying password...")
+            try:
+                # Try to verify password works
+                if PasswordHandler.verify_password("admin123", admin_exists.password_hash):
+                    print("✅ Admin password is valid")
+                    return
+                else:
+                    print("⚠️  Admin password incorrect - updating...")
+                    admin_exists.password_hash = PasswordHandler.hash_password("admin123")
+                    db.commit()
+                    print("✅ Admin password updated successfully")
+                    return
+            except Exception as e:
+                print(f"⚠️  Admin user has corrupted password - recreating: {e}")
+                # Delete corrupted admin user
+                db.delete(admin_exists)
+                db.commit()
+                print("🗑️  Corrupted admin user deleted - proceeding with fresh creation...")
 
         print("📝 Creating initial roles and permissions...")
 
