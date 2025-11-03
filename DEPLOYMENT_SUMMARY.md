@@ -209,16 +209,19 @@ steps:
 
 ## ⏳ PENDIENTE DE COMPLETAR
 
-### 🔄 En Progreso (Build 35869f6f)
+### ✅ Build Completado (Build 35869f6f)
 
-**Estado:** WORKING (~15-20 minutos)
+**Estado:** ✅ SUCCESS
 **Build ID:** `35869f6f-0334-4bdd-b673-a9c3dbafc5b8`
+**Completado:** 2025-11-03 23:42 UTC
 **Logs:** https://console.cloud.google.com/cloud-build/builds/35869f6f-0334-4bdd-b673-a9c3dbafc5b8?project=981333627435
 
 **Incluye:**
 - ✅ Fix de bcrypt
 - ✅ Database seeding (usuario admin)
 - ✅ Refactorización de URLs
+
+**⚠️ PENDIENTE:** Hacer deployment a Cloud Run (comando abajo)
 
 ### 📝 Tareas Pendientes para Próxima Sesión
 
