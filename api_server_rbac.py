@@ -100,9 +100,9 @@ async def get_permissions():
         {"id": 5, "name": "users:write", "description": "Write user data"}
     ]}
 
-@app.get("/")
-async def root():
-    """Endpoint raíz con información del sistema"""
+@app.get("/api/info")
+async def api_info():
+    """Endpoint con información del sistema"""
     return {
         "message": "Artyco Financial API - RBAC System",
         "status": "operational",
@@ -110,7 +110,7 @@ async def root():
         "features": ["RBAC", "Authentication", "User Management", "Admin Panel", "Financial Scenarios"],
         "endpoints": {
             "login": "/api/auth/login",
-            "register": "/api/auth/register", 
+            "register": "/api/auth/register",
             "users": "/api/users/",
             "admin": "/api/admin/",
             "scenarios": "/api/scenarios/"
