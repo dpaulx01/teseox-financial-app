@@ -5,7 +5,7 @@ Financial Data Routes - Basado en csv_upload.php de la app original
 
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 from datetime import datetime
 import re
 
@@ -842,6 +842,15 @@ async def get_available_years(
     try:
         company_id = 1
         
+        inspector = inspect(db.bind)
+        if not inspector.has_table("raw_account_data"):
+            return {
+                "success": True,
+                "years": [],
+                "current_year": datetime.now().year,
+                "total_years": 0,
+            }
+
         # Query para obtener estadísticas por año
         query = text("""
             SELECT 
