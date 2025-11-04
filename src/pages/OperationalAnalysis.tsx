@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Factory, 
@@ -45,6 +45,20 @@ import OperationalAnalysisViewTypeSelector, { OperationalAnalysisViewType } from
 import { formatCurrency } from '../utils/formatters';
 import KpiCard from '../components/ui/KpiCard';
 import OperationalInsights from '../components/operational/OperationalInsights';
+import { FixedSizeList as List, ListChildComponentProps } from 'react-window';
+
+type MonthlyRow = {
+  month: string;
+  producidos: number;
+  vendidos: number;
+  precioVenta: number;
+  costo: number;
+  margen: number;
+  margenPorcentual: number;
+  eficiencia: number;
+  marginTone: 'positive' | 'warning' | 'negative';
+  efficiencyTone: 'positive' | 'warning' | 'negative';
+};
 
 interface OperationalAnalysisProps {
   onNavigateToConfig?: () => void;
@@ -74,6 +88,8 @@ const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToC
   const [detailedAnalysisType, setDetailedAnalysisType] = useState<OperationalAnalysisType>('efficiency');
   const [configAlert, setConfigAlert] = useState<{ tone: 'success' | 'error' | 'warning'; message: string } | null>(null);
   const [configLoading, setConfigLoading] = useState(false);
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
+  const [tableWidth, setTableWidth] = useState<number>(0);
 
   // Cargar datos al iniciar y cuando cambie el año
   useEffect(() => {
@@ -281,6 +297,150 @@ const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToC
       capacidadUtilizada
     };
   }, [operationalMetrics, productionData, config, financialData]);
+
+  const monthlyRows = useMemo<MonthlyRow[]>(() => {
+    if (!productionData.length || !operationalMetrics.length) {
+      return [];
+    }
+
+    return availableMonths
+      .map((month) => {
+        const prod = productionData.find((p) => p.month === month);
+        const metrics = operationalMetrics.find((m) => m.month === month);
+        if (!prod || !metrics) {
+          return null;
+        }
+
+        const monthFinancial = financialData?.monthly?.[month];
+        const vendidos = Number(prod.metrosVendidos ?? 0);
+        const producidos = Number(prod.metrosProducidos ?? 0);
+
+        let costoAjustado = metrics.costoProduccionPorMetro;
+        let margenAjustado = metrics.margenPorMetro;
+        let margenPorcentual = metrics.margenPorcentual;
+
+        if (monthFinancial && vendidos > 0) {
+          const ingresos = Number(monthFinancial.ingresos ?? 0);
+          if (analysisView === 'caja') {
+            const costoRealPorMetro = Number(monthFinancial.costoVentasTotal ?? 0) / vendidos;
+            const ebitda = Number(monthFinancial.ebitda ?? 0);
+            costoAjustado = costoRealPorMetro;
+            margenAjustado = ebitda / vendidos;
+            margenPorcentual = ingresos > 0 ? (ebitda / ingresos) * 100 : 0;
+          } else if (analysisView === 'operativo') {
+            const costoOperativoPorMetro = (
+              Number(monthFinancial.costoVentasTotal ?? 0) +
+              Number(monthFinancial.gastosOperativos ?? 0) -
+              Number(monthFinancial.gastosFinancieros ?? 0)
+            ) / vendidos;
+            const utilidadOperativa = Number(monthFinancial.utilidadOperacional ?? 0);
+            costoAjustado = costoOperativoPorMetro;
+            margenAjustado = utilidadOperativa / vendidos;
+            margenPorcentual = ingresos > 0 ? (utilidadOperativa / ingresos) * 100 : 0;
+          } else {
+            const costoContablePorMetro = (
+              Number(monthFinancial.costoVentasTotal ?? 0) +
+              Number(monthFinancial.gastosOperativos ?? 0) +
+              Number(monthFinancial.gastosFinancieros ?? 0)
+            ) / vendidos;
+            const utilidadNeta = Number(monthFinancial.utilidadNeta ?? 0);
+            costoAjustado = costoContablePorMetro;
+            margenAjustado = utilidadNeta / vendidos;
+            margenPorcentual = ingresos > 0 ? (utilidadNeta / ingresos) * 100 : 0;
+          }
+        }
+
+        const marginTone: MonthlyRow['marginTone'] = margenPorcentual >= 20 ? 'positive' : margenPorcentual >= 10 ? 'warning' : 'negative';
+        const efficiencyTone: MonthlyRow['efficiencyTone'] = metrics.eficienciaVentas >= 90 ? 'positive' : metrics.eficienciaVentas >= 70 ? 'warning' : 'negative';
+
+        return {
+          month,
+          producidos,
+          vendidos,
+          precioVenta: metrics.precioVentaPorMetro,
+          costo: costoAjustado,
+          margen: margenAjustado,
+          margenPorcentual,
+          eficiencia: metrics.eficienciaVentas,
+          marginTone,
+          efficiencyTone,
+        };
+      })
+      .filter((row): row is MonthlyRow => row !== null);
+  }, [analysisView, availableMonths, financialData, operationalMetrics, productionData]);
+
+  const rowHeight = 64;
+  const listHeight = monthlyRows.length
+    ? Math.min(rowHeight * monthlyRows.length, rowHeight * 6)
+    : rowHeight;
+
+  useEffect(() => {
+    const element = tableContainerRef.current;
+    if (!element) {
+      return;
+    }
+
+    if (typeof ResizeObserver === 'undefined') {
+      setTableWidth(element.clientWidth);
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        setTableWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [monthlyRows.length, viewMode]);
+
+  const listWidth = useMemo(() => {
+    if (tableWidth > 0) {
+      return tableWidth;
+    }
+    if (typeof window !== 'undefined') {
+      return Math.max(window.innerWidth - 96, 360);
+    }
+    return 800;
+  }, [tableWidth]);
+
+  const renderMonthlyRow = useCallback(({ index, style }: ListChildComponentProps) => {
+    const row = monthlyRows[index];
+    if (!row) {
+      return null;
+    }
+
+    const marginClass = row.marginTone === 'positive'
+      ? 'text-accent'
+      : row.marginTone === 'warning'
+      ? 'text-warning'
+      : 'text-danger';
+
+    const efficiencyClass = row.efficiencyTone === 'positive'
+      ? 'text-accent'
+      : row.efficiencyTone === 'warning'
+      ? 'text-warning'
+      : 'text-danger';
+
+    const computedWidth = Math.max(listWidth, 720);
+
+    return (
+      <div
+        style={{ ...style, width: computedWidth }}
+        className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 items-center border-b border-border/40 px-4 py-3 text-sm font-mono text-text-secondary hover:bg-glass/40"
+      >
+        <div className="font-semibold text-text-primary">{row.month}</div>
+        <div className="text-right">{row.producidos.toLocaleString('es-EC')}</div>
+        <div className="hidden sm:block text-right">{row.vendidos.toLocaleString('es-EC')}</div>
+        <div className="hidden lg:block text-right text-primary font-semibold">{formatCurrency(row.precioVenta)}</div>
+        <div className="hidden lg:block text-right text-warning">{formatCurrency(row.costo)}</div>
+        <div className={`hidden lg:block text-right font-semibold ${marginClass}`}>{formatCurrency(row.margen)}</div>
+        <div className={`text-right font-semibold ${marginClass}`}>{row.margenPorcentual.toFixed(1)}%</div>
+        <div className={`text-right font-semibold ${efficiencyClass}`}>{row.eficiencia.toFixed(1)}%</div>
+      </div>
+    );
+  }, [listWidth, monthlyRows]);
 
   const handleConfigFieldChange = useCallback((field: keyof ProductionConfig, value: number) => {
     setConfig((prev) => ({
@@ -1032,113 +1192,39 @@ const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToC
                   
                   {/* Tabla Detallada por Mes */}
                   <div className="glass-card border border-border rounded-lg overflow-hidden">
+                    <div className="hidden lg:grid grid-cols-8 gap-2 bg-primary/10 border-b border-primary/30 text-xs font-display uppercase tracking-wide text-primary">
+                      <div className="py-3 pl-4 text-left">Mes</div>
+                      <div className="py-3 text-right">Producidos (m²)</div>
+                      <div className="py-3 text-right">Vendidos (m²)</div>
+                      <div className="py-3 text-right">Precio/m²</div>
+                      <div className="py-3 text-right">Costo/m²</div>
+                      <div className="py-3 text-right">Margen/m²</div>
+                      <div className="py-3 text-right">{analysisView === 'caja' ? 'Margen EBITDA %' : analysisView === 'operativo' ? 'Margen Operativo %' : 'Margen Neto %'}</div>
+                      <div className="py-3 text-right pr-4">Eficiencia</div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:hidden gap-2 bg-primary/10 border-b border-primary/30 text-xs font-display uppercase tracking-wide text-primary">
+                      <div className="py-3 pl-4 text-left">Mes</div>
+                      <div className="py-3 text-right">Prod.</div>
+                      <div className="py-3 text-right">Margen %</div>
+                      <div className="py-3 text-right pr-4">Eficiencia</div>
+                    </div>
                     <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead className="bg-primary/10 border-b border-primary/30">
-                          <tr>
-                            <th className="text-left p-4 font-display text-primary">Mes</th>
-                            <th className="text-right p-4 font-display text-primary">Producidos (m²)</th>
-                            <th className="text-right p-4 font-display text-primary">Vendidos (m²)</th>
-                            <th className="text-right p-4 font-display text-primary">Precio/m²</th>
-                            <th className="text-right p-4 font-display text-primary">Costo/m²</th>
-                            <th className="text-right p-4 font-display text-primary">Margen/m²</th>
-                            <th className="text-right p-4 font-display text-primary">{analysisView === 'caja' ? 'Margen EBITDA %' : analysisView === 'operativo' ? 'Margen Operativo %' : 'Margen Neto %'}</th>
-                            <th className="text-right p-4 font-display text-primary">Eficiencia</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {availableMonths.map((month) => {
-                            const prod = productionData.find(p => p.month === month);
-                            const metrics = operationalMetrics.find(m => m.month === month);
-                            const monthFinancial = financialData?.monthly[month];
-                            
-                            if (!prod || !metrics) return null;
-                            
-                            // Calcular métricas según vista actual
-                            let costoAjustado = metrics.costoProduccionPorMetro;
-                            let margenAjustado = metrics.margenPorMetro;
-                            let margenPorcentual = metrics.margenPorcentual;
-                            
-                            if (monthFinancial && prod.metrosVendidos > 0) {
-                              if (analysisView === 'caja') {
-                                // Para vista EBITDA (Caja), usar datos financieros directos
-                                const costoRealPorMetro = monthFinancial.costoVentasTotal / prod.metrosVendidos;
-                                costoAjustado = costoRealPorMetro;
-                                
-                                // Calcular margen EBITDA por metro
-                                const ebitdaPorMetro = monthFinancial.ebitda / prod.metrosVendidos;
-                                margenAjustado = ebitdaPorMetro;
-                                
-                                // Margen EBITDA porcentual
-                                margenPorcentual = monthFinancial.ingresos > 0 
-                                  ? (monthFinancial.ebitda / monthFinancial.ingresos) * 100 
-                                  : 0;
-                              } else if (analysisView === 'operativo') {
-                                // Para vista Operativa (EBIT), usar utilidad operacional
-                                const costoOperativoPorMetro = (monthFinancial.costoVentasTotal + monthFinancial.gastosOperativos - (monthFinancial.gastosFinancieros || 0)) / prod.metrosVendidos;
-                                costoAjustado = costoOperativoPorMetro;
-                                
-                                // Calcular margen operativo por metro
-                                const utilidadOperativaPorMetro = (monthFinancial.utilidadOperacional || 0) / prod.metrosVendidos;
-                                margenAjustado = utilidadOperativaPorMetro;
-                                
-                                // Margen operativo porcentual
-                                margenPorcentual = monthFinancial.ingresos > 0 
-                                  ? ((monthFinancial.utilidadOperacional || 0) / monthFinancial.ingresos) * 100 
-                                  : 0;
-                              } else {
-                                // Para vista Contable, usar utilidad neta
-                                const costoContablePorMetro = (monthFinancial.costoVentasTotal + monthFinancial.gastosOperativos + (monthFinancial.gastosFinancieros || 0)) / prod.metrosVendidos;
-                                costoAjustado = costoContablePorMetro;
-                                
-                                // Calcular margen neto por metro
-                                const utilidadNetaPorMetro = monthFinancial.utilidadNeta / prod.metrosVendidos;
-                                margenAjustado = utilidadNetaPorMetro;
-                                
-                                // Margen neto porcentual
-                                margenPorcentual = monthFinancial.ingresos > 0 
-                                  ? (monthFinancial.utilidadNeta / monthFinancial.ingresos) * 100 
-                                  : 0;
-                              }
-                            }
-                            
-                            return (
-                              <tr key={month} className="border-b border-border/50 hover:bg-glass/50 transition-colors">
-                                <td className="p-4 font-mono text-text-secondary font-semibold">{month}</td>
-                                <td className="p-4 font-mono text-text-secondary text-right">
-                                  {prod.metrosProducidos.toLocaleString('es-EC', { minimumFractionDigits: 0 })}
-                                </td>
-                                <td className="p-4 font-mono text-text-secondary text-right">
-                                  {prod.metrosVendidos.toLocaleString('es-EC', { minimumFractionDigits: 0 })}
-                                </td>
-                                <td className="p-4 font-mono text-primary text-right font-semibold">
-                                  {formatCurrency(metrics.precioVentaPorMetro)}
-                                </td>
-                                <td className="p-4 font-mono text-warning text-right">
-                                  {formatCurrency(costoAjustado)}
-                                </td>
-                                <td className={`p-4 font-mono text-right font-semibold ${
-                                  margenAjustado >= 0 ? 'text-accent' : 'text-danger'
-                                }`}>
-                                  {formatCurrency(margenAjustado)}
-                                </td>
-                                <td className={`p-4 font-mono text-right font-semibold ${
-                                  margenPorcentual >= 20 ? 'text-accent' : 
-                                  margenPorcentual >= 10 ? 'text-warning' : 'text-danger'
-                                }`}>
-                                  {margenPorcentual.toFixed(1)}%
-                                </td>
-                                <td className={`p-4 font-mono text-right font-semibold ${
-                                  metrics.eficienciaVentas >= 90 ? 'text-accent' : 
-                                  metrics.eficienciaVentas >= 70 ? 'text-warning' : 'text-danger'
-                                }`}>
-                                  {metrics.eficienciaVentas.toFixed(1)}%
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                      <div ref={tableContainerRef} className="max-h-[360px] min-w-[720px]">
+                        {monthlyRows.length > 0 ? (
+                          <List
+                            height={Math.max(listHeight, rowHeight)}
+                            itemCount={monthlyRows.length}
+                            itemSize={rowHeight}
+                            width={Math.max(listWidth, 720)}
+                          >
+                            {renderMonthlyRow}
+                          </List>
+                        ) : (
+                          <div className="p-4 text-sm text-text-muted font-mono">
+                            No hay historial mensual disponible para este periodo.
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
