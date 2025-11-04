@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, User, AlertCircle, Zap, Shield, Activity } from 'lucide-react';
 import AnimatedBackground from '../components/ui/AnimatedBackground';
 import ThemeToggle from '../components/ui/ThemeToggle';
-import SimpleThemeToggle from '../components/ui/SimpleThemeToggle';
 import { useTheme } from '../contexts/ThemeContext';
+import { apiPath } from '../config/apiBaseUrl';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -21,7 +21,7 @@ export default function Login() {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:8001/api/auth/login', {
+      const response = await fetch(apiPath('/api/auth/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -34,7 +34,7 @@ export default function Login() {
       if (response.ok) {
         localStorage.setItem('access_token', data.access_token);
         // Fetch user info to store
-        const userResponse = await fetch('http://localhost:8001/api/auth/me', {
+        const userResponse = await fetch(apiPath('/api/auth/me'), {
           headers: {
             'Authorization': `Bearer ${data.access_token}`
           }
@@ -65,7 +65,6 @@ export default function Login() {
       <AnimatedBackground />
       
       {/* Debug Theme Toggle */}
-      <SimpleThemeToggle />
       
       {/* Theme Toggle */}
       <div className="absolute top-4 right-4 z-50">

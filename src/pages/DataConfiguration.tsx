@@ -32,22 +32,26 @@ import {
   ProductionData, 
   ProductionConfig, 
   CombinedData, 
-  OperationalMetrics 
+  OperationalMetrics,
+  BalanceUploadRow,
+  BalanceSummary,
 } from '../types';
 import {
-  saveProductionData,
   loadProductionData,
   saveProductionConfig,
   loadProductionConfig,
   saveCombinedData,
   calculateOperationalMetrics,
-  validateProductionData,
   validateProductionConfig,
   exportProductionData,
-  clearAllProductionData,
   getStorageSummary,
   getAvailableYears
 } from '../utils/productionStorage';
+import {
+  parseBalanceFile,
+  uploadBalanceData,
+  loadBalanceSummary,
+} from '../utils/balanceStorage';
 import YearSelector from '../components/production/YearSelector';
 // Flujo unificado: la carga y lectura financiera se hace vía API MySQL
 import { 
@@ -61,6 +65,7 @@ import { useYear } from '../contexts/YearContext';
 import { formatCurrency } from '../utils/formatters';
 import { useAnalysisConfig, useExclusionPatterns } from '../services/analysisConfigService';
 import { intelligentPatternMatcher } from '../utils/intelligentPatternMatcher';
+import { apiPath } from '../config/apiBaseUrl';
 
 const DataConfiguration: React.FC = () => {
   const { data: financialData } = useFinancialData();
@@ -84,6 +89,10 @@ const DataConfiguration: React.FC = () => {
     metaPrecioPromedio: 180,
     metaMargenMinimo: 25
   });
+  const [balancePreview, setBalancePreview] = useState<BalanceUploadRow[]>([]);
+  const [balanceSummary, setBalanceSummary] = useState<BalanceSummary | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState<boolean>(false);
+  const [balanceYear, setBalanceYear] = useState<number>(() => selectedYear ?? new Date().getFullYear());
   
   // Estados para UI
   const [activeTab, setActiveTab] = useState<'financial' | 'production' | 'config' | 'analysis'>('financial');
@@ -114,17 +123,25 @@ const DataConfiguration: React.FC = () => {
   const [testAccount, setTestAccount] = useState('');
   const [testResults, setTestResults] = useState<any>(null);
 
-  // Estados para formulario de producción
-  const [newProduction, setNewProduction] = useState<Partial<ProductionData>>({
-    month: '',
-    metrosProducidos: 0,
-    metrosVendidos: 0
-  });
-
   const getEffectiveYear = useCallback(
     (override?: number) => override ?? selectedYear ?? new Date().getFullYear(),
     [selectedYear]
   );
+
+  const formatISODate = (value?: string | null) => {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString('es-EC', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
   const refreshProductionSummary = useCallback(
     async (targetYear?: number) => {
@@ -137,6 +154,19 @@ const DataConfiguration: React.FC = () => {
       }
     },
     [getEffectiveYear]
+  );
+
+  const refreshBalanceSummary = useCallback(
+    async (targetYear?: number) => {
+      try {
+        const summary = await loadBalanceSummary(targetYear ?? balanceYear);
+        setBalanceSummary(summary);
+      } catch (error) {
+        console.error('Error loading balance summary:', error);
+        setBalanceSummary(null);
+      }
+    },
+    [balanceYear]
   );
 
   // Cargar datos al iniciar
@@ -157,17 +187,19 @@ const DataConfiguration: React.FC = () => {
         }
 
         if (analysisConfig?.accountPatterns) {
-          setPatterns(analysisConfig.accountPatterns);
+          await refreshPatterns();
         }
 
         await refreshProductionSummary(yearToLoad);
+        setBalanceYear(yearToLoad);
+        await refreshBalanceSummary(yearToLoad);
       } catch (error) {
         setErrors(['Error cargando datos guardados']);
       }
     };
 
     loadData();
-  }, [analysisConfig, financialData, getEffectiveYear, refreshProductionSummary]);
+  }, [analysisConfig, financialData, getEffectiveYear, refreshProductionSummary, refreshBalanceSummary]);
 
   // Recargar datos cuando cambie el año seleccionado
   useEffect(() => {
@@ -183,6 +215,8 @@ const DataConfiguration: React.FC = () => {
           setProductionConfig(savedConfig);
         }
         await refreshProductionSummary(yearToLoad);
+        setBalanceYear(yearToLoad);
+        await refreshBalanceSummary(yearToLoad);
       } catch (error) {
         console.error('Error loading production data for year:', selectedYear, error);
         setProductionData([]);
@@ -190,11 +224,9 @@ const DataConfiguration: React.FC = () => {
     };
 
     loadProductionForYear();
-  }, [selectedYear, getEffectiveYear, refreshProductionSummary]);
+  }, [selectedYear, getEffectiveYear, refreshProductionSummary, refreshBalanceSummary]);
 
   // Lista de meses disponibles
-  const availableMonths = financialData ? Object.keys(financialData.monthly) : [];
-  
   // Flujo unificado: no se usa DataUploader local ni guardado cliente
   
   // Nueva función para sugerir valores
@@ -202,14 +234,14 @@ const DataConfiguration: React.FC = () => {
     if (financialData && productionData.length > 0) {
       const suggestions = suggestConfigValues(financialData, productionData);
       const warnings = validateSuggestions(suggestions);
-      
+
       setProductionConfig(prev => ({ ...prev, ...suggestions }));
-      
+
       let message = '✅ Valores sugeridos aplicados basados en datos reales';
       if (warnings.length > 0) {
         message += '. ' + warnings.join(', ');
       }
-      
+
       setSuccess(message);
       setTimeout(() => setSuccess(''), 5000);
     } else {
@@ -218,68 +250,56 @@ const DataConfiguration: React.FC = () => {
     }
   };
 
-  const handleAddProduction = async () => {
-    if (!newProduction.month || !newProduction.metrosProducidos || !newProduction.metrosVendidos) {
-      setErrors(['Todos los campos son requeridos']);
+  const handleBalanceFileSelection = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) {
+      setBalancePreview([]);
       return;
     }
 
-    // Verificar si el mes ya existe
-    const existingIndex = productionData.findIndex(p => p.month === newProduction.month);
-    
-    const productionEntry: ProductionData = {
-      month: newProduction.month!,
-      metrosProducidos: Number(newProduction.metrosProducidos),
-      metrosVendidos: Number(newProduction.metrosVendidos),
-      fechaRegistro: new Date().toISOString()
-    };
+    const file = fileList[0];
+    try {
+      setBalanceLoading(true);
+      const parsed = await parseBalanceFile(file);
+      setBalancePreview(parsed);
+      setSuccess(`✅ Archivo cargado: ${parsed.length} filas listas para subir`);
+      setTimeout(() => setSuccess(''), 4000);
+    } catch (error: any) {
+      console.error('Error parsing balance file:', error);
+      setErrors([error?.message || 'No se pudo procesar el archivo de balance']);
+      setTimeout(() => setErrors([]), 4000);
+      setBalancePreview([]);
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
 
-    // Validar datos
-    const validationErrors = validateProductionData([productionEntry]);
-    if (validationErrors.length > 0) {
-      setErrors(validationErrors);
+  const handleUploadBalance = async () => {
+    if (!balancePreview.length) {
+      setErrors(['Selecciona primero un archivo de balance válido.']);
+      setTimeout(() => setErrors([]), 3000);
       return;
     }
 
-    let updatedData: ProductionData[];
-    if (existingIndex >= 0) {
-      // Actualizar existente
-      updatedData = [...productionData];
-      updatedData[existingIndex] = productionEntry;
-      setSuccess(`✅ Datos de ${newProduction.month} actualizados`);
-    } else {
-      // Agregar nuevo
-      updatedData = [...productionData, productionEntry];
-      setSuccess(`✅ Datos de ${newProduction.month} agregados`);
+    try {
+      setBalanceLoading(true);
+      await uploadBalanceData(balancePreview, balanceYear);
+      await refreshBalanceSummary(balanceYear);
+      await refreshYears();
+      setBalancePreview([]);
+      setSuccess('✅ Balance cargado correctamente');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error: any) {
+      console.error('Error uploading balance data:', error);
+      setErrors([error?.message || 'No se pudo cargar el balance general']);
+      setTimeout(() => setErrors([]), 4000);
+    } finally {
+      setBalanceLoading(false);
     }
-
-    // Ordenar por mes cronológicamente
-    updatedData.sort((a, b) => {
-      const monthOrder = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-      return monthOrder.indexOf(a.month) - monthOrder.indexOf(b.month);
-    });
-
-    const yearToUse = getEffectiveYear();
-    setProductionData(updatedData);
-    await saveProductionData(updatedData, yearToUse);
-    await refreshProductionSummary(yearToUse);
-    
-    // Limpiar formulario
-    setNewProduction({ month: '', metrosProducidos: 0, metrosVendidos: 0 });
-    setErrors([]);
-    setTimeout(() => setSuccess(''), 3000);
   };
 
-  const handleDeleteProduction = async (month: string) => {
-    const updatedData = productionData.filter(p => p.month !== month);
-    const yearToUse = getEffectiveYear();
-    setProductionData(updatedData);
-    await saveProductionData(updatedData, yearToUse);
-    await refreshProductionSummary(yearToUse);
-    setSuccess(`✅ Datos de ${month} eliminados`);
-    setTimeout(() => setSuccess(''), 3000);
-  };
+  useEffect(() => {
+    refreshBalanceSummary(balanceYear);
+  }, [balanceYear, refreshBalanceSummary]);
 
   const handleSaveConfig = async () => {
     const validationErrors = validateProductionConfig(productionConfig);
@@ -674,7 +694,7 @@ const DataConfiguration: React.FC = () => {
                           onClick={async () => {
                             if (!confirm(`¿Eliminar datos del año ${y.year}? Esta acción no se puede deshacer.`)) return;
                             const token = localStorage.getItem('access_token');
-                            await fetch(`http://localhost:8001/api/financial/clear?year=${y.year}`, {
+                            await fetch(apiPath(`/api/financial/clear?year=${y.year}`), {
                               method: 'DELETE',
                               headers: { 'Authorization': `Bearer ${token ?? ''}` }
                             });
@@ -765,7 +785,7 @@ const DataConfiguration: React.FC = () => {
               <div className="mt-4 p-4 bg-dark-bg/50 rounded-lg border border-accent/20">
                 <p className="text-sm text-text-muted">
                   <Info className="w-4 h-4 inline mr-2" />
-                  Los datos de producción se organizan por año. Selecciona el año para ver o editar los datos correspondientes.
+                  Los datos de producción provienen del módulo BI Ventas y se sincronizan automáticamente. Selecciona el año para revisar el reporte histórico.
                 </p>
               </div>
             </div>
@@ -779,105 +799,23 @@ const DataConfiguration: React.FC = () => {
                     Datos de Producción - {selectedYear}
                   </h3>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-sm text-text-muted">
-                    {productionData.length} meses configurados
-                  </div>
-                  {productionData.length > 0 && (
-                    <button
-                      onClick={async () => {
-                        if (window.confirm(`¿Estás seguro de que quieres eliminar todos los datos de producción del año ${selectedYear}?`)) {
-                          const yearToUse = getEffectiveYear();
-                          await clearAllProductionData(yearToUse);
-                          setProductionData([]);
-                          setProductionConfig({
-                            capacidadMaximaMensual: 1000,
-                            costoFijoProduccion: 50000,
-                            metaPrecioPromedio: 180,
-                            metaMargenMinimo: 25
-                          });
-                          await refreshProductionSummary(yearToUse);
-                          setSuccess(`✅ Datos de producción del año ${selectedYear} eliminados`);
-                          setTimeout(() => setSuccess(''), 3000);
-                        }
-                      }}
-                      className="px-3 py-2 bg-danger/20 text-danger border border-danger/30 rounded-lg hover:bg-danger/30 transition-all duration-200 flex items-center gap-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      <span className="text-sm">Limpiar {selectedYear}</span>
-                    </button>
-                  )}
+                <div className="flex flex-col items-end gap-1 text-sm text-text-muted text-right">
+                  <span>{productionData.length} meses registrados</span>
+                  <span className="flex items-center gap-2 text-xs text-text-muted/80">
+                    <Info className="w-3 h-3" />
+                    Datos sincronizados automáticamente desde BI Ventas
+                  </span>
                 </div>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div>
-                  <label className="block text-sm font-display text-text-secondary mb-2">
-                    Mes
-                  </label>
-                  <select
-                    value={newProduction.month || ''}
-                    onChange={(e) => setNewProduction(prev => ({ ...prev, month: e.target.value }))}
-                    className="w-full p-3 glass-card border border-border text-text-secondary focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 font-mono"
-                  >
-                    <option value="">Seleccionar mes...</option>
-                    {availableMonths.map(month => (
-                      <option key={month} value={month}>
-                        {month}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-display text-text-secondary mb-2">
-                    Metros² Producidos
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={newProduction.metrosProducidos || 0}
-                    onChange={(e) => setNewProduction(prev => ({ 
-                      ...prev, 
-                      metrosProducidos: Number(e.target.value) 
-                    }))}
-                    className="w-full p-3 glass-card border border-border text-text-secondary focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 font-mono"
-                    placeholder="0.00"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-display text-text-secondary mb-2">
-                    Metros² Vendidos
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={newProduction.metrosVendidos || 0}
-                    onChange={(e) => setNewProduction(prev => ({ 
-                      ...prev, 
-                      metrosVendidos: Number(e.target.value) 
-                    }))}
-                    className="w-full p-3 glass-card border border-border text-text-secondary focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 font-mono"
-                    placeholder="0.00"
-                  />
-                </div>
-                
-                <div className="flex items-end">
-                  <button
-                    onClick={handleAddProduction}
-                    className="w-full cyber-button flex items-center justify-center space-x-2 relative z-50 pointer-events-auto"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>Guardar</span>
-                  </button>
-                </div>
+              <div className="mb-6 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                <p className="text-sm text-text-muted leading-relaxed">
+                  Los metros producidos y vendidos se calculan en tiempo real a partir de las transacciones registradas en el módulo BI Ventas. Si necesitas ajustar los totales, actualiza las ventas desde ese módulo; esta vista actúa únicamente como reporte consolidado y no admite edición manual.
+                </p>
               </div>
               
               {/* Production Data Table */}
-              {productionData.length > 0 && (
+              {productionData.length > 0 ? (
                 <div className="glass-card border border-border rounded-lg overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -887,11 +825,10 @@ const DataConfiguration: React.FC = () => {
                           <th className="text-right p-4 font-display text-primary">Producidos (m²)</th>
                           <th className="text-right p-4 font-display text-primary">Vendidos (m²)</th>
                           <th className="text-right p-4 font-display text-primary">Eficiencia</th>
-                          <th className="text-center p-4 font-display text-primary">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {productionData.map((prod, index) => {
+                        {productionData.map((prod) => {
                           const eficiencia = prod.metrosProducidos > 0 ? 
                             (prod.metrosVendidos / prod.metrosProducidos) * 100 : 0;
                           
@@ -909,17 +846,138 @@ const DataConfiguration: React.FC = () => {
                               }`}>
                                 {eficiencia.toFixed(1)}%
                               </td>
-                              <td className="p-4 text-center">
-                                <button
-                                  onClick={() => handleDeleteProduction(prod.month)}
-                                  className="p-2 text-danger hover:bg-danger/20 rounded-lg transition-colors"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </td>
                             </tr>
                           );
                         })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="glass-card border border-border rounded-lg p-8 text-center text-text-muted">
+                  <Factory className="w-10 h-10 mx-auto mb-3 text-border" />
+                  <p className="text-sm">
+                    No se registran ventas con metros cargados para el año {selectedYear}. Verifica el módulo de BI Ventas para confirmar si existen transacciones en ese periodo.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Balance General */}
+            <div className="hologram-card p-6 rounded-2xl shadow-hologram">
+              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <Calculator className="w-6 h-6 text-primary mt-1" />
+                  <div>
+                    <h3 className="text-2xl font-display text-primary text-glow">
+                      Balance General
+                    </h3>
+                    <p className="text-sm text-text-muted">Selecciona el año contable que deseas cargar o revisar</p>
+                  </div>
+                </div>
+                <div className="flex flex-col md:items-end gap-2">
+                  <label className="text-xs uppercase tracking-wide text-text-muted">Año objetivo</label>
+                  <input
+                    type="number"
+                    min={1900}
+                    max={2100}
+                    value={balanceYear}
+                    onChange={(event) => {
+                      const raw = Number(event.target.value);
+                      const fallback = new Date().getFullYear();
+                      const normalized = Number.isFinite(raw) ? Math.min(2100, Math.max(1900, raw)) : fallback;
+                      setBalanceYear(normalized);
+                    }}
+                    className="px-3 py-2 glass-card border border-border rounded-lg text-sm font-mono text-text-primary focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300"
+                  />
+                  <div className="text-right text-xs text-text-muted space-y-1">
+                    <p>{balanceSummary?.hasBalanceData ? 'Balance cargado' : 'Sin balance cargado'}</p>
+                    <p>
+                      Última actualización:{' '}
+                      <span className="font-mono text-text-secondary">
+                        {formatISODate(balanceSummary?.lastUpdated)}
+                      </span>
+                    </p>
+                    <p>Registros: {balanceSummary?.records ?? 0}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+                <div className="lg:col-span-2">
+                  <label className="block text-sm font-display text-text-secondary mb-2">
+                    Archivo de Balance (CSV / XLS / XLSX)
+                  </label>
+                  <input
+                    type="file"
+                    accept=".csv,.xls,.xlsx"
+                    onChange={(event) => handleBalanceFileSelection(event.target.files)}
+                    className="w-full p-3 glass-card border border-border text-text-secondary focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 cursor-pointer"
+                    disabled={balanceLoading}
+                  />
+                  <p className="text-xs text-text-muted mt-2">
+                    Usa el reporte exportado desde Contífico sin modificaciones. El sistema detectará la jerarquía automáticamente.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3 justify-end">
+                  <button
+                    onClick={handleUploadBalance}
+                    disabled={balanceLoading || balancePreview.length === 0}
+                    className="cyber-button flex items-center justify-center space-x-2"
+                  >
+                    {balanceLoading ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Upload className="w-4 h-4" />
+                    )}
+                    <span>
+                      {balanceLoading ? 'Procesando...' : balancePreview.length > 0 ? 'Subir balance' : 'Selecciona un archivo'}
+                    </span>
+                  </button>
+                  {balancePreview.length > 0 && (
+                    <button
+                      onClick={() => setBalancePreview([])}
+                      className="w-full px-3 py-2 bg-dark-bg border border-border text-text-muted rounded-lg hover:bg-glass transition-colors text-sm"
+                      disabled={balanceLoading}
+                    >
+                      Limpiar vista previa
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {balancePreview.length > 0 && (
+                <div className="glass-card border border-border rounded-lg overflow-hidden">
+                  <div className="p-4 border-b border-border/40 bg-dark-card/60 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-text-muted">
+                        Vista previa del archivo ({Math.min(balancePreview.length, 10)} de {balancePreview.length} filas)
+                      </p>
+                    </div>
+                    <div className="text-xs text-text-muted flex items-center gap-2">
+                      <Info className="w-3 h-3" />
+                      Se conservará la jerarquía de códigos (1.1, 1.1.1, ...)
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm font-mono">
+                      <thead className="bg-primary/10 border-b border-border/60">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-primary">Código</th>
+                          <th className="px-4 py-2 text-left text-primary">Cuenta</th>
+                          <th className="px-4 py-2 text-right text-primary">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {balancePreview.slice(0, 10).map((row) => (
+                          <tr key={`${row.code}-${row.name}`} className="border-b border-border/40">
+                            <td className="px-4 py-2 text-text-secondary">{row.code}</td>
+                            <td className="px-4 py-2 text-text-secondary">{row.name}</td>
+                            <td className="px-4 py-2 text-right text-text-secondary">
+                              {row.value.toLocaleString('es-EC', { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
