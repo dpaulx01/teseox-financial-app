@@ -1,4 +1,3 @@
-import Papa from 'papaparse';
 import { useState, useCallback } from 'react';
 // Flujo unificado: no procesamos ni guardamos localmente
 import { Upload, FileText, Loader, AlertCircle } from 'lucide-react';
@@ -35,13 +34,8 @@ export default function CSVUploaderYearAware() {
     try {
       const token = localStorage.getItem('access_token') || '';
       // No re-procesamos el CSV en el cliente: lo enviamos tal cual
-      const text = await file.text();
-      // Si necesitas normalizar delimitador, puedes re-serializar con Papa:
-      const rows = Papa.parse<string[]>(text, { delimiter: ';', skipEmptyLines: true }).data as string[][];
-      const blob = new Blob([Papa.unparse(rows, { delimiter: ';' })], { type: 'text/csv' });
-
       const formData = new FormData();
-      formData.append('csv', blob, file.name);
+      formData.append('csv', file, file.name);
       formData.append('year', String(uploadYear));
 
       const res = await fetch(apiPath('/api/financial/csv-upload'), {
@@ -50,13 +44,15 @@ export default function CSVUploaderYearAware() {
         body: formData
       });
       if (!res.ok) {
+        const raw = await res.text();
+        let message = raw || `Error ${res.status}`;
         try {
-          const err = await res.json();
-          throw new Error(err?.detail || err?.error || `Error ${res.status}`);
+          const parsed = JSON.parse(raw);
+          message = parsed?.detail || parsed?.error || message;
         } catch {
-          const txt = await res.text();
-          throw new Error(txt || `Error ${res.status}`);
+          // keep raw text
         }
+        throw new Error(message);
       }
 
       // Refrescar años y seleccionar el recién subido
