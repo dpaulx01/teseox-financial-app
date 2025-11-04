@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Factory, 
@@ -30,8 +30,12 @@ import {
   loadProductionData,
   loadProductionConfig,
   calculateOperationalMetrics,
-  getAvailableYears
+  saveProductionConfig,
+  saveCombinedData,
+  loadCombinedData,
+  validateProductionConfig,
 } from '../utils/productionStorage';
+import { suggestConfigValues, validateSuggestions } from '../utils/configSuggestions';
 import YearSelector from '../components/production/YearSelector';
 import AdvancedOperationalAnalytics from '../components/operational/AdvancedOperationalAnalytics';
 import OperationalScenarioSimulator from '../components/operational/OperationalScenarioSimulator';
@@ -49,18 +53,27 @@ interface OperationalAnalysisProps {
 const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToConfig }) => {
   const { data: financialData } = useFinancialData();
   
+  const DEFAULT_PRODUCTION_CONFIG: ProductionConfig = useMemo(() => ({
+    capacidadMaximaMensual: 1000,
+    costoFijoProduccion: 50000,
+    metaPrecioPromedio: 180,
+    metaMargenMinimo: 25,
+  }), []);
   
   // Estados
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [combinedData, setCombinedData] = useState<CombinedData | null>(null);
   const [productionData, setProductionData] = useState<ProductionData[]>([]);
   const [operationalMetrics, setOperationalMetrics] = useState<OperationalMetrics[]>([]);
-  const [config, setConfig] = useState<ProductionConfig | null>(null);
+  const [config, setConfig] = useState<ProductionConfig>(DEFAULT_PRODUCTION_CONFIG);
+  const [hasCustomConfig, setHasCustomConfig] = useState<boolean>(false);
   const [selectedMonth, setSelectedMonth] = useState<string>('');
-  const [viewMode, setViewMode] = useState<'overview' | 'detailed' | 'annual' | 'advanced' | 'simulator'>('overview');
+  const [viewMode, setViewMode] = useState<'overview' | 'detailed' | 'annual' | 'advanced' | 'simulator' | 'config'>('overview');
   const [analysisView, setAnalysisView] = useState<OperationalAnalysisViewType>('contable');
   const [detailedView, setDetailedView] = useState<'operational' | 'ebitda'>('operational');
   const [detailedAnalysisType, setDetailedAnalysisType] = useState<OperationalAnalysisType>('efficiency');
+  const [configAlert, setConfigAlert] = useState<{ tone: 'success' | 'error' | 'warning'; message: string } | null>(null);
+  const [configLoading, setConfigLoading] = useState(false);
 
   // Cargar datos al iniciar y cuando cambie el año
   useEffect(() => {
@@ -68,7 +81,7 @@ const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToC
       try {
         // Cargar datos de producción del año seleccionado desde MySQL
         const production = await loadProductionData(selectedYear);
-        const prodConfig = await loadProductionConfig();
+        const prodConfig = await loadProductionConfig(selectedYear);
         
         if (production.length > 0) {
           setProductionData(production);
@@ -78,17 +91,20 @@ const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToC
           setSelectedMonth('');
         }
         
-        if (prodConfig) {
-          setConfig(prodConfig);
-        }
+        const configToUse = prodConfig ?? DEFAULT_PRODUCTION_CONFIG;
+        setConfig(configToUse);
+        setHasCustomConfig(!!prodConfig);
 
-        // Calcular métricas operacionales si tenemos todos los datos
-        if (financialData && production.length > 0 && prodConfig) {
-          const metrics = calculateOperationalMetrics(production, financialData, prodConfig);
+        if (financialData && production.length > 0) {
+          const metrics = calculateOperationalMetrics(production, financialData, configToUse);
           setOperationalMetrics(metrics);
         } else {
           setOperationalMetrics([]);
         }
+
+        const combined = await loadCombinedData(selectedYear);
+        setCombinedData(combined);
+        setConfigAlert(null);
       } catch (error) {
         console.error('Error loading production data:', error);
         setProductionData([]);
@@ -98,6 +114,14 @@ const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToC
 
     loadData();
   }, [financialData, selectedYear]);
+
+  useEffect(() => {
+    if (!configAlert) {
+      return;
+    }
+    const timer = window.setTimeout(() => setConfigAlert(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [configAlert]);
 
   // Meses disponibles ordenados cronológicamente
   const availableMonths = useMemo(() => {
@@ -258,6 +282,82 @@ const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToC
     };
   }, [operationalMetrics, productionData, config, financialData]);
 
+  const handleConfigFieldChange = useCallback((field: keyof ProductionConfig, value: number) => {
+    setConfig((prev) => ({
+      ...prev,
+      [field]: Number.isFinite(value) ? value : 0,
+    }));
+  }, []);
+
+  const handleAnalysisSuggest = useCallback(() => {
+    if (!financialData || productionData.length === 0) {
+      setConfigAlert({
+        tone: 'error',
+        message: 'Se requieren datos financieros y de producción para sugerir valores.',
+      });
+      return;
+    }
+
+    const suggestions = suggestConfigValues(financialData, productionData);
+    const warnings = validateSuggestions(suggestions);
+    setConfig((prev) => ({ ...prev, ...suggestions }));
+
+    if (warnings.length) {
+      setConfigAlert({
+        tone: 'warning',
+        message: `Valores aplicados con observaciones: ${warnings.join(' ')}`,
+      });
+    } else {
+      setConfigAlert({
+        tone: 'success',
+        message: 'Valores sugeridos aplicados basados en datos reales.',
+      });
+    }
+  }, [financialData, productionData]);
+
+  const handleAnalysisSave = useCallback(async () => {
+    const validationErrors = validateProductionConfig(config);
+    if (validationErrors.length) {
+      setConfigAlert({ tone: 'error', message: validationErrors.join('. ') });
+      return;
+    }
+
+    try {
+      setConfigLoading(true);
+      await saveProductionConfig(config, selectedYear);
+      setHasCustomConfig(true);
+
+      if (financialData && productionData.length > 0) {
+        const metrics = calculateOperationalMetrics(productionData, financialData, config);
+        setOperationalMetrics(metrics);
+
+        const combined: CombinedData = {
+          financial: financialData,
+          production: productionData,
+          operational: metrics,
+          config,
+          lastUpdated: new Date().toISOString(),
+        };
+
+        await saveCombinedData(combined, selectedYear);
+        setCombinedData(combined);
+        setConfigAlert({ tone: 'success', message: 'Configuración guardada y métricas recalculadas.' });
+      } else {
+        setConfigAlert({
+          tone: 'warning',
+          message: 'Configuración guardada. Carga datos financieros y de producción para recalcular métricas.',
+        });
+      }
+    } catch (error) {
+      setConfigAlert({
+        tone: 'error',
+        message: (error as Error).message || 'No se pudo guardar la configuración operativa.',
+      });
+    } finally {
+      setConfigLoading(false);
+    }
+  }, [config, financialData, productionData, selectedYear]);
+
   // Validaciones robustas de datos
   if (!productionData.length && !combinedData) {
     return (
@@ -277,7 +377,7 @@ const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToC
               Configure primero los datos de producción en la sección de Configuración
             </p>
             <button
-              onClick={() => onNavigateToConfig ? onNavigateToConfig() : window.location.hash = '#config'}
+              onClick={() => onNavigateToConfig ? onNavigateToConfig() : setViewMode('config')}
               className="cyber-button"
             >
               Ir a Configuración
@@ -290,6 +390,13 @@ const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToC
 
   // Validar datos mínimos requeridos
   if (!operationalMetrics.length && productionData.length > 0) {
+    let helperMessage = 'Se requieren datos financieros para calcular las métricas operacionales';
+    if (financialData) {
+      helperMessage = hasCustomConfig
+        ? 'No fue posible calcular las métricas operacionales con la configuración actual'
+        : 'Define la capacidad y costos en la sección Configuración para habilitar el análisis automático';
+    }
+
     return (
       <div className="flex items-center justify-center h-full">
         <motion.div
@@ -304,7 +411,7 @@ const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToC
               Datos incompletos
             </h2>
             <p className="text-text-muted font-mono mb-6">
-              Se requieren datos financieros para calcular las métricas operacionales
+              {helperMessage}
             </p>
           </div>
         </motion.div>
@@ -432,13 +539,14 @@ const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToC
             <div className="flex-1 h-px bg-gradient-to-r from-accent/50 to-transparent" />
           </div>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
             {[
               { id: 'overview', label: 'General', icon: Eye, description: 'Vista general de KPIs', color: 'primary' },
               { id: 'detailed', label: 'Detallado', icon: Search, description: 'Análisis por tipos', color: 'accent' },
               { id: 'annual', label: 'Anual', icon: Calendar, description: 'Consolidado anual', color: 'warning' },
               { id: 'advanced', label: 'Avanzado', icon: TrendingUp, description: 'Métricas avanzadas', color: 'success' },
-              { id: 'simulator', label: 'Simulador', icon: Settings, description: 'Escenarios Monte Carlo', color: 'info' }
+              { id: 'simulator', label: 'Simulador', icon: Settings, description: 'Escenarios Monte Carlo', color: 'info' },
+              { id: 'config', label: 'Configuración', icon: Settings, description: 'Ajusta metas operativas', color: 'accent' }
             ].map((view) => {
               const IconComponent = view.icon;
               const isActive = viewMode === view.id;
@@ -495,8 +603,152 @@ const OperationalAnalysis: React.FC<OperationalAnalysisProps> = ({ onNavigateToC
         </div>
       </div>
 
+      {viewMode === 'config' && (
+        <motion.div
+          key="config-panel"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.3 }}
+          className="space-y-6"
+        >
+          {configAlert && (
+            <div
+              className={`p-4 rounded-xl border text-sm font-mono ${
+                configAlert.tone === 'success'
+                  ? 'border-success/40 bg-success/10 text-success'
+                  : configAlert.tone === 'warning'
+                  ? 'border-warning/40 bg-warning/10 text-warning'
+                  : 'border-danger/40 bg-danger/10 text-danger'
+              }`}
+            >
+              {configAlert.message}
+            </div>
+          )}
+
+          <div className="hologram-card p-6 rounded-2xl shadow-hologram">
+            <div className="flex items-center space-x-3 mb-6">
+              <Settings className="w-6 h-6 text-primary" />
+              <h3 className="text-2xl font-display text-primary text-glow">
+                Configuración Operativa del Año {selectedYear}
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-display text-text-secondary mb-2">
+                  Capacidad Máxima Mensual (m²)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={config.capacidadMaximaMensual}
+                  onChange={(e) => handleConfigFieldChange('capacidadMaximaMensual', Number(e.target.value))}
+                  disabled={configLoading}
+                  className="w-full p-3 glass-card border border-border text-text-secondary focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-display text-text-secondary mb-2">
+                  Costo Fijo Producción ($)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={config.costoFijoProduccion}
+                  onChange={(e) => handleConfigFieldChange('costoFijoProduccion', Number(e.target.value))}
+                  disabled={configLoading}
+                  className="w-full p-3 glass-card border border-border text-text-secondary focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-display text-text-secondary mb-2">
+                  Meta Precio Promedio ($/m²)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={config.metaPrecioPromedio}
+                  onChange={(e) => handleConfigFieldChange('metaPrecioPromedio', Number(e.target.value))}
+                  disabled={configLoading}
+                  className="w-full p-3 glass-card border border-border text-text-secondary focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-display text-text-secondary mb-2">
+                  Meta Margen Mínimo (%)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={config.metaMargenMinimo}
+                  onChange={(e) => handleConfigFieldChange('metaMargenMinimo', Number(e.target.value))}
+                  disabled={configLoading}
+                  className="w-full p-3 glass-card border border-border text-text-secondary focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-300 font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col sm:flex-row gap-4 justify-between">
+              <button
+                onClick={handleAnalysisSuggest}
+                disabled={!financialData || productionData.length === 0 || configLoading}
+                className="cyber-button flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Target className="w-4 h-4" />
+                <span>Auto-Sugerir con Datos Reales</span>
+              </button>
+
+              <button
+                onClick={handleAnalysisSave}
+                disabled={configLoading}
+                className="cyber-button flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {configLoading ? (
+                  <span>Guardando…</span>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Guardar y Recalcular</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm font-mono text-text-muted">
+              <div className="glass-card p-4 border border-border/40 rounded-lg">
+                <p className="text-xs uppercase tracking-wide text-text-secondary mb-1">Estado</p>
+                <p className={hasCustomConfig ? 'text-success font-semibold' : 'text-warning font-semibold'}>
+                  {hasCustomConfig ? 'Configuración personalizada activa' : 'Usando valores predeterminados'}
+                </p>
+              </div>
+              <div className="glass-card p-4 border border-border/40 rounded-lg">
+                <p className="text-xs uppercase tracking-wide text-text-secondary mb-1">Datos financieros</p>
+                <p className={financialData ? 'text-accent font-semibold' : 'text-warning font-semibold'}>
+                  {financialData ? 'Datos cargados' : 'Pendiente de carga'}
+                </p>
+              </div>
+              <div className="glass-card p-4 border border-border/40 rounded-lg">
+                <p className="text-xs uppercase tracking-wide text-text-secondary mb-1">Datos producción</p>
+                <p className={productionData.length > 0 ? 'text-accent font-semibold' : 'text-warning font-semibold'}>
+                  {productionData.length > 0 ? `${productionData.length} meses sincronizados` : 'Sin datos disponibles'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* ⚙️ NIVEL 3 - OPCIONES CONTEXTUALES */}
-      {(viewMode === 'detailed' || viewMode === 'annual') && (
+      {viewMode !== 'config' && (viewMode === 'detailed' || viewMode === 'annual') && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

@@ -301,6 +301,57 @@ const DataConfiguration: React.FC = () => {
     refreshBalanceSummary(balanceYear);
   }, [balanceYear, refreshBalanceSummary]);
 
+  const generateCombinedData = useCallback(
+    async (options: { silent?: boolean } = {}): Promise<boolean> => {
+      const { silent = false } = options;
+
+      if (!financialData || productionData.length === 0) {
+        if (!silent) {
+          setErrors(['Se requieren datos financieros y de producción']);
+        }
+        return false;
+      }
+
+      setIsLoading(true);
+
+      try {
+        const operationalMetrics = calculateOperationalMetrics(
+          productionData,
+          financialData,
+          productionConfig
+        );
+
+        const combinedData: CombinedData = {
+          financial: financialData,
+          production: productionData,
+          operational: operationalMetrics,
+          config: productionConfig,
+          lastUpdated: new Date().toISOString()
+        };
+
+        const yearToUse = getEffectiveYear();
+        await saveCombinedData(combinedData, yearToUse);
+        await refreshProductionSummary(yearToUse);
+
+        if (!silent) {
+          setSuccess('✅ Datos combinados y métricas calculadas correctamente');
+          setErrors([]);
+          setTimeout(() => setSuccess(''), 3000);
+        }
+
+        return true;
+      } catch (error) {
+        if (!silent) {
+          setErrors(['Error al generar datos combinados: ' + (error as Error).message]);
+        }
+        return false;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [financialData, productionData, productionConfig, getEffectiveYear, refreshProductionSummary]
+  );
+
   const handleSaveConfig = async () => {
     const validationErrors = validateProductionConfig(productionConfig);
     if (validationErrors.length > 0) {
@@ -311,45 +362,19 @@ const DataConfiguration: React.FC = () => {
     const yearToUse = getEffectiveYear();
     await saveProductionConfig(productionConfig, yearToUse);
     await refreshProductionSummary(yearToUse);
-    setSuccess('✅ Configuración guardada correctamente');
+
+    const recalculated = await generateCombinedData({ silent: true });
+    if (recalculated) {
+      setSuccess('✅ Configuración guardada y métricas recalculadas');
+    } else {
+      setSuccess('✅ Configuración guardada correctamente');
+    }
     setErrors([]);
     setTimeout(() => setSuccess(''), 3000);
   };
 
   const handleGenerateCombinedData = async () => {
-    if (!financialData || productionData.length === 0) {
-      setErrors(['Se requieren datos financieros y de producción']);
-      return;
-    }
-
-    setIsLoading(true);
-    
-    try {
-      const operationalMetrics = calculateOperationalMetrics(
-        productionData,
-        financialData,
-        productionConfig
-      );
-
-      const combinedData: CombinedData = {
-        financial: financialData,
-        production: productionData,
-        operational: operationalMetrics,
-        config: productionConfig,
-        lastUpdated: new Date().toISOString()
-      };
-
-      const yearToUse = getEffectiveYear();
-      await saveCombinedData(combinedData, yearToUse);
-      await refreshProductionSummary(yearToUse);
-      setSuccess('✅ Datos combinados y métricas calculadas correctamente');
-      setErrors([]);
-    } catch (error) {
-      setErrors(['Error al generar datos combinados: ' + (error as Error).message]);
-    } finally {
-      setIsLoading(false);
-      setTimeout(() => setSuccess(''), 3000);
-    }
+    await generateCombinedData();
   };
 
   const handleExportData = () => {

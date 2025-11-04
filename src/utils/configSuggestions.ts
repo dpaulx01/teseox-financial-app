@@ -1,111 +1,116 @@
 import { FinancialData, ProductionData, ProductionConfig } from '../types';
 
-// === FUNCIÓN PARA SUGERIR VALORES BASADOS EN DATOS REALES ===
+const percentile = (values: number[], p: number): number | null => {
+  if (!values.length) {
+    return null;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = (p / 100) * (sorted.length - 1);
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+  if (lower === upper) {
+    return sorted[lower];
+  }
+  const weight = index - lower;
+  return sorted[lower] * (1 - weight) + sorted[upper] * weight;
+};
+
+const safeNumber = (value: unknown): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  return 0;
+};
 
 export const suggestConfigValues = (
-  financialData: FinancialData, 
-  productionData: ProductionData[]
+  financialData: FinancialData,
+  productionData: ProductionData[],
 ): Partial<ProductionConfig> => {
-  
   const suggestions: Partial<ProductionConfig> = {};
-  
-  // 1. CAPACIDAD MÁXIMA MENSUAL
-  // Basada en el máximo de metros producidos + 20% buffer
-  if (productionData.length > 0) {
-    const maxProduccion = Math.max(...productionData.map(p => p.metrosProducidos));
-    suggestions.capacidadMaximaMensual = Math.ceil(maxProduccion * 1.2);
+
+  const metrosProducidos = productionData
+    .map((prod) => safeNumber(prod.metrosProducidos))
+    .filter((value) => value > 0);
+
+  if (metrosProducidos.length) {
+    const p90 = percentile(metrosProducidos, 90) ?? Math.max(...metrosProducidos);
+    const average = metrosProducidos.reduce((sum, value) => sum + value, 0) / metrosProducidos.length;
+    const capacityTarget = Math.max(p90 * 1.05, average * 1.1);
+    suggestions.capacidadMaximaMensual = Math.ceil(capacityTarget);
   }
-  
-  // 2. META PRECIO PROMEDIO
-  // Basada en el precio promedio actual de todos los meses
-  if (productionData.length > 0 && financialData) {
+
+  if (productionData.length) {
     let totalIngresos = 0;
     let totalVendidos = 0;
-    
-    productionData.forEach(prod => {
+
+    productionData.forEach((prod) => {
       const monthFinancial = financialData.monthly[prod.month];
-      if (monthFinancial && prod.metrosVendidos > 0) {
+      const metrosVendidos = safeNumber(prod.metrosVendidos);
+      if (monthFinancial && metrosVendidos > 0) {
         totalIngresos += monthFinancial.ingresos;
-        totalVendidos += prod.metrosVendidos;
+        totalVendidos += metrosVendidos;
       }
     });
-    
+
     if (totalVendidos > 0) {
-      const precioPromedioActual = totalIngresos / totalVendidos;
-      // Sugerir 5% más que el promedio actual como meta
-      suggestions.metaPrecioPromedio = Math.ceil(precioPromedioActual * 1.05);
+      const precioPromedio = totalIngresos / totalVendidos;
+      suggestions.metaPrecioPromedio = Math.round(precioPromedio * 1.05);
     }
   }
-  
-  // 3. META MARGEN MÍNIMO
-  // Basada en el margen promedio actual
-  if (productionData.length > 0 && financialData) {
-    let totalMargen = 0;
-    let conteoMeses = 0;
-    
-    productionData.forEach(prod => {
-      const monthFinancial = financialData.monthly[prod.month];
-      if (monthFinancial && prod.metrosVendidos > 0 && prod.metrosProducidos > 0) {
-        // Calcular costos totales correctamente
-        const costosTotal = monthFinancial.costoVentasTotal + 
-                           monthFinancial.gastosOperativos;
-        
-        const costoProduccionPorMetro = costosTotal / prod.metrosProducidos;
-        const precioVentaPorMetro = monthFinancial.ingresos / prod.metrosVendidos;
-        
-        if (precioVentaPorMetro > 0) {
-          const margenPorcentual = ((precioVentaPorMetro - costoProduccionPorMetro) / precioVentaPorMetro) * 100;
-          totalMargen += margenPorcentual;
-          conteoMeses++;
+
+  const margins: number[] = [];
+  productionData.forEach((prod) => {
+    const monthFinancial = financialData.monthly[prod.month];
+    const metrosVendidos = safeNumber(prod.metrosVendidos);
+    const metrosProducidos = safeNumber(prod.metrosProducidos);
+    if (monthFinancial && metrosVendidos > 0 && metrosProducidos > 0) {
+      const ingresos = monthFinancial.ingresos;
+      const costosVariables = safeNumber(monthFinancial.costosVariables);
+      const gastosOperativos = safeNumber(monthFinancial.gastosOperativos);
+      const gastosAdmin = safeNumber(monthFinancial.gastosAdminTotal ?? monthFinancial.gastosAdmin);
+      const costoProduccion = costosVariables + gastosOperativos + gastosAdmin;
+      if (ingresos > 0) {
+        const margen = ((ingresos - costoProduccion) / ingresos) * 100;
+        if (Number.isFinite(margen)) {
+          margins.push(margen);
         }
       }
-    });
-    
-    if (conteoMeses > 0) {
-      const margenPromedio = totalMargen / conteoMeses;
-      // Si el margen promedio es bueno (>15%), mantenerlo como meta
-      // Si es bajo, sugerir 20% como meta realista
-      suggestions.metaMargenMinimo = margenPromedio > 15 ? 
-        Math.round(margenPromedio) : 20;
+    }
+  });
+
+  if (margins.length) {
+    const avgMargin = margins.reduce((sum, value) => sum + value, 0) / margins.length;
+    suggestions.metaMargenMinimo = Math.round(Math.max(avgMargin, 20));
+  }
+
+  const monthlyEntries = Object.values(financialData.monthly || {});
+  if (monthlyEntries.length) {
+    const fixedCosts = monthlyEntries
+      .map((month) => safeNumber(month.costosFijos ?? month.gastosOperativos))
+      .filter((value) => value > 0);
+    if (fixedCosts.length) {
+      const averageFixedCost = fixedCosts.reduce((sum, value) => sum + value, 0) / fixedCosts.length;
+      suggestions.costoFijoProduccion = Math.round(averageFixedCost);
     }
   }
-  
-  // 4. COSTO FIJO DE PRODUCCIÓN
-  // Basado en el promedio de gastos operativos
-  if (financialData) {
-    const mesesConDatos = Object.keys(financialData.monthly);
-    if (mesesConDatos.length > 0) {
-      let totalGastosOperativos = 0;
-      
-      mesesConDatos.forEach(mes => {
-        totalGastosOperativos += financialData.monthly[mes].gastosOperativos;
-      });
-      
-      const promedioGastosOperativos = totalGastosOperativos / mesesConDatos.length;
-      suggestions.costoFijoProduccion = Math.ceil(promedioGastosOperativos);
-    }
-  }
-  
-  // console.log('💡 Sugerencias calculadas:', suggestions);
+
   return suggestions;
 };
 
-// === FUNCIÓN PARA VALIDAR SUGERENCIAS ===
-
 export const validateSuggestions = (suggestions: Partial<ProductionConfig>): string[] => {
   const warnings: string[] = [];
-  
-  if (suggestions.capacidadMaximaMensual && suggestions.capacidadMaximaMensual < 100) {
-    warnings.push('⚠️ Capacidad máxima parece muy baja');
+
+  if (suggestions.capacidadMaximaMensual && suggestions.capacidadMaximaMensual < 200) {
+    warnings.push('⚠️ Capacidad máxima sugerida parece muy baja frente al histórico');
   }
-  
+
   if (suggestions.metaPrecioPromedio && suggestions.metaPrecioPromedio < 50) {
     warnings.push('⚠️ Meta de precio parece muy baja');
   }
-  
-  if (suggestions.metaMargenMinimo && suggestions.metaMargenMinimo > 50) {
+
+  if (suggestions.metaMargenMinimo && suggestions.metaMargenMinimo > 55) {
     warnings.push('⚠️ Meta de margen parece muy alta');
   }
-  
+
   return warnings;
 };
