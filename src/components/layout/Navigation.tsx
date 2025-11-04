@@ -52,7 +52,6 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
     { id: 'bi-ventas', label: 'BI Ventas', icon: 'PieChart' },
     { id: 'config', label: 'Configuración', icon: 'Settings' },
     ...(isAdmin ? [
-      { id: 'scenarios', label: 'Gestión de Escenarios', icon: 'ClipboardList' },
       { id: 'rbac', label: 'Gestión RBAC', icon: 'Shield' },
     ] : []),
   ];
