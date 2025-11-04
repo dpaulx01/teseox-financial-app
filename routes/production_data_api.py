@@ -23,6 +23,7 @@ from models.production import (
     ProductionConfigModel,
     ProductionCombinedData,
 )
+from models.sales import SalesTransaction
 from models.user import User
 
 router = APIRouter(prefix="/api/production", tags=["Production Data"])
@@ -171,6 +172,39 @@ def get_production_data(
             "unidadesVendidas": float(row.unidades_vendidas or 0),
             "capacidadInstalada": float(row.capacidad_instalada or 0),
         })
+
+    if not records:
+        sales_rows = (
+            db.query(
+                SalesTransaction.month.label("month"),
+                func.sum(SalesTransaction.m2).label("metros"),
+                func.sum(SalesTransaction.cantidad_facturada).label("unidades"),
+            )
+            .filter(
+                SalesTransaction.company_id == company_id,
+                SalesTransaction.year == year,
+            )
+            .group_by(SalesTransaction.month)
+            .order_by(SalesTransaction.month.asc())
+            .all()
+        )
+
+        for row in sales_rows:
+            month_number = int(row.month or 0)
+            if month_number < 1 or month_number > 12:
+                continue
+            metros = float(row.metros or 0)
+            records.append({
+                "month": month_to_name(month_number),
+                "monthNumber": month_number,
+                "metrosProducidos": metros,
+                "metrosVendidos": metros,
+                "unidadesProducidas": float(row.unidades or 0),
+                "unidadesVendidas": float(row.unidades or 0),
+                "capacidadInstalada": 0.0,
+            })
+
+        records.sort(key=lambda x: x["monthNumber"])
 
     return {
         "success": True,
@@ -462,6 +496,28 @@ def get_production_summary(
         .scalar()
     ) or 0
 
+    derived_months = 0
+    if production_count == 0:
+        derived_months = (
+            db.query(func.count(func.distinct(SalesTransaction.month)))
+            .filter(
+                SalesTransaction.company_id == company_id,
+                SalesTransaction.year == year,
+            )
+            .scalar()
+        ) or 0
+
+    last_sales_update = None
+    if derived_months:
+        last_sales_update = (
+            db.query(func.max(SalesTransaction.updated_at))
+            .filter(
+                SalesTransaction.company_id == company_id,
+                SalesTransaction.year == year,
+            )
+            .scalar()
+        )
+
     config_exists = db.query(ProductionConfigModel).filter(
         ProductionConfigModel.company_id == company_id,
         ProductionConfigModel.year == year,
@@ -476,10 +532,15 @@ def get_production_summary(
         "success": True,
         "data": {
             "hasProductionData": production_count > 0,
-            "records": int(production_count),
+            "records": int(production_count or derived_months),
             "hasConfig": config_exists is not None,
             "hasCombinedData": combined is not None,
-            "lastUpdated": combined.last_updated.isoformat() if combined and combined.last_updated else None,
+            "lastUpdated": (
+                combined.last_updated.isoformat()
+                if combined and combined.last_updated
+                else (last_sales_update.isoformat() if last_sales_update else None)
+            ),
+            "derivedFromSales": production_count == 0 and derived_months > 0,
         },
     }
 
@@ -517,6 +578,15 @@ def get_available_years(
         .all()
     )
     for row in combined_years:
+        if row[0]:
+            year_values.add(int(row[0]))
+
+    sales_years = (
+        db.query(func.distinct(SalesTransaction.year))
+        .filter(SalesTransaction.company_id == company_id)
+        .all()
+    )
+    for row in sales_years:
         if row[0]:
             year_values.add(int(row[0]))
 
