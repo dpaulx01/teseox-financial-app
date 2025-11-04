@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { apiPath } from '../config/apiBaseUrl';
 
 // Tipos para el contexto de año
 export interface YearInfo {
@@ -57,14 +58,14 @@ export const YearProvider: React.FC<YearProviderProps> = ({ children }) => {
       }
 
       const [financialResponse, productionResponse] = await Promise.allSettled([
-        fetch('http://localhost:8001/api/financial/years', {
+        fetch(apiPath('/api/financial/years'), {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           }
         }),
-        fetch('http://localhost:8001/api/production/years', {
+        fetch(apiPath('/api/production/years'), {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',

@@ -1,9 +1,10 @@
 import { FinancialData } from '../types';
 import { hybridStorage } from './serverStorage';
 import { processFinancialData } from './financialDataProcessor';
+import { apiPath } from '../config/apiBaseUrl';
 
 const FINANCIAL_DATA_KEY = 'artyco-financial-data-persistent';
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+const financialPath = (suffix: string) => apiPath(`/api/financial${suffix}`);
 
 // === SISTEMA HÍBRIDO: API MySQL primero, localStorage como fallback ===
 
@@ -22,7 +23,7 @@ export const saveFinancialData = async (data: FinancialData): Promise<void> => {
     };
     
     // Guardar en MySQL via API RBAC
-    const response = await fetch('http://localhost:8001/api/financial/save', {
+    const response = await fetch(financialPath('/save'), {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -59,7 +60,7 @@ export const loadFinancialData = async (year?: number): Promise<FinancialData | 
     
     try {
       // Construir URL con filtro de año opcional
-      const baseUrl = 'http://localhost:8001/api/financial/data?include_raw=true';
+      const baseUrl = `${financialPath('/data')}?include_raw=true`;
       const url = year ? `${baseUrl}&year=${year}` : baseUrl;
       
       // Obtener datos desde MySQL via API RBAC
@@ -110,7 +111,7 @@ export const clearFinancialData = async (): Promise<void> => {
     }
     
     // Limpiar datos de MySQL via API RBAC
-    const response = await fetch('http://localhost:8001/api/financial/clear', {
+    const response = await fetch(financialPath('/clear'), {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`

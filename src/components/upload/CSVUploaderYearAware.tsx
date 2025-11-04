@@ -3,6 +3,7 @@ import { useState, useCallback } from 'react';
 // Flujo unificado: no procesamos ni guardamos localmente
 import { Upload, FileText, Loader, AlertCircle } from 'lucide-react';
 import { useYear } from '../../contexts/YearContext';
+import { apiPath } from '../../config/apiBaseUrl';
 
 export default function CSVUploaderYearAware() {
   const { availableYears, setSelectedYear, refreshYears } = useYear();
@@ -43,7 +44,7 @@ export default function CSVUploaderYearAware() {
       formData.append('csv', blob, file.name);
       formData.append('year', String(uploadYear));
 
-      const res = await fetch('http://localhost:8001/api/financial/csv-upload', {
+      const res = await fetch(apiPath('/api/financial/csv-upload'), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData

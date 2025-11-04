@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { FinancialData } from '../types';
+import { apiPath } from '../config/apiBaseUrl';
 
 // Tipos específicos para escenarios
 interface ScenarioMetadata {
@@ -104,7 +105,7 @@ export const ScenarioProvider: React.FC<{ children: ReactNode }> = ({ children }
   // Función para hacer requests autenticados
   const apiRequest = async (url: string, options: RequestInit = {}) => {
     const token = getAuthToken();
-    const response = await fetch(`http://localhost:8001${url}`, {
+    const response = await fetch(apiPath(url), {
       ...options,
       headers: {
         'Content-Type': 'application/json',

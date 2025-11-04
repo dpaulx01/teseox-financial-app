@@ -5,6 +5,7 @@ import {
   Key, Mail, User, Building
 } from 'lucide-react';
 import axios from 'axios';
+import { apiPath } from '../config/apiBaseUrl';
 
 interface User {
   id: number;
@@ -74,9 +75,9 @@ export default function UserManagement() {
     try {
       setLoading(true);
       const [usersRes, rolesRes, permsRes] = await Promise.all([
-        axios.get('http://localhost:8001/api/users', config),
-        axios.get('http://localhost:8001/api/admin/roles', config),
-        axios.get('http://localhost:8001/api/admin/permissions', config)
+        axios.get(apiPath('/api/users'), config),
+        axios.get(apiPath('/api/admin/roles'), config),
+        axios.get(apiPath('/api/admin/permissions'), config)
       ]);
 
       setUsers(usersRes.data);
@@ -93,7 +94,7 @@ export default function UserManagement() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await axios.post('http://localhost:8001/api/users', formData, config);
+      await axios.post(apiPath('/api/users'), formData, config);
       setSuccess('Usuario creado exitosamente');
       setShowCreateModal(false);
       resetForm();
@@ -108,7 +109,7 @@ export default function UserManagement() {
     if (!editingUser) return;
     
     try {
-      await axios.put(`http://localhost:8001/api/users/${editingUser.id}`, formData, config);
+      await axios.put(apiPath(`/api/users/${editingUser.id}`), formData, config);
       setSuccess('Usuario actualizado exitosamente');
       setEditingUser(null);
       resetForm();
@@ -122,7 +123,7 @@ export default function UserManagement() {
     if (!confirm('¿Estás seguro de eliminar este usuario?')) return;
     
     try {
-      await axios.delete(`http://localhost:8001/api/users/${userId}`, config);
+      await axios.delete(apiPath(`/api/users/${userId}`), config);
       setSuccess('Usuario eliminado exitosamente');
       fetchData();
     } catch (err: any) {
@@ -167,7 +168,7 @@ export default function UserManagement() {
 
     try {
       await axios.post(
-        `http://localhost:8001/api/admin/roles/${editingRole.id}/permissions`,
+        apiPath(`/api/admin/roles/${editingRole.id}/permissions`),
         { permission_ids: selectedPermissions },
         config
       );

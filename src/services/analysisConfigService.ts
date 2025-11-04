@@ -9,6 +9,7 @@
  */
 
 import { BreakEvenAnalysisType, BreakEvenLevelConfig } from '../types';
+import { apiPath } from '../config/apiBaseUrl';
 
 // Interfaces para la respuesta de la API
 interface ApiResponse<T> {
@@ -51,15 +52,7 @@ class AnalysisConfigService {
   constructor() {
     // Configurar URL base para la API RBAC
     // El backend está en el puerto 8001 y expone /api/
-    if (typeof window !== 'undefined') {
-      // Estamos en el navegador
-      this.baseUrl = window.location.hostname === 'localhost' 
-        ? 'http://localhost:8001/api'  // API RBAC local
-        : '/api';  // Producción
-    } else {
-      // Estamos en servidor (SSR)
-      this.baseUrl = '/api';
-    }
+    this.baseUrl = apiPath('/api').replace(/\/$/, '');
     
     this.cache = new Map();
   }

@@ -5,6 +5,7 @@ import { EditableCell } from './EditableCell';
 import { FinancialData, MonthlyData } from '../../types';
 import { useMixedCosts } from '../../contexts/MixedCostContext';
 import { Save, RefreshCw, Calculator, AlertTriangle, TrendingUp, Zap, ChevronDown, ChevronRight } from 'lucide-react';
+import { apiPath } from '../../config/apiBaseUrl';
 import { getSortedMonths } from '../../utils/dateUtils';
 import ProjectionEngine from '../../utils/projectionEngine';
 import { formatCurrency } from '../../utils/formatters';
@@ -488,7 +489,7 @@ const EditablePygMatrixV2: React.FC = () => {
         sampleRaw0: data.raw?.[0] || null,
         editedCodes: Object.keys(pendingEditsRef.current).map(k => k.split('|')[0]),
       };
-      await fetch('http://localhost:8001/api/financial/debug-log', {
+      await fetch(apiPath('/api/financial/debug-log'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(sample)

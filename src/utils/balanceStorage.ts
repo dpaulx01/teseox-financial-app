@@ -7,8 +7,9 @@ import {
   BalanceTrendPoint,
   BalanceUploadRow,
 } from '../types';
+import { apiPath } from '../config/apiBaseUrl';
 
-const API_BASE = 'http://localhost:8001/api/balance';
+const balancePath = (suffix: string) => apiPath(`/api/balance${suffix}`);
 
 const authHeaders = () => {
   const token = localStorage.getItem('access_token');
@@ -62,7 +63,7 @@ export async function uploadBalanceData(
   year: number,
   month?: number | null,
 ): Promise<void> {
-  const response = await fetch(`${API_BASE}/upload`, {
+  const response = await fetch(balancePath('/upload'), {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
@@ -83,7 +84,7 @@ export async function loadBalanceData(year: number, month?: number | null): Prom
   const params = new URLSearchParams({ year: year.toString() });
   if (month) params.append('month', month.toString());
 
-  const response = await fetch(`${API_BASE}/data?${params.toString()}`, {
+  const response = await fetch(`${balancePath('/data')}?${params.toString()}`, {
     method: 'GET',
     headers: authHeaders(),
   });
@@ -109,7 +110,7 @@ export async function loadBalanceRatios(year: number, month?: number | null): Pr
   const params = new URLSearchParams({ year: year.toString() });
   if (month) params.append('month', month.toString());
 
-  const response = await fetch(`${API_BASE}/ratios?${params.toString()}`, {
+  const response = await fetch(`${balancePath('/ratios')}?${params.toString()}`, {
     method: 'GET',
     headers: authHeaders(),
   });
@@ -142,7 +143,7 @@ export async function loadBalanceTrends(
     granularity,
   });
 
-  const response = await fetch(`${API_BASE}/trends?${params.toString()}`, {
+  const response = await fetch(`${balancePath('/trends')}?${params.toString()}`, {
     method: 'GET',
     headers: authHeaders(),
   });
@@ -161,7 +162,7 @@ export async function loadBalanceTrends(
 }
 
 export async function loadBalanceSummary(year: number): Promise<BalanceSummary> {
-  const response = await fetch(`${API_BASE}/summary?year=${year}`, {
+  const response = await fetch(`${balancePath('/summary')}?year=${year}`, {
     method: 'GET',
     headers: authHeaders(),
   });
@@ -176,7 +177,7 @@ export async function loadBalanceSummary(year: number): Promise<BalanceSummary> 
 }
 
 export async function getBalanceYears(): Promise<number[]> {
-  const response = await fetch(`${API_BASE}/years`, {
+  const response = await fetch(balancePath('/years'), {
     method: 'GET',
     headers: authHeaders(),
   });
@@ -194,7 +195,7 @@ export async function deleteBalanceData(year: number, month?: number | null): Pr
   const params = new URLSearchParams({ year: year.toString() });
   if (month) params.append('month', month.toString());
 
-  const response = await fetch(`${API_BASE}/data?${params.toString()}`, {
+  const response = await fetch(`${balancePath('/data')}?${params.toString()}`, {
     method: 'DELETE',
     headers: authHeaders(),
   });

@@ -1,7 +1,8 @@
 import { ProductionData, OperationalMetrics, ProductionConfig, CombinedData } from '../types';
 import { log } from './logger';
+import { apiPath } from '../config/apiBaseUrl';
 
-const API_BASE = 'http://localhost:8001/api/production';
+const productionPath = (suffix: string) => apiPath(`/api/production${suffix}`);
 
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -26,7 +27,7 @@ const authHeaders = () => {
 
 export const saveProductionData = async (data: ProductionData[], year?: number): Promise<void> => {
   const selectedYear = year || new Date().getFullYear();
-  const response = await fetch(`${API_BASE}/data`, {
+  const response = await fetch(productionPath('/data'), {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
@@ -52,7 +53,7 @@ export const saveProductionData = async (data: ProductionData[], year?: number):
 
 export const loadProductionData = async (year?: number): Promise<ProductionData[]> => {
   const selectedYear = year || new Date().getFullYear();
-  const response = await fetch(`${API_BASE}/data?year=${selectedYear}`, {
+  const response = await fetch(`${productionPath('/data')}?year=${selectedYear}`, {
     method: 'GET',
     headers: authHeaders()
   });
@@ -82,7 +83,7 @@ export const loadProductionData = async (year?: number): Promise<ProductionData[
 
 export const deleteProductionData = async (year?: number): Promise<void> => {
   const selectedYear = year || new Date().getFullYear();
-  const response = await fetch(`${API_BASE}/data?year=${selectedYear}`, {
+  const response = await fetch(`${productionPath('/data')}?year=${selectedYear}`, {
     method: 'DELETE',
     headers: authHeaders()
   });
@@ -93,7 +94,7 @@ export const deleteProductionData = async (year?: number): Promise<void> => {
 
 export const saveProductionConfig = async (config: ProductionConfig, year?: number): Promise<void> => {
   const selectedYear = year || new Date().getFullYear();
-  const response = await fetch(`${API_BASE}/config`, {
+  const response = await fetch(productionPath('/config'), {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
@@ -111,7 +112,7 @@ export const saveProductionConfig = async (config: ProductionConfig, year?: numb
 
 export const loadProductionConfig = async (year?: number): Promise<ProductionConfig | null> => {
   const selectedYear = year || new Date().getFullYear();
-  const response = await fetch(`${API_BASE}/config?year=${selectedYear}`, {
+  const response = await fetch(`${productionPath('/config')}?year=${selectedYear}`, {
     method: 'GET',
     headers: authHeaders()
   });
@@ -135,7 +136,7 @@ export const loadProductionConfig = async (year?: number): Promise<ProductionCon
 
 export const deleteProductionConfig = async (year?: number): Promise<void> => {
   const selectedYear = year || new Date().getFullYear();
-  const response = await fetch(`${API_BASE}/config?year=${selectedYear}`, {
+  const response = await fetch(`${productionPath('/config')}?year=${selectedYear}`, {
     method: 'DELETE',
     headers: authHeaders()
   });
@@ -154,7 +155,7 @@ export const saveCombinedData = async (data: CombinedData, year?: number): Promi
     }
   };
 
-  const response = await fetch(`${API_BASE}/combined`, {
+  const response = await fetch(productionPath('/combined'), {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify(payload)
@@ -167,7 +168,7 @@ export const saveCombinedData = async (data: CombinedData, year?: number): Promi
 
 export const loadCombinedData = async (year?: number): Promise<CombinedData | null> => {
   const selectedYear = year || new Date().getFullYear();
-  const response = await fetch(`${API_BASE}/combined?year=${selectedYear}`, {
+  const response = await fetch(`${productionPath('/combined')}?year=${selectedYear}`, {
     method: 'GET',
     headers: authHeaders()
   });
@@ -189,7 +190,7 @@ export const loadCombinedData = async (year?: number): Promise<CombinedData | nu
 
 export const deleteCombinedData = async (year?: number): Promise<void> => {
   const selectedYear = year || new Date().getFullYear();
-  const response = await fetch(`${API_BASE}/combined?year=${selectedYear}`, {
+  const response = await fetch(`${productionPath('/combined')}?year=${selectedYear}`, {
     method: 'DELETE',
     headers: authHeaders()
   });
