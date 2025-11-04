@@ -32,7 +32,6 @@ import EditablePygMatrix from './components/pyg/EditablePygMatrix';
 import EditablePygMatrixV2 from './components/pyg/EditablePygMatrixV2';
 import BalanceInternoLayout from './components/scenario/BalanceInternoLayout';
 import ScenarioDashboard from './components/scenario/ScenarioDashboard';
-import BalanceAnalysis from './pages/BalanceAnalysis';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import YearSelector from './components/year/YearSelector';
 import GlobalYearBar from './components/year/GlobalYearBar';
@@ -132,15 +131,23 @@ const MainAppContent: React.FC = () => {
         return isSimulationMode ? <EditablePygMatrixV2 /> : <PygContainer />;
       case 'balance':
         if (isSimulationMode) {
+          // Usuario está en modo simulación, mostrar Balance Interno (matriz editable V2)
           return (
-            <BalanceInternoLayout onExit={() => setActiveScenarioId(null)}>
+            <BalanceInternoLayout onExit={() => setActiveTab('balance')}>
               <EditablePygMatrixV2 />
             </BalanceInternoLayout>
           );
+        } else {
+          // Usuario no está en simulación, mostrar dashboard de escenarios
+          return (
+            <ScenarioDashboard 
+              onEnterScenario={(scenarioId) => {
+                setActiveScenarioId(scenarioId);
+                // El tab permanece en 'balance', pero ahora isSimulationMode será true
+              }}
+            />
+          );
         }
-        return (
-          <BalanceAnalysis />
-        );
       case 'breakeven':
         return (
           <React.Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="text-primary animate-pulse">Cargando análisis...</div></div>}>

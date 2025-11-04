@@ -44,16 +44,13 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
     { id: 'kpi', label: 'Dashboard KPIs', icon: 'BarChart2' },
     { id: 'pnl', label: 'Análisis PyG', icon: 'FileText' },
     { id: 'pyg', label: 'PyG Comparativo', icon: 'TrendingUp' },
-    { id: 'balance', label: 'Balance General', icon: 'Calculator' },
+    { id: 'balance', label: 'Balance Interno', icon: 'Calculator' },
     { id: 'breakeven', label: 'Punto de Equilibrio', icon: 'Target' },
     { id: 'operational', label: 'Análisis Operativo', icon: 'Factory' },
     { id: 'status', label: 'Status Producción', icon: 'ClipboardList' },
     { id: 'bi-ventas', label: 'BI Ventas', icon: 'PieChart' },
     { id: 'config', label: 'Configuración', icon: 'Settings' },
-    ...(isAdmin ? [
-      { id: 'scenarios', label: 'Escenarios', icon: 'Target' },
-      { id: 'rbac', label: 'Gestión RBAC', icon: 'Shield' },
-    ] : []),
+    ...(isAdmin ? [{ id: 'rbac', label: 'Gestión RBAC', icon: 'Shield' }] : []),
   ];
 
   const handleNavClick = (tabId: string) => {
