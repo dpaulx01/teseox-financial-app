@@ -27,9 +27,9 @@ const UploadCard: React.FC<UploadCardProps> = ({ onUpload, status, onReset }) =>
             <FileText className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-text-primary">Carga de cotizaciones PDF o Excel</h2>
+            <h2 className="text-xl font-semibold text-text-primary">Carga de cotizaciones Excel</h2>
             <p className="text-sm text-text-muted">
-              Arrastra y suelta tus cotizaciones (PDF, XLS, XLSX) o selecciónalas manualmente. La información se extraerá automáticamente.
+              Arrastra y suelta tus cotizaciones (XLS, XLSX) o selecciónalas manualmente. La información se extraerá automáticamente.
             </p>
           </div>
         </div>
@@ -57,13 +57,13 @@ const UploadCard: React.FC<UploadCardProps> = ({ onUpload, status, onReset }) =>
         >
           <UploadCloud className="w-12 h-12 text-primary" />
           <p className="text-base text-center">
-            <span className="font-semibold text-text-primary">Arrastra y suelta</span> tus archivos PDF o Excel aquí
+            <span className="font-semibold text-text-primary">Arrastra y suelta</span> tus archivos Excel aquí
           </p>
           <p className="text-sm text-text-muted">o haz clic para seleccionar (máximo 10 archivos por lote)</p>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.xls,.xlsx,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             multiple
             onChange={(event) => handleFiles(event.target.files)}
             className="hidden"
@@ -92,7 +92,7 @@ const UploadCard: React.FC<UploadCardProps> = ({ onUpload, status, onReset }) =>
                 )}
                 {status.status === 'error' && (
                   <p className="mt-2 text-sm text-danger">
-                    Verifica que el archivo siga el formato estándar de cotizaciones (PDF o Excel) y vuelve a intentarlo.
+                    Verifica que el archivo siga el formato estándar de cotizaciones (Excel .xls o .xlsx) y vuelve a intentarlo.
                   </p>
                 )}
               </div>
