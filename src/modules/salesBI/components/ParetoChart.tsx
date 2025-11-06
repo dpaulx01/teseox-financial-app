@@ -18,6 +18,8 @@ import {
 } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 import api from '../../../services/api';
+import { appendTemporalFilters } from '../utils/filterUtils';
+import type { DateFilterState } from '../utils/filterUtils';
 
 ChartJS.register(
   CategoryScale,
@@ -31,9 +33,7 @@ ChartJS.register(
 );
 
 interface ParetoChartProps {
-  filters: {
-    year?: number;
-    month?: number;
+  filters: DateFilterState & {
     categoria?: string;
     canal?: string;
     vendedor?: string;
@@ -64,8 +64,7 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
         limit: '20'
       });
 
-      if (filters.year) params.append('year', filters.year.toString());
-      if (filters.month) params.append('month', filters.month.toString());
+      appendTemporalFilters(params, filters);
       if (filters.categoria) params.append('categoria', filters.categoria);
       if (filters.canal) params.append('canal', filters.canal);
       if (filters.vendedor) params.append('vendedor', filters.vendedor);
@@ -144,9 +143,9 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
           label: (context: any) => {
             const value = context.parsed.y;
             if (analysisType === 'volume') {
-              return `${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })} m²`;
+              return `${value.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²`;
             }
-            return `$${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+            return `$${value.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
           }
         }
       }
@@ -170,9 +169,9 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
           color: '#8B9DC3',
           callback: (value: any) => {
             if (analysisType === 'volume') {
-              return `${(value / 1000).toFixed(0)}k m²`;
+              return `${(Number(value) / 1000).toFixed(2)}k m²`;
             }
-            return `$${(value / 1000).toFixed(0)}k`;
+            return `$${(Number(value) / 1000).toFixed(2)}k`;
           }
         }
       }
@@ -191,7 +190,7 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
         titleColor: '#00F0FF',
         bodyColor: '#E0E7FF',
         callbacks: {
-          label: (context: any) => `${context.parsed.y.toFixed(1)}%`
+          label: (context: any) => `${context.parsed.y.toFixed(2)}%`
         }
       }
     },
@@ -212,7 +211,7 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
         },
         ticks: {
           color: '#8B9DC3',
-          callback: (value: any) => `${value}%`
+          callback: (value: any) => `${Number(value).toFixed(2)}%`
         },
         min: 0,
         max: 100
@@ -222,9 +221,9 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
 
   const valueFormatter = (value: number) => {
     if (analysisType === 'volume') {
-      return `${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })} m²`;
+      return `${value.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²`;
     }
-    return `$${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+    return `$${value.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   return (
@@ -322,9 +321,9 @@ export default function ParetoChart({ filters }: ParetoChartProps) {
               {data.length > 0 && (
                 <>
                   Los primeros <strong className="text-accent">{Math.ceil(data.length * 0.2)}</strong> {dimension}s
-                  generan el <strong className="text-amber-400">{data[Math.ceil(data.length * 0.2) - 1]?.cumulative_percentage.toFixed(1)}%</strong> del total.
+                  generan el <strong className="text-amber-400">{data[Math.ceil(data.length * 0.2) - 1]?.cumulative_percentage.toFixed(2)}%</strong> del total.
                   {data[Math.ceil(data.length * 0.5) - 1] && (
-                    <> La mitad genera el <strong className="text-purple-400">{data[Math.ceil(data.length * 0.5) - 1]?.cumulative_percentage.toFixed(1)}%</strong>.</>
+                    <> La mitad genera el <strong className="text-purple-400">{data[Math.ceil(data.length * 0.5) - 1]?.cumulative_percentage.toFixed(2)}%</strong>.</>
                   )}
                 </>
               )}

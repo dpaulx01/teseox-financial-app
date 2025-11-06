@@ -18,6 +18,50 @@ from auth.dependencies import get_current_user, require_permission
 
 router = APIRouter(prefix='/api/sales-bi', tags=['Sales BI'])
 
+
+def _resolve_years(year: Optional[int], years: Optional[List[int]]) -> List[int]:
+    resolved: List[int] = []
+    if years:
+        for value in years:
+            if value is None:
+                continue
+            if value not in resolved:
+                resolved.append(value)
+    if year is not None and year not in resolved:
+        resolved.append(year)
+    return resolved
+
+
+def _resolve_months(month: Optional[int], months: Optional[List[int]]) -> List[int]:
+    resolved: List[int] = []
+    if months:
+        for value in months:
+            if value is None:
+                continue
+            if 1 <= value <= 12 and value not in resolved:
+                resolved.append(value)
+    if month is not None and 1 <= month <= 12 and month not in resolved:
+        resolved.append(month)
+    return resolved
+
+
+def _apply_temporal_filters(
+    query,
+    year: Optional[int] = None,
+    years: Optional[List[int]] = None,
+    month: Optional[int] = None,
+    months: Optional[List[int]] = None,
+):
+    resolved_years = _resolve_years(year, years)
+    resolved_months = _resolve_months(month, months)
+
+    if resolved_years:
+        query = query.filter(SalesTransaction.year.in_(resolved_years))
+    if resolved_months:
+        query = query.filter(SalesTransaction.month.in_(resolved_months))
+
+    return query
+
 # ===================================================================
 # ENDPOINTS DE CONSULTA CON FILTROS DINÁMICOS
 # ===================================================================
@@ -25,7 +69,9 @@ router = APIRouter(prefix='/api/sales-bi', tags=['Sales BI'])
 @router.get('/dashboard/summary')
 async def get_dashboard_summary(
     year: Optional[int] = None,
+    years: Optional[List[int]] = Query(None),
     month: Optional[int] = None,
+    months: Optional[List[int]] = Query(None),
     categoria: Optional[str] = None,
     canal: Optional[str] = None,
     vendedor: Optional[str] = None,
@@ -49,10 +95,7 @@ async def get_dashboard_summary(
     ).filter(SalesTransaction.company_id == current_user.company_id)
 
     # Aplicar filtros dinámicos
-    if year:
-        query = query.filter(SalesTransaction.year == year)
-    if month:
-        query = query.filter(SalesTransaction.month == month)
+    query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
     if categoria:
         query = query.filter(SalesTransaction.categoria_producto == categoria)
     if canal:
@@ -93,7 +136,9 @@ async def get_dashboard_summary(
 @router.get('/analysis/commercial')
 async def get_commercial_analysis(
     year: Optional[int] = None,
+    years: Optional[List[int]] = Query(None),
     month: Optional[int] = None,
+    months: Optional[List[int]] = Query(None),
     categoria: Optional[str] = None,
     canal: Optional[str] = None,
     vendedor: Optional[str] = None,
@@ -127,10 +172,7 @@ async def get_commercial_analysis(
     ).filter(SalesTransaction.company_id == current_user.company_id)
 
     # Aplicar filtros dinámicos (solo si no se está agrupando por esa dimensión)
-    if year:
-        query = query.filter(SalesTransaction.year == year)
-    if month:
-        query = query.filter(SalesTransaction.month == month)
+    query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
     if categoria and group_by != 'categoria':
         query = query.filter(SalesTransaction.categoria_producto == categoria)
     if canal and group_by != 'canal':
@@ -171,7 +213,9 @@ async def get_commercial_analysis(
 @router.get('/analysis/financial')
 async def get_financial_analysis(
     year: Optional[int] = None,
+    years: Optional[List[int]] = Query(None),
     month: Optional[int] = None,
+    months: Optional[List[int]] = Query(None),
     categoria: Optional[str] = None,
     canal: Optional[str] = None,
     vendedor: Optional[str] = None,
@@ -204,10 +248,7 @@ async def get_financial_analysis(
     ).filter(SalesTransaction.company_id == current_user.company_id)
 
     # Aplicar filtros dinámicos (solo si no se está agrupando por esa dimensión)
-    if year:
-        query = query.filter(SalesTransaction.year == year)
-    if month:
-        query = query.filter(SalesTransaction.month == month)
+    query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
     if categoria and group_by != 'categoria':
         query = query.filter(SalesTransaction.categoria_producto == categoria)
     if canal and group_by != 'canal':
@@ -248,6 +289,9 @@ async def get_financial_analysis(
 @router.get('/trends/monthly')
 async def get_monthly_trends(
     year: Optional[int] = None,
+    years: Optional[List[int]] = Query(None),
+    month: Optional[int] = None,
+    months: Optional[List[int]] = Query(None),
     categoria: Optional[str] = None,
     canal: Optional[str] = None,
     vendedor: Optional[str] = None,
@@ -268,8 +312,7 @@ async def get_monthly_trends(
         func.count(func.distinct(SalesTransaction.numero_factura)).label('num_facturas')
     ).filter(SalesTransaction.company_id == current_user.company_id)
 
-    if year:
-        query = query.filter(SalesTransaction.year == year)
+    query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
     if categoria:
         query = query.filter(SalesTransaction.categoria_producto == categoria)
     if canal:
@@ -361,7 +404,9 @@ async def get_filter_options(
 @router.get('/filters/dynamic-options')
 async def get_dynamic_filter_options(
     year: Optional[int] = None,
+    years: Optional[List[int]] = Query(None),
     month: Optional[int] = None,
+    months: Optional[List[int]] = Query(None),
     categoria: Optional[str] = None,
     canal: Optional[str] = None,
     vendedor: Optional[str] = None,
@@ -375,16 +420,18 @@ async def get_dynamic_filter_options(
     Cada filtro devuelve solo las opciones disponibles según los filtros previos
     """
     company_id = current_user.company_id
+    resolved_years = _resolve_years(year, years)
+    resolved_months = _resolve_months(month, months)
 
     # Construir query base con filtros aplicados
     base_query = db.query(SalesTransaction).filter(
         SalesTransaction.company_id == company_id
     )
 
-    if year:
-        base_query = base_query.filter(SalesTransaction.year == year)
-    if month:
-        base_query = base_query.filter(SalesTransaction.month == month)
+    if resolved_years:
+        base_query = base_query.filter(SalesTransaction.year.in_(resolved_years))
+    if resolved_months:
+        base_query = base_query.filter(SalesTransaction.month.in_(resolved_months))
     if categoria:
         base_query = base_query.filter(SalesTransaction.categoria_producto == categoria)
     if canal:
@@ -394,12 +441,12 @@ async def get_dynamic_filter_options(
     if cliente:
         base_query = base_query.filter(SalesTransaction.razon_social == cliente)
 
-    # Años disponibles (sin filtrar por year)
+    # Años disponibles (sin filtrar por el año seleccionado para permitir múltiples años)
     years_query = db.query(SalesTransaction.year).filter(
         SalesTransaction.company_id == company_id
     )
-    if month:
-        years_query = years_query.filter(SalesTransaction.month == month)
+    if resolved_months:
+        years_query = years_query.filter(SalesTransaction.month.in_(resolved_months))
     if categoria:
         years_query = years_query.filter(SalesTransaction.categoria_producto == categoria)
     if canal:
@@ -411,12 +458,12 @@ async def get_dynamic_filter_options(
 
     years = years_query.distinct().order_by(desc(SalesTransaction.year)).all()
 
-    # Meses disponibles (filtrados por year si está presente)
+    # Meses disponibles (filtrados por los años seleccionados)
     months_query = db.query(SalesTransaction.month).filter(
         SalesTransaction.company_id == company_id
     )
-    if year:
-        months_query = months_query.filter(SalesTransaction.year == year)
+    if resolved_years:
+        months_query = months_query.filter(SalesTransaction.year.in_(resolved_years))
     if categoria:
         months_query = months_query.filter(SalesTransaction.categoria_producto == categoria)
     if canal:
@@ -435,10 +482,16 @@ async def get_dynamic_filter_options(
         categorias_query = db.query(SalesTransaction.categoria_producto).filter(
             SalesTransaction.company_id == company_id
         )
-        if year:
-            categorias_query = categorias_query.filter(SalesTransaction.year == year)
-        if month:
-            categorias_query = categorias_query.filter(SalesTransaction.month == month)
+        if resolved_years:
+            categorias_query = categorias_query.filter(SalesTransaction.year.in_(resolved_years))
+        if resolved_months:
+            categorias_query = categorias_query.filter(SalesTransaction.month.in_(resolved_months))
+        if canal:
+            categorias_query = categorias_query.filter(SalesTransaction.canal_comercial == canal)
+        if vendedor:
+            categorias_query = categorias_query.filter(SalesTransaction.vendedor == vendedor)
+        if cliente:
+            categorias_query = categorias_query.filter(SalesTransaction.razon_social == cliente)
     categorias = categorias_query.distinct().order_by(SalesTransaction.categoria_producto).all()
 
     # Canales disponibles (filtrados por filtros previos)
@@ -448,12 +501,16 @@ async def get_dynamic_filter_options(
         canales_query = db.query(SalesTransaction.canal_comercial).filter(
             SalesTransaction.company_id == company_id
         )
-        if year:
-            canales_query = canales_query.filter(SalesTransaction.year == year)
-        if month:
-            canales_query = canales_query.filter(SalesTransaction.month == month)
+        if resolved_years:
+            canales_query = canales_query.filter(SalesTransaction.year.in_(resolved_years))
+        if resolved_months:
+            canales_query = canales_query.filter(SalesTransaction.month.in_(resolved_months))
         if categoria:
             canales_query = canales_query.filter(SalesTransaction.categoria_producto == categoria)
+        if vendedor:
+            canales_query = canales_query.filter(SalesTransaction.vendedor == vendedor)
+        if cliente:
+            canales_query = canales_query.filter(SalesTransaction.razon_social == cliente)
     canales = canales_query.distinct().order_by(SalesTransaction.canal_comercial).all()
 
     # Vendedores disponibles (filtrados por filtros previos)
@@ -462,14 +519,16 @@ async def get_dynamic_filter_options(
         vendedores_query = db.query(SalesTransaction.vendedor).filter(
             SalesTransaction.company_id == company_id
         )
-        if year:
-            vendedores_query = vendedores_query.filter(SalesTransaction.year == year)
-        if month:
-            vendedores_query = vendedores_query.filter(SalesTransaction.month == month)
+        if resolved_years:
+            vendedores_query = vendedores_query.filter(SalesTransaction.year.in_(resolved_years))
+        if resolved_months:
+            vendedores_query = vendedores_query.filter(SalesTransaction.month.in_(resolved_months))
         if categoria:
             vendedores_query = vendedores_query.filter(SalesTransaction.categoria_producto == categoria)
         if canal:
             vendedores_query = vendedores_query.filter(SalesTransaction.canal_comercial == canal)
+        if cliente:
+            vendedores_query = vendedores_query.filter(SalesTransaction.razon_social == cliente)
     vendedores = vendedores_query.distinct().order_by(SalesTransaction.vendedor).all()
 
     # Clientes disponibles (filtrados por todos los filtros previos)
@@ -478,10 +537,10 @@ async def get_dynamic_filter_options(
         clientes_query = db.query(SalesTransaction.razon_social).filter(
             SalesTransaction.company_id == company_id
         )
-        if year:
-            clientes_query = clientes_query.filter(SalesTransaction.year == year)
-        if month:
-            clientes_query = clientes_query.filter(SalesTransaction.month == month)
+        if resolved_years:
+            clientes_query = clientes_query.filter(SalesTransaction.year.in_(resolved_years))
+        if resolved_months:
+            clientes_query = clientes_query.filter(SalesTransaction.month.in_(resolved_months))
         if categoria:
             clientes_query = clientes_query.filter(SalesTransaction.categoria_producto == categoria)
         if canal:
@@ -823,7 +882,9 @@ async def save_filter(
 @router.get('/kpis/gerencial')
 async def get_kpis_gerencial(
     year: Optional[int] = None,
+    years: Optional[List[int]] = Query(None),
     month: Optional[int] = None,
+    months: Optional[List[int]] = Query(None),
     categoria: Optional[str] = None,
     canal: Optional[str] = None,
     vendedor: Optional[str] = None,
@@ -845,10 +906,7 @@ async def get_kpis_gerencial(
     ).filter(SalesTransaction.company_id == current_user.company_id)
 
     # Aplicar filtros
-    if year:
-        query = query.filter(SalesTransaction.year == year)
-    if month:
-        query = query.filter(SalesTransaction.month == month)
+    query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
     if categoria:
         query = query.filter(SalesTransaction.categoria_producto == categoria)
     if canal:
@@ -894,7 +952,9 @@ async def get_pareto_analysis(
     analysis_type: str = Query('sales', regex='^(sales|volume|profit)$'),
     dimension: str = Query('producto', regex='^(producto|cliente|categoria)$'),
     year: Optional[int] = None,
+    years: Optional[List[int]] = Query(None),
     month: Optional[int] = None,
+    months: Optional[List[int]] = Query(None),
     categoria: Optional[str] = None,
     canal: Optional[str] = None,
     vendedor: Optional[str] = None,
@@ -928,10 +988,7 @@ async def get_pareto_analysis(
     ).filter(SalesTransaction.company_id == current_user.company_id)
 
     # Aplicar filtros
-    if year:
-        query = query.filter(SalesTransaction.year == year)
-    if month:
-        query = query.filter(SalesTransaction.month == month)
+    query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
     if categoria and dimension != 'categoria':
         query = query.filter(SalesTransaction.categoria_producto == categoria)
     if canal:
@@ -977,6 +1034,9 @@ async def get_evolution_analysis(
     metric: str = Query('price', regex='^(price|discount|margin)$'),
     group_by_period: str = Query('month', regex='^(month|quarter|year)$'),
     year: Optional[int] = None,
+    month: Optional[int] = None,
+    years: Optional[List[int]] = Query(None),
+    months: Optional[List[int]] = Query(None),
     categoria: Optional[str] = None,
     canal: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -1009,8 +1069,9 @@ async def get_evolution_analysis(
     ).filter(SalesTransaction.company_id == current_user.company_id)
 
     # Filtros
-    if year:
-        query = query.filter(SalesTransaction.year == year)
+    month_arg = month if group_by_period != 'year' else None
+    months_arg = months if group_by_period != 'year' else None
+    query = _apply_temporal_filters(query, year=year, years=years, month=month_arg, months=months_arg)
     if categoria:
         query = query.filter(SalesTransaction.categoria_producto == categoria)
     if canal:
@@ -1065,7 +1126,9 @@ async def get_ranking_analysis(
     dimension: str = Query('categoria', regex='^(categoria|canal|vendedor|cliente|producto)$'),
     metric: str = Query('volume', regex='^(volume|sales|profit|margin_m2)$'),
     year: Optional[int] = None,
+    years: Optional[List[int]] = Query(None),
     month: Optional[int] = None,
+    months: Optional[List[int]] = Query(None),
     limit: int = Query(10, ge=5, le=20),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1093,10 +1156,7 @@ async def get_ranking_analysis(
     ).filter(SalesTransaction.company_id == current_user.company_id)
 
     # Filtros
-    if year:
-        query = query.filter(SalesTransaction.year == year)
-    if month:
-        query = query.filter(SalesTransaction.month == month)
+    query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
 
     query = query.group_by(dimension_field)
 

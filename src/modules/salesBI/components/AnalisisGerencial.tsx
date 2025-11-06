@@ -17,6 +17,7 @@ import {
   Bars3BottomLeftIcon
 } from '@heroicons/react/24/outline';
 import api from '../../../services/api';
+import { appendTemporalFilters } from '../utils/filterUtils';
 import KPICardGerencial from './KPICardGerencial';
 import ParetoChart from './ParetoChart';
 import EvolutionChart from './EvolutionChart';
@@ -77,8 +78,7 @@ function InsightsInteligentes({ kpiData, filters }: InsightsInteligentesProps) {
     setLoading(true);
     try {
       const params = new URLSearchParams({ dimension: 'producto', analysis_type: 'sales' });
-      if (filters.year) params.append('year', filters.year);
-      if (filters.month) params.append('month', filters.month);
+      appendTemporalFilters(params, filters);
       if (filters.categoria) params.append('categoria', filters.categoria);
       if (filters.canal) params.append('canal', filters.canal);
 
@@ -104,17 +104,17 @@ function InsightsInteligentes({ kpiData, filters }: InsightsInteligentesProps) {
     if (margenCosto < 20) {
       insights.push({
         type: 'alert',
-        message: `⚠️ Margen sobre costo MP crítico (${margenCosto.toFixed(1)}%). Los costos de materia prima están consumiendo más del 80% del precio de venta. Evalúe renegociación con proveedores o ajuste de precios.`
+        message: `⚠️ Margen sobre costo MP crítico (${margenCosto.toFixed(2)}%). Los costos de materia prima están consumiendo más del 80% del precio de venta. Evalúe renegociación con proveedores o ajuste de precios.`
       });
     } else if (margenCosto < 35) {
       insights.push({
         type: 'warning',
-        message: `📊 Margen sobre costo MP moderado (${margenCosto.toFixed(1)}%). Existe oportunidad de optimización. Considere análisis de proveedores alternativos o economías de escala.`
+        message: `📊 Margen sobre costo MP moderado (${margenCosto.toFixed(2)}%). Existe oportunidad de optimización. Considere análisis de proveedores alternativos o economías de escala.`
       });
     } else if (margenCosto >= 50) {
       insights.push({
         type: 'success',
-        message: `✅ Excelente margen sobre costo MP (${margenCosto.toFixed(1)}%). El control de costos de materia prima es sólido y genera alta rentabilidad.`
+        message: `✅ Excelente margen sobre costo MP (${margenCosto.toFixed(2)}%). El control de costos de materia prima es sólido y genera alta rentabilidad.`
       });
     }
 
@@ -123,17 +123,17 @@ function InsightsInteligentes({ kpiData, filters }: InsightsInteligentesProps) {
     if (descuento > 15) {
       insights.push({
         type: 'warning',
-        message: `💰 Nivel de descuentos elevado (${descuento.toFixed(1)}%). Esto representa una pérdida significativa de margen. Revise política comercial y condiciones de negociación con clientes principales.`
+        message: `💰 Nivel de descuentos elevado (${descuento.toFixed(2)}%). Esto representa una pérdida significativa de margen. Revise política comercial y condiciones de negociación con clientes principales.`
       });
     } else if (descuento > 10) {
       insights.push({
         type: 'info',
-        message: `📉 Descuentos en nivel medio (${descuento.toFixed(1)}%). Monitoree que no erosionen la rentabilidad objetivo. Considere descuentos por volumen estructurados.`
+        message: `📉 Descuentos en nivel medio (${descuento.toFixed(2)}%). Monitoree que no erosionen la rentabilidad objetivo. Considere descuentos por volumen estructurados.`
       });
     } else {
       insights.push({
         type: 'success',
-        message: `✨ Política de descuentos controlada (${descuento.toFixed(1)}%). Se mantiene una buena disciplina de precios que protege los márgenes.`
+        message: `✨ Política de descuentos controlada (${descuento.toFixed(2)}%). Se mantiene una buena disciplina de precios que protege los márgenes.`
       });
     }
 
@@ -170,12 +170,12 @@ function InsightsInteligentes({ kpiData, filters }: InsightsInteligentesProps) {
     if (eficienciaRentabilidad < 25) {
       insights.push({
         type: 'warning',
-        message: `📐 Eficiencia por m² mejorable: El margen es ${eficienciaRentabilidad.toFixed(1)}% del precio neto/m². Analice mix de productos y optimice hacia mayor valor agregado por unidad de volumen.`
+        message: `📐 Eficiencia por m² mejorable: El margen es ${eficienciaRentabilidad.toFixed(2)}% del precio neto/m². Analice mix de productos y optimice hacia mayor valor agregado por unidad de volumen.`
       });
     } else if (eficienciaRentabilidad >= 35) {
       insights.push({
         type: 'success',
-        message: `🏆 Excelente eficiencia por m²: Está generando ${eficienciaRentabilidad.toFixed(1)}% de margen sobre precio neto/m². El mix de productos está bien optimizado.`
+        message: `🏆 Excelente eficiencia por m²: Está generando ${eficienciaRentabilidad.toFixed(2)}% de margen sobre precio neto/m². El mix de productos está bien optimizado.`
       });
     }
 
@@ -326,8 +326,7 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filters.year) params.append('year', filters.year.toString());
-      if (filters.month) params.append('month', filters.month.toString());
+      appendTemporalFilters(params, filters);
       if (filters.categoria) params.append('categoria', filters.categoria);
       if (filters.canal) params.append('canal', filters.canal);
       if (filters.vendedor) params.append('vendedor', filters.vendedor);
@@ -516,7 +515,7 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
           >
             <Grid numItemsLg={4} className="gap-4 mb-6">
               <KPICardGerencial
-                value={kpiData?.total_m2.toLocaleString('es-CO', { maximumFractionDigits: 0 }) || '0'}
+                value={kpiData?.total_m2.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0,00'}
                 label="m² Totales"
                 subtitle="Volumen producido/vendido"
                 color="emerald"
@@ -534,7 +533,7 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
               />
 
               <KPICardGerencial
-                value={`${kpiData?.margen_sobre_costo.toFixed(1) || '0'}%`}
+                value={`${kpiData?.margen_sobre_costo.toFixed(2) || '0'}%`}
                 label="Margen sobre Costo MP"
                 subtitle="Rentabilidad vs costo materia prima"
                 color="purple"
@@ -543,7 +542,7 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
               />
 
               <KPICardGerencial
-                value={`${kpiData?.porcentaje_descuento.toFixed(1) || '0.0'}%`}
+                value={`${kpiData?.porcentaje_descuento.toFixed(2) || '0.0'}%`}
                 label="Descuento Promedio"
                 subtitle="% sobre precio bruto"
                 color="amber"
@@ -580,12 +579,12 @@ export default function AnalisisGerencial({ filters }: AnalisisGerencialProps) {
                 </div>
 
                 <div className="rounded-xl border border-border/60 bg-dark-card/40 p-4">
-                  <div className="text-xs font-semibold text-emerald-400 uppercase mb-1">
-                    Ventas Totales
-                  </div>
-                  <div className="text-2xl font-bold text-text-primary">
-                    ${kpiData.venta_neta_total.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
-                  </div>
+                <div className="text-xs font-semibold text-emerald-400 uppercase mb-1">
+                  Ventas Totales
+                </div>
+                <div className="text-2xl font-bold text-text-primary">
+                  ${kpiData.venta_neta_total.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
                   <p className="text-xs text-text-muted mt-1">
                     Venta neta del período
                   </p>

@@ -15,6 +15,8 @@ import {
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import api from '../../../services/api';
+import { appendTemporalFilters } from '../utils/filterUtils';
+import type { DateFilterState } from '../utils/filterUtils';
 
 ChartJS.register(
   CategoryScale,
@@ -26,10 +28,7 @@ ChartJS.register(
 );
 
 interface RankingChartProps {
-  filters: {
-    year?: number;
-    month?: number;
-  };
+  filters: DateFilterState;
 }
 
 type Metric = 'volume' | 'sales' | 'profit' | 'margin_m2';
@@ -52,8 +51,7 @@ export default function RankingChart({ filters }: RankingChartProps) {
         limit: '10'
       });
 
-      if (filters.year) params.append('year', filters.year.toString());
-      if (filters.month) params.append('month', filters.month.toString());
+      appendTemporalFilters(params, filters);
 
       const response = await api.get(`/api/sales-bi/analysis/ranking?${params}`);
       if (response.data.success) {
@@ -106,9 +104,9 @@ export default function RankingChart({ filters }: RankingChartProps) {
           label: (context: any) => {
             const value = context.parsed.x;
             if (metric === 'volume') {
-              return `${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })} m²`;
+              return `${value.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²`;
             }
-            return `$${value.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+            return `$${value.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
           }
         }
       }
@@ -122,9 +120,9 @@ export default function RankingChart({ filters }: RankingChartProps) {
           color: '#8B9DC3',
           callback: (value: any) => {
             if (metric === 'volume') {
-              return `${(value / 1000).toFixed(0)}k m²`;
+              return `${(Number(value) / 1000).toFixed(2)}k m²`;
             }
-            return `$${(value / 1000).toFixed(0)}k`;
+            return `$${(Number(value) / 1000).toFixed(2)}k`;
           }
         }
       },

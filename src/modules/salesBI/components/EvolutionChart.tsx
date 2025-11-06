@@ -19,6 +19,8 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import api from '../../../services/api';
+import { appendTemporalFilters } from '../utils/filterUtils';
+import type { DateFilterState } from '../utils/filterUtils';
 
 ChartJS.register(
   CategoryScale,
@@ -32,10 +34,11 @@ ChartJS.register(
 );
 
 interface EvolutionChartProps {
-  filters: {
-    year?: number;
+  filters: DateFilterState & {
     categoria?: string;
     canal?: string;
+    vendedor?: string;
+    cliente?: string;
   };
 }
 
@@ -55,7 +58,7 @@ export default function EvolutionChart({ filters }: EvolutionChartProps) {
         group_by_period: 'month'
       });
 
-      if (filters.year) params.append('year', filters.year.toString());
+      appendTemporalFilters(params, filters);
       if (filters.categoria) params.append('categoria', filters.categoria);
       if (filters.canal) params.append('canal', filters.canal);
 
@@ -134,7 +137,7 @@ export default function EvolutionChart({ filters }: EvolutionChartProps) {
             const label = context.dataset.label || '';
             const value = context.parsed.y;
             if (label.includes('%')) {
-              return `${label}: ${value.toFixed(1)}%`;
+              return `${label}: ${value.toFixed(2)}%`;
             }
             return `${label}: $${value.toFixed(2)}`;
           }
@@ -240,7 +243,7 @@ export default function EvolutionChart({ filters }: EvolutionChartProps) {
                     )}
                     {Math.abs(
                       ((data[data.length - 1].precio_neto_m2 - data[0].precio_neto_m2) / data[0].precio_neto_m2 * 100)
-                    ).toFixed(1)}%
+                    ).toFixed(2)}%
                   </span>
                 </div>
                 <p className="text-xs text-text-muted">
@@ -257,7 +260,7 @@ export default function EvolutionChart({ filters }: EvolutionChartProps) {
                 </div>
                 <div className="flex items-baseline gap-2 mb-2">
                   <span className="text-2xl font-bold text-text-primary">
-                    {data[data.length - 1].porcentaje_descuento.toFixed(1)}%
+                    {data[data.length - 1].porcentaje_descuento.toFixed(2)}%
                   </span>
                   <span className={`flex items-center text-sm font-semibold ${
                     data[data.length - 1].porcentaje_descuento <= data[0].porcentaje_descuento
@@ -269,7 +272,7 @@ export default function EvolutionChart({ filters }: EvolutionChartProps) {
                     ) : (
                       <TrendingUp className="w-4 h-4 mr-1" />
                     )}
-                    {Math.abs(data[data.length - 1].porcentaje_descuento - data[0].porcentaje_descuento).toFixed(1)}pp
+                    {Math.abs(data[data.length - 1].porcentaje_descuento - data[0].porcentaje_descuento).toFixed(2)}pp
                   </span>
                 </div>
                 <p className="text-xs text-text-muted">

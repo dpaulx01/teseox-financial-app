@@ -2644,7 +2644,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
           className="inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/20 px-3 py-2 text-xs font-semibold text-accent hover:bg-accent/30 transition-colors"
         >
           <FileDown className="w-3.5 h-3.5" />
-          Exportar PDF
+          Exportar reporte
         </button>
       </div>
       <div className="overflow-x-auto">
@@ -2743,10 +2743,10 @@ const StatusTable: React.FC<StatusTableProps> = ({
             <button
               onClick={handleExportProductsPDF}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all bg-accent/20 border border-accent/40 text-accent hover:bg-accent/30 hover:shadow-lg"
-              title="Exportar vista actual a PDF"
+              title="Exportar vista actual"
             >
               <FileDown className="w-4 h-4" />
-              Exportar PDF
+              Exportar reporte
             </button>
           </div>
 
@@ -2916,7 +2916,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
             className="inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/20 px-3 py-2 text-xs font-semibold text-accent hover:bg-accent/30 transition-colors"
           >
             <FileDown className="w-3.5 h-3.5" />
-            Exportar PDF
+            Exportar reporte
           </button>
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -2996,7 +2996,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
           className="inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/20 px-3 py-2 text-xs font-semibold text-accent hover:bg-accent/30 transition-colors"
         >
           <FileDown className="w-3.5 h-3.5" />
-          Exportar PDF
+          Exportar reporte
         </button>
       </div>
       <ProductionCalendarBoard
@@ -3013,7 +3013,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
       <>
         <section className="glass-panel rounded-2xl border border-border shadow-hologram p-12 text-center text-text-muted">
           <p className="text-lg font-medium text-text-primary mb-2">Aún no hay ítems de producción</p>
-          <p className="text-sm">Carga cotizaciones en PDF para comenzar a gestionar el flujo de producción.</p>
+          <p className="text-sm">Carga cotizaciones en Excel para comenzar a gestionar el flujo de producción.</p>
         </section>
         {planModalItem && (
           <DailyProductionModal

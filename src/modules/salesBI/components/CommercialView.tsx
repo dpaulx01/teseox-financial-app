@@ -17,11 +17,6 @@ import {
   Title,
   Flex,
   Metric,
-  TabGroup,
-  TabList,
-  Tab,
-  TabPanels,
-  TabPanel,
 } from '@tremor/react';
 import {
   ArrowTrendingUpIcon,
@@ -51,6 +46,7 @@ import {
 } from 'chart.js';
 import { Bar, Doughnut, Pie, Line } from 'react-chartjs-2';
 import api from '../../../services/api';
+import { appendTemporalFilters } from '../utils/filterUtils';
 
 ChartJS.register(
   CategoryScale,
@@ -78,7 +74,7 @@ interface Section {
 
 const SECTIONS: Section[] = [
   { id: 'overview', label: 'Resumen Comercial', icon: <ChartBarIcon className="h-5 w-5" /> },
-  { id: 'clients', label: 'Análisis de Clientes', icon: <UsersIcon className="h-5 w-5" /> },
+  { id: 'clients', label: 'Análisis de Ventas', icon: <UsersIcon className="h-5 w-5" /> },
   { id: 'evolution', label: 'Evolución Mensual', icon: <ChartPieIcon className="h-5 w-5" /> },
   { id: 'details', label: 'Detalle de Ventas', icon: <TableCellsIcon className="h-5 w-5" /> }
 ];
@@ -88,6 +84,8 @@ export default function CommercialView({ filters }: Props) {
   const [data, setData] = useState<any[]>([]);
   const [clientsData, setClientsData] = useState<any[]>([]);
   const [evolutionData, setEvolutionData] = useState<any[]>([]);
+  const [categoryComposition, setCategoryComposition] = useState<any[]>([]);
+  const [channelComposition, setChannelComposition] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<SectionId, boolean>>({
     overview: false,
@@ -96,7 +94,7 @@ export default function CommercialView({ filters }: Props) {
     details: false
   });
   const [activeSection, setActiveSection] = useState<SectionId>('overview');
-  const [metricView, setMetricView] = useState<'currency' | 'm2'>('currency');
+  const [overviewView, setOverviewView] = useState<'currency' | 'm2'>('currency');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() =>
     typeof window !== 'undefined'
       ? document.documentElement.classList.contains('dark')
@@ -118,11 +116,12 @@ export default function CommercialView({ filters }: Props) {
     new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
+      minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value ?? 0);
 
   const numberFormatter = (value: number = 0) =>
-    (value ?? 0).toLocaleString('es-CO', { maximumFractionDigits: 2 });
+    (value ?? 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // Load collapsed state from localStorage
   useEffect(() => {
@@ -181,14 +180,14 @@ export default function CommercialView({ filters }: Props) {
     loadData();
     loadClientsData();
     loadEvolutionData();
+    loadCompositionData();
   }, [filters, groupBy]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ group_by: groupBy, limit: '20' });
-      if (filters.year) params.append('year', filters.year);
-      if (filters.month) params.append('month', filters.month);
+      appendTemporalFilters(params, filters);
       if (filters.categoria) params.append('categoria', filters.categoria);
       if (filters.canal) params.append('canal', filters.canal);
       if (filters.vendedor) params.append('vendedor', filters.vendedor);
@@ -208,8 +207,7 @@ export default function CommercialView({ filters }: Props) {
   const loadClientsData = async () => {
     try {
       const params = new URLSearchParams({ group_by: 'cliente', limit: '10' });
-      if (filters.year) params.append('year', filters.year);
-      if (filters.month) params.append('month', filters.month);
+      appendTemporalFilters(params, filters);
       if (filters.categoria) params.append('categoria', filters.categoria);
       if (filters.canal) params.append('canal', filters.canal);
       if (filters.vendedor) params.append('vendedor', filters.vendedor);
@@ -228,8 +226,7 @@ export default function CommercialView({ filters }: Props) {
     try {
       const params = new URLSearchParams();
       // Incluir TODOS los filtros dinámicos, incluyendo el año
-      if (filters.year) params.append('year', filters.year);
-      if (filters.month) params.append('month', filters.month);
+      appendTemporalFilters(params, filters);
       if (filters.categoria) params.append('categoria', filters.categoria);
       if (filters.canal) params.append('canal', filters.canal);
       if (filters.vendedor) params.append('vendedor', filters.vendedor);
@@ -242,6 +239,34 @@ export default function CommercialView({ filters }: Props) {
       }
     } catch (error) {
       console.error('Error loading evolution data:', error);
+    }
+  };
+
+  const loadCompositionData = async () => {
+    try {
+      const buildParams = (group: 'categoria' | 'canal') => {
+        const params = new URLSearchParams({ group_by: group, limit: '10' });
+        appendTemporalFilters(params, filters);
+        if (filters.categoria) params.append('categoria', filters.categoria);
+        if (filters.canal) params.append('canal', filters.canal);
+        if (filters.vendedor) params.append('vendedor', filters.vendedor);
+        if (filters.cliente) params.append('cliente', filters.cliente);
+        return params;
+      };
+
+      const [categoryResponse, channelResponse] = await Promise.all([
+        api.get(`/api/sales-bi/analysis/commercial?${buildParams('categoria')}`),
+        api.get(`/api/sales-bi/analysis/commercial?${buildParams('canal')}`),
+      ]);
+
+      if (categoryResponse.data.success) {
+        setCategoryComposition(categoryResponse.data.data || []);
+      }
+      if (channelResponse.data.success) {
+        setChannelComposition(channelResponse.data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading composition data:', error);
     }
   };
 
@@ -432,7 +457,7 @@ export default function CommercialView({ filters }: Props) {
         ticks: {
           color: chartPalette.text,
           callback: (value: any) => {
-            return `$${(value / 1000).toFixed(1)}k`;
+            return `$${(value / 1000).toFixed(2)}k`;
           }
         }
       }
@@ -557,6 +582,70 @@ export default function CommercialView({ filters }: Props) {
     ]
   };
 
+  const sortedCategoryComposition = useMemo(() => {
+    const rows = [...categoryComposition];
+    rows.sort((a, b) => Number(b.venta_neta || 0) - Number(a.venta_neta || 0));
+    return rows.slice(0, 8);
+  }, [categoryComposition]);
+
+  const sortedChannelComposition = useMemo(() => {
+    const rows = [...channelComposition];
+    rows.sort((a, b) => Number(b.venta_neta || 0) - Number(a.venta_neta || 0));
+    return rows.slice(0, 8);
+  }, [channelComposition]);
+
+  const categoryCompositionChartData = useMemo(() => ({
+    labels: sortedCategoryComposition.map((item: any) => item.dimension || 'Sin definir'),
+    datasets: [
+      {
+        label: 'Venta Neta ($)',
+        data: sortedCategoryComposition.map((item: any) => Number(item.venta_neta || 0)),
+        backgroundColor: 'rgba(0, 240, 255, 0.7)',
+        borderColor: '#00F0FF',
+        borderWidth: 2,
+        borderRadius: 14,
+        maxBarThickness: 28,
+        xAxisID: 'xVentas',
+      },
+      {
+        label: 'Metros Cuadrados (m²)',
+        data: sortedCategoryComposition.map((item: any) => Number(item.metros_cuadrados || item.m2 || 0)),
+        backgroundColor: 'rgba(236, 72, 153, 0.7)',
+        borderColor: '#EC4899',
+        borderWidth: 2,
+        borderRadius: 14,
+        maxBarThickness: 28,
+        xAxisID: 'xM2',
+      }
+    ]
+  }), [sortedCategoryComposition]);
+
+  const channelCompositionChartData = useMemo(() => ({
+    labels: sortedChannelComposition.map((item: any) => item.dimension || 'Sin definir'),
+    datasets: [
+      {
+        label: 'Venta Neta ($)',
+        data: sortedChannelComposition.map((item: any) => Number(item.venta_neta || 0)),
+        backgroundColor: 'rgba(147, 51, 234, 0.7)',
+        borderColor: '#9333EA',
+        borderWidth: 2,
+        borderRadius: 14,
+        maxBarThickness: 28,
+        xAxisID: 'xVentas',
+      },
+      {
+        label: 'Metros Cuadrados (m²)',
+        data: sortedChannelComposition.map((item: any) => Number(item.metros_cuadrados || item.m2 || 0)),
+        backgroundColor: 'rgba(59, 130, 246, 0.7)',
+        borderColor: '#3B82F6',
+        borderWidth: 2,
+        borderRadius: 14,
+        maxBarThickness: 28,
+        xAxisID: 'xM2',
+      }
+    ]
+  }), [sortedChannelComposition]);
+
   // Opciones modernas para gráficos Doughnut y Pie
   const getDoughnutOptions = useMemo(() => (isM2Chart: boolean = false) => ({
     responsive: true,
@@ -592,7 +681,7 @@ export default function CommercialView({ filters }: Props) {
 
               return data.labels.map((label: string, i: number) => {
                 const value = dataset.data[i];
-                const percentage = ((value / total) * 100).toFixed(1);
+                const percentage = ((value / total) * 100).toFixed(2);
 
                 return {
                   text: `${label} (${percentage}%)`,
@@ -626,7 +715,7 @@ export default function CommercialView({ filters }: Props) {
         callbacks: {
           label: (context: any) => {
             const total = context.dataset.data.reduce((acc: number, val: number) => acc + val, 0);
-            const percentage = ((context.parsed / total) * 100).toFixed(1);
+            const percentage = ((context.parsed / total) * 100).toFixed(2);
 
             if (isM2Chart) {
               return `${numberFormatter(context.parsed)} m² (${percentage}%)`;
@@ -637,6 +726,85 @@ export default function CommercialView({ filters }: Props) {
         }
       }
     }
+  }), [chartPalette, currencyFormatter, numberFormatter]);
+
+  const compositionChartOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    indexAxis: 'y' as const,
+    scales: {
+      xVentas: {
+        type: 'linear' as const,
+        position: 'top' as const,
+        grid: {
+          color: chartPalette.grid,
+        },
+        ticks: {
+          color: chartPalette.text,
+          font: {
+            size: 12,
+            weight: '600' as const,
+          },
+          callback: (value: any) => currencyFormatter(Number(value ?? 0)),
+        },
+      },
+      xM2: {
+        type: 'linear' as const,
+        position: 'bottom' as const,
+        grid: {
+          drawOnChartArea: false,
+          color: chartPalette.grid,
+        },
+        ticks: {
+          color: chartPalette.text,
+          font: {
+            size: 12,
+            weight: '600' as const,
+          },
+          callback: (value: any) => `${numberFormatter(Number(value ?? 0))} m²`,
+        },
+      },
+      y: {
+        grid: {
+          color: chartPalette.grid,
+        },
+        ticks: {
+          color: chartPalette.text,
+          font: {
+            size: 12,
+            weight: '600' as const,
+          },
+        },
+      },
+    },
+    plugins: {
+      legend: {
+        position: 'bottom' as const,
+        labels: {
+          color: chartPalette.text,
+          usePointStyle: true,
+          pointStyle: 'rectRounded',
+          padding: 16,
+        },
+      },
+      tooltip: {
+        backgroundColor: chartPalette.tooltipBg,
+        titleColor: chartPalette.tooltipText,
+        bodyColor: chartPalette.tooltipText,
+        borderColor: chartPalette.tooltipBorder,
+        borderWidth: 1,
+        padding: 12,
+        callbacks: {
+          label: (context: any) => {
+            const value = Number(context.parsed.x ?? context.parsed);
+            if (context.dataset.label?.includes('m²')) {
+              return `${context.dataset.label}: ${numberFormatter(value)} m²`;
+            }
+            return `${context.dataset.label}: ${currencyFormatter(value)}`;
+          },
+        },
+      },
+    },
   }), [chartPalette, currencyFormatter, numberFormatter]);
 
   const getPieOptions = useMemo(() => (isM2Chart: boolean = false) => ({
@@ -672,7 +840,7 @@ export default function CommercialView({ filters }: Props) {
 
               return data.labels.map((label: string, i: number) => {
                 const value = dataset.data[i];
-                const percentage = ((value / total) * 100).toFixed(1);
+                const percentage = ((value / total) * 100).toFixed(2);
 
                 return {
                   text: `${label} (${percentage}%)`,
@@ -706,7 +874,7 @@ export default function CommercialView({ filters }: Props) {
         callbacks: {
           label: (context: any) => {
             const total = context.dataset.data.reduce((acc: number, val: number) => acc + val, 0);
-            const percentage = ((context.parsed / total) * 100).toFixed(1);
+            const percentage = ((context.parsed / total) * 100).toFixed(2);
 
             if (isM2Chart) {
               return `${numberFormatter(context.parsed)} m² (${percentage}%)`;
@@ -971,41 +1139,52 @@ export default function CommercialView({ filters }: Props) {
             title="Resumen Comercial"
             subtitle={`Total ventas: ${currencyFormatter(totalVentas)} • ${numberFormatter(totalMetros)} m²`}
           >
-            <TabGroup>
-              <TabList className="mb-6">
-                <Tab
-                  onClick={() => setMetricView('currency')}
-                  className="flex items-center gap-2"
-                >
-                  <CurrencyDollarIcon className="h-4 w-4" />
-                  Vista en Dólares ($)
-                </Tab>
-                <Tab
-                  onClick={() => setMetricView('m2')}
-                  className="flex items-center gap-2"
-                >
-                  <ShoppingBagIcon className="h-4 w-4" />
-                  Vista en Metros (m²)
-                </Tab>
-              </TabList>
+            <div className="flex flex-wrap gap-2 mb-6">
+              <button
+                type="button"
+                onClick={() => setOverviewView('currency')}
+                aria-pressed={overviewView === 'currency'}
+                className={`
+                  flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all
+                  ${overviewView === 'currency'
+                    ? 'bg-primary text-white shadow-glow-sm border border-primary/50'
+                    : 'bg-dark-card/40 text-text-muted hover:text-text-secondary border border-border/40'}
+                `}
+              >
+                <CurrencyDollarIcon className="h-4 w-4" />
+                Vista en Dólares ($)
+              </button>
+              <button
+                type="button"
+                onClick={() => setOverviewView('m2')}
+                aria-pressed={overviewView === 'm2'}
+                className={`
+                  flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all
+                  ${overviewView === 'm2'
+                    ? 'bg-accent text-white shadow-glow-sm border border-accent/50'
+                    : 'bg-dark-card/40 text-text-muted hover:text-text-secondary border border-border/40'}
+                `}
+              >
+                <ShoppingBagIcon className="h-4 w-4" />
+                Vista en Metros (m²)
+              </button>
+            </div>
 
-              <TabPanels>
-                {/* Vista en Dólares */}
-                <TabPanel>
-                  <Grid numItemsLg={5} className="gap-6">
-                    <Card className="glass-panel col-span-5 lg:col-span-3 border border-border/60 bg-dark-card/70 shadow-hologram">
-                      <Metric className="mb-2 text-text-primary">
-                        Total ventas: {currencyFormatter(totalVentas)}
-                      </Metric>
-                      <Text className="mb-4 text-sm text-text-muted">
-                        Comparativo entre ventas netas y descuentos aplicados.
-                      </Text>
-                      <div className="h-80 glass-card p-4 border border-border rounded-lg">
-                        <Bar data={barChartDataCurrency} options={barChartOptionsCurrency} />
-                      </div>
-                    </Card>
+            {overviewView === 'currency' ? (
+              <Grid numItemsLg={5} className="gap-6">
+                <Card className="glass-panel col-span-5 lg:col-span-3 border border-border/60 bg-dark-card/70 shadow-hologram">
+                  <Metric className="mb-2 text-text-primary">
+                    Total ventas: {currencyFormatter(totalVentas)}
+                  </Metric>
+                  <Text className="mb-4 text-sm text-text-muted">
+                    Comparativo entre ventas netas y descuentos aplicados.
+                  </Text>
+                  <div className="h-80 glass-card p-4 border border-border rounded-lg">
+                    <Bar data={barChartDataCurrency} options={barChartOptionsCurrency} />
+                  </div>
+                </Card>
 
-                    <Card className="glass-card col-span-5 flex flex-col justify-between border border-border/60 bg-dark-card/70 shadow-hologram lg:col-span-2">
+                <Card className="glass-card col-span-5 flex flex-col justify-between border border-border/60 bg-dark-card/70 shadow-hologram lg:col-span-2">
                       <div className="space-y-4">
                         <Flex alignItems="center" className="gap-3">
                           <div className="rounded-xl border border-primary/40 bg-primary/10 p-3 text-primary">
@@ -1041,9 +1220,6 @@ export default function CommercialView({ filters }: Props) {
                               {numberFormatter(topPerformer?.metros_cuadrados || topPerformer?.m2 || topPerformer?.unidades || 0)} m²
                             </div>
                           </Flex>
-                          <div className="mt-2 text-right text-xs text-text-muted">
-                            {(topPerformer?.porcentaje_descuento || 0).toFixed(1)}% desc.
-                          </div>
                         </div>
 
                         <div className="rounded-2xl border border-border/60 bg-dark-card/80 p-4">
@@ -1053,76 +1229,74 @@ export default function CommercialView({ filters }: Props) {
                           <Metric className="text-amber-400">
                             {currencyFormatter(totalDescuentos)}
                           </Metric>
-                        </div>
-                      </div>
-                    </Card>
-                  </Grid>
-                </TabPanel>
-
-                {/* Vista en M2 */}
-                <TabPanel>
-                  <Grid numItemsLg={5} className="gap-6">
-                    <Card className="glass-panel col-span-5 lg:col-span-3 border border-border/60 bg-dark-card/70 shadow-hologram">
-                      <Metric className="mb-2 text-text-primary">
-                        Total metros: {numberFormatter(totalMetros)} m²
-                      </Metric>
-                      <Text className="mb-4 text-sm text-text-muted">
-                        Distribución de metros cuadrados vendidos por {groupBy}.
-                      </Text>
-                      <div className="h-80 glass-card p-4 border border-border rounded-lg">
-                        <Bar data={barChartDataM2} options={barChartOptionsM2} />
-                      </div>
-                    </Card>
-
-                    <Card className="glass-card col-span-5 flex flex-col justify-between border border-border/60 bg-dark-card/70 shadow-hologram lg:col-span-2">
-                      <div className="space-y-4">
-                        <Flex alignItems="center" className="gap-3">
-                          <div className="rounded-xl border border-accent/40 bg-accent/10 p-3 text-accent">
-                            <ShoppingBagIcon className="h-6 w-6" />
-                          </div>
-                          <div>
-                            <Text className="text-xs uppercase tracking-wide text-text-muted">Líder en volumen</Text>
-                            <Title className="text-xl text-text-primary">
-                              {topPerformer?.dimension || 'Sin datos'}
-                            </Title>
-                          </div>
-                        </Flex>
-
-                        <div className="rounded-2xl border border-border/60 bg-dark-card/80 p-4">
-                          <Text className="text-sm text-text-muted">Metros cuadrados</Text>
-                          <Metric className="text-accent">
-                            {numberFormatter(topPerformer?.metros_cuadrados || topPerformer?.m2 || 0)} m²
-                          </Metric>
-                          <Flex justifyContent="between" className="mt-4 text-sm text-text-muted">
-                            <div>
-                              <Text className="text-xs">Precio/m²</Text>
-                              <Text className="font-semibold text-text-primary">
-                                {currencyFormatter((topPerformer?.venta_neta || 0) / (topPerformer?.metros_cuadrados || topPerformer?.m2 || 1))}
-                              </Text>
-                            </div>
-                            <div className="text-right">
-                              <Text className="text-xs">Facturas</Text>
-                              <Text className="font-semibold text-text-primary">
-                                {topPerformer?.num_facturas || 0}
-                              </Text>
-                            </div>
-                          </Flex>
-                        </div>
-
-                        <div className="rounded-2xl border border-border/60 bg-dark-card/80 p-4">
-                          <Text className="text-xs uppercase tracking-wide text-text-muted mb-2">
-                            Precio promedio / m²
+                          <Text className="mt-2 text-xs text-text-muted">
+                            Descuento en categoría destacada: {(topPerformer?.porcentaje_descuento || 0).toFixed(2)}%
                           </Text>
-                          <Metric className="text-primary">
-                            {currencyFormatter(totalVentas / (totalMetros || 1))}
-                          </Metric>
                         </div>
                       </div>
                     </Card>
                   </Grid>
-                </TabPanel>
-              </TabPanels>
-            </TabGroup>
+            ) : (
+              <Grid numItemsLg={5} className="gap-6">
+                <Card className="glass-panel col-span-5 lg:col-span-3 border border-border/60 bg-dark-card/70 shadow-hologram">
+                  <Metric className="mb-2 text-text-primary">
+                    Total metros: {numberFormatter(totalMetros)} m²
+                  </Metric>
+                  <Text className="mb-4 text-sm text-text-muted">
+                    Distribución de metros cuadrados vendidos por {groupBy}.
+                  </Text>
+                  <div className="h-80 glass-card p-4 border border-border rounded-lg">
+                    <Bar data={barChartDataM2} options={barChartOptionsM2} />
+                  </div>
+                </Card>
+
+                <Card className="glass-card col-span-5 flex flex-col justify-between border border-border/60 bg-dark-card/70 shadow-hologram lg:col-span-2">
+                  <div className="space-y-4">
+                    <Flex alignItems="center" className="gap-3">
+                      <div className="rounded-xl border border-accent/40 bg-accent/10 p-3 text-accent">
+                        <ShoppingBagIcon className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <Text className="text-xs uppercase tracking-wide text-text-muted">Mejor desempeño</Text>
+                        <Title className="text-xl text-text-primary">
+                          {topPerformer?.dimension || 'Sin datos'}
+                        </Title>
+                      </div>
+                    </Flex>
+
+                    <div className="rounded-2xl border border-border/60 bg-dark-card/80 p-4">
+                      <Text className="text-sm text-text-muted">Metros cuadrados</Text>
+                      <Metric className="text-accent">
+                        {numberFormatter(topPerformer?.metros_cuadrados || topPerformer?.m2 || 0)} m²
+                      </Metric>
+                      <Flex justifyContent="between" className="mt-4 text-sm text-text-muted">
+                          <div>
+                            <Text className="text-xs">Precio/m²</Text>
+                            <Text className="font-semibold text-text-primary">
+                              {currencyFormatter((topPerformer?.venta_neta || 0) / (topPerformer?.metros_cuadrados || topPerformer?.m2 || 1))}
+                            </Text>
+                        </div>
+                        <div className="text-right">
+                          <Text className="text-xs">Facturas</Text>
+                          <Text className="font-semibold text-text-primary">
+                            {topPerformer?.num_facturas || 0}
+                          </Text>
+                        </div>
+                      </Flex>
+                    </div>
+
+                    <div className="rounded-2xl border border-border/60 bg-dark-card/80 p-4">
+                      <Text className="text-xs uppercase tracking-wide text-text-muted mb-2">
+                        Precio promedio global (USD/m²)
+                      </Text>
+                      <Metric className="text-primary">
+                        {currencyFormatter(totalVentas / (totalMetros || 1))}
+                      </Metric>
+                    </div>
+                  </div>
+                </Card>
+              </Grid>
+            )}
           </CollapsibleSection>
         </motion.div>
 
@@ -1134,9 +1308,65 @@ export default function CommercialView({ filters }: Props) {
         >
           <CollapsibleSection
             id="clients"
-            title="Análisis de Clientes"
-            subtitle={`Top ${topClientsData.length} clientes por ventas y volumen`}
+            title="Análisis de Ventas"
+            subtitle="Composición por clientes, categorías y canales"
           >
+            <Grid numItemsLg={2} className="gap-6 mb-6">
+              <Card className="glass-panel border border-border/60 bg-dark-card/70 shadow-hologram">
+                <Flex alignItems="center" className="gap-2 mb-4">
+                  <div className="rounded-lg bg-primary/10 p-2">
+                    <ChartBarIcon className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <Title className="text-lg font-semibold text-text-primary">
+                      Composición por Categoría
+                    </Title>
+                    <Text className="text-xs text-text-muted">
+                      Ventas y volumen por categoría de producto
+                    </Text>
+                  </div>
+                </Flex>
+                <div className="h-96">
+                  {sortedCategoryComposition.length > 0 ? (
+                    <Bar data={categoryCompositionChartData} options={compositionChartOptions} />
+                  ) : (
+                    <div className="flex h-full items-center justify-center">
+                      <Text className="text-center text-text-muted">
+                        No hay datos de categorías disponibles.
+                      </Text>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              <Card className="glass-panel border border-border/60 bg-dark-card/70 shadow-hologram">
+                <Flex alignItems="center" className="gap-2 mb-4">
+                  <div className="rounded-lg bg-accent/10 p-2">
+                    <ChartPieIcon className="h-5 w-5 text-accent" />
+                  </div>
+                  <div>
+                    <Title className="text-lg font-semibold text-text-primary">
+                      Composición por Canal
+                    </Title>
+                    <Text className="text-xs text-text-muted">
+                      Distribución de ventas y m² por canal comercial
+                    </Text>
+                  </div>
+                </Flex>
+                <div className="h-96">
+                  {sortedChannelComposition.length > 0 ? (
+                    <Bar data={channelCompositionChartData} options={compositionChartOptions} />
+                  ) : (
+                    <div className="flex h-full items-center justify-center">
+                      <Text className="text-center text-text-muted">
+                        No hay datos de canales disponibles.
+                      </Text>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </Grid>
+
             <Grid numItemsLg={2} className="gap-6">
               <Card className="glass-panel border border-border/60 bg-dark-card/70 shadow-hologram">
                 <Flex alignItems="center" className="gap-2 mb-4">

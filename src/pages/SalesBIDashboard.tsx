@@ -24,10 +24,15 @@ import SalesDataUploadModal, {
   SalesDataUploadResult,
 } from '../modules/salesBI/components/SalesDataUploadModal';
 import SearchableSelect from '../modules/salesBI/components/SearchableSelect';
+import DateRangeFilter, { ActiveFilterBadge } from '../modules/salesBI/components/DateRangeFilter';
+import type { DateFilterState } from '../modules/salesBI/utils/filterUtils';
+import {
+  appendTemporalFilters,
+  resolveSelectedMonths,
+  resolveSelectedYears,
+} from '../modules/salesBI/utils/filterUtils';
 
-interface FilterConfig {
-  year?: number;
-  month?: number;
+interface FilterConfig extends DateFilterState {
   categoria?: string;
   canal?: string;
   vendedor?: string;
@@ -145,10 +150,83 @@ export default function SalesBIDashboard() {
     gerencial: true,
   });
 
+  const selectedYears = useMemo(() => resolveSelectedYears(filters), [filters]);
+  const selectedMonths = useMemo(() => resolveSelectedMonths(filters), [filters]);
+
+  const availableYears = useMemo(
+    () => [...filterOptions.years].sort((a, b) => b - a),
+    [filterOptions.years]
+  );
+
+  const availableMonths = useMemo(
+    () => [...filterOptions.months].sort((a, b) => a - b),
+    [filterOptions.months]
+  );
+
+  const additionalFilterBadges = useMemo<ActiveFilterBadge[]>(() => {
+    const badges: ActiveFilterBadge[] = [];
+    if (filters.categoria) {
+      badges.push({
+        id: 'categoria',
+        label: 'Categoría',
+        value: filters.categoria,
+        color: undefined,
+        className: 'bg-dark-card/70 border border-border/60 text-text-primary',
+      });
+    }
+    if (filters.canal) {
+      badges.push({
+        id: 'canal',
+        label: 'Canal',
+        value: filters.canal,
+        color: 'cyan',
+        className: 'bg-cyan-500/10 border border-cyan-400/40 text-cyan-200',
+      });
+    }
+    if (filters.vendedor) {
+      badges.push({
+        id: 'vendedor',
+        label: 'Vendedor',
+        value: filters.vendedor,
+        color: 'emerald',
+        className: 'bg-emerald-500/10 border border-emerald-400/40 text-emerald-200',
+      });
+    }
+    if (filters.cliente) {
+      badges.push({
+        id: 'cliente',
+        label: 'Cliente',
+        value: filters.cliente,
+        color: 'purple',
+        className: 'bg-purple-500/10 border border-purple-400/40 text-purple-200',
+      });
+    }
+    return badges;
+  }, [filters.categoria, filters.canal, filters.vendedor, filters.cliente]);
+
+  const handleYearsSelection = (years: number[]) => {
+    setFilters(prev => {
+      const next: FilterConfig = { ...prev };
+      next.years = years.length > 0 ? years : undefined;
+      next.year = years.length === 1 ? years[0] : undefined;
+      return next;
+    });
+  };
+
+  const handleMonthsSelection = (months: number[]) => {
+    setFilters(prev => {
+      const next: FilterConfig = { ...prev };
+      next.months = months.length > 0 ? months : undefined;
+      next.month = months.length === 1 ? months[0] : undefined;
+      return next;
+    });
+  };
+
   const formatCurrency = (value: number = 0) =>
     new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
+      minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value ?? 0);
 
@@ -178,8 +256,7 @@ export default function SalesBIDashboard() {
   const loadDynamicFilterOptions = async () => {
     try {
       const params = new URLSearchParams();
-      if (filters.year) params.append('year', filters.year.toString());
-      if (filters.month) params.append('month', filters.month.toString());
+      appendTemporalFilters(params, filters);
       if (filters.categoria) params.append('categoria', filters.categoria);
       if (filters.canal) params.append('canal', filters.canal);
       if (filters.vendedor) params.append('vendedor', filters.vendedor);
@@ -198,8 +275,7 @@ export default function SalesBIDashboard() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filters.year) params.append('year', filters.year.toString());
-      if (filters.month) params.append('month', filters.month.toString());
+      appendTemporalFilters(params, filters);
       if (filters.categoria) params.append('categoria', filters.categoria);
       if (filters.canal) params.append('canal', filters.canal);
       if (filters.vendedor) params.append('vendedor', filters.vendedor);
@@ -217,7 +293,29 @@ export default function SalesBIDashboard() {
   };
 
   const handleFilterChange = (key: keyof FilterConfig, value: any) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
+    setFilters(prev => {
+      const next: FilterConfig = { ...prev };
+
+      if (value === undefined || value === null || value === '') {
+        delete (next as Record<string, unknown>)[key as string];
+      } else {
+        (next as Record<string, unknown>)[key as string] = value;
+      }
+
+      if (key === 'year') {
+        const yearValue = typeof value === 'number' ? value : undefined;
+        next.year = yearValue;
+        next.years = yearValue !== undefined ? [yearValue] : undefined;
+      }
+
+      if (key === 'month') {
+        const monthValue = typeof value === 'number' ? value : undefined;
+        next.month = monthValue;
+        next.months = monthValue !== undefined ? [monthValue] : undefined;
+      }
+
+      return next;
+    });
   };
 
   const clearFilters = () => {
@@ -273,7 +371,31 @@ export default function SalesBIDashboard() {
     URL.revokeObjectURL(url);
   };
 
-  const activeFilterCount = Object.keys(filters).filter(k => filters[k as keyof FilterConfig]).length;
+  const { categoria, canal, vendedor, cliente } = filters;
+  const totalMonthsAvailable = availableMonths.length;
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+
+    if (selectedYears.length > 0) {
+      count += 1;
+    }
+
+    const monthsActive =
+      selectedMonths.length > 0 &&
+      (totalMonthsAvailable === 0 || selectedMonths.length !== totalMonthsAvailable);
+
+    if (monthsActive) {
+      count += 1;
+    }
+
+    if (categoria) count += 1;
+    if (canal) count += 1;
+    if (vendedor) count += 1;
+    if (cliente) count += 1;
+
+    return count;
+  }, [selectedYears, selectedMonths, categoria, canal, vendedor, cliente, totalMonthsAvailable]);
 
   const kpiGroups = useMemo(() => {
     if (!summaryData) {
@@ -304,6 +426,20 @@ export default function SalesBIDashboard() {
           color: 'blue',
         },
         {
+          title: 'Ticket promedio (USD)',
+          value: formatCurrency(ticket),
+          subtitle: `${formatNumber(metros)} m² facturados`,
+          icon: ShoppingCartIcon,
+          color: 'amber',
+        },
+        {
+          title: 'Ticket promedio (m²)',
+          value: `${formatNumber(metros / (facturas || 1))} m²`,
+          subtitle: `${formatCurrency(ticket)} por factura`,
+          icon: ChartBarIcon,
+          color: 'teal',
+        },
+        {
           title: 'Clientes activos',
           value: formatNumber(clientes),
           subtitle: `${formatNumber(facturas)} transacciones`,
@@ -311,16 +447,9 @@ export default function SalesBIDashboard() {
           color: 'green',
         },
         {
-          title: 'Ticket promedio',
-          value: formatCurrency(ticket),
-          subtitle: `${formatNumber(metros)} m²`,
-          icon: ShoppingCartIcon,
-          color: 'amber',
-        },
-        {
           title: 'Descuento aplicado',
           value: formatCurrency(descuento),
-          subtitle: 'Inversión comercial en promociones',
+          subtitle: `${((descuento / (ventaNeta + descuento || 1)) * 100).toFixed(2)}% promedio`,
           icon: ArrowTrendingDownIcon,
           color: 'purple',
         },
@@ -329,7 +458,7 @@ export default function SalesBIDashboard() {
         {
           title: 'Rentabilidad (materia prima)',
           value: formatCurrency(rentabilidad),
-          subtitle: `Margen ${margen.toFixed(1)}% | Solo MP`,
+          subtitle: `Margen ${margen.toFixed(2)}% | Solo MP`,
           icon: ArrowTrendingUpIcon,
           color: 'green',
         },
@@ -350,7 +479,7 @@ export default function SalesBIDashboard() {
         {
           title: 'Descuento aplicado',
           value: formatCurrency(descuento),
-          subtitle: 'Impacto total de descuentos concedidos',
+          subtitle: `${((descuento / (ventaNeta + descuento || 1)) * 100).toFixed(2)}% promedio`,
           icon: SparklesIcon,
           color: 'purple',
         },
@@ -358,7 +487,7 @@ export default function SalesBIDashboard() {
       gerencial: [
         {
           title: 'Margen bruto',
-          value: `${margen.toFixed(1)}%`,
+          value: `${margen.toFixed(2)}%`,
           subtitle: 'Relación entre rentabilidad y venta neta',
           icon: ArrowTrendingUpIcon,
           color: 'green',
@@ -371,11 +500,18 @@ export default function SalesBIDashboard() {
           color: 'amber',
         },
         {
-          title: 'Ticket promedio',
-          value: formatCurrency(ticket),
-          subtitle: `${formatNumber(metros)} m²`,
-          icon: ShoppingCartIcon,
+          title: 'Ticket promedio (m²)',
+          value: `${formatNumber(metros / (facturas || 1))} m²`,
+          subtitle: `${formatCurrency(ticket)} por factura`,
+          icon: ChartBarIcon,
           color: 'purple',
+        },
+        {
+          title: 'Ticket promedio (USD)',
+          value: formatCurrency(ticket),
+          subtitle: `${formatNumber(facturas)} facturas`,
+          icon: ShoppingCartIcon,
+          color: 'blue',
         },
         {
           title: 'Venta Neta Total',
@@ -412,7 +548,7 @@ export default function SalesBIDashboard() {
       commercial: [
         {
           title: 'Margen bruto',
-          value: `${margen.toFixed(1)}%`,
+          value: `${margen.toFixed(2)}%`,
           description: 'Relación entre rentabilidad y ventas netas',
           icon: ArrowTrendingUpIcon,
         },
@@ -438,14 +574,14 @@ export default function SalesBIDashboard() {
         },
         {
           title: 'Costo MP sobre venta',
-          value: `${costoSobreVenta.toFixed(1)}%`,
+          value: `${costoSobreVenta.toFixed(2)}%`,
           description: 'Participación del costo de materia prima en la venta',
           icon: ArrowTrendingDownIcon,
         },
         {
           title: 'Descuento total',
           value: formatCurrency(descuento),
-          description: 'Inversión en descuentos concedidos',
+          description: `Inversión en descuentos concedidos (${((descuento / (ventaNeta + descuento || 1)) * 100).toFixed(2)}%)`,
           icon: SparklesIcon,
         },
       ],
@@ -459,7 +595,7 @@ export default function SalesBIDashboard() {
         {
           title: 'Rentabilidad (materia prima)',
           value: formatCurrency(rentabilidad),
-          description: `Margen consolidado del ${margen.toFixed(1)}% | Solo MP`,
+          description: `Margen consolidado del ${margen.toFixed(2)}% | Solo MP`,
           icon: ArrowTrendingUpIcon,
         },
         {
@@ -676,71 +812,59 @@ export default function SalesBIDashboard() {
             </AnimatePresence>
           </Flex>
 
-          <Grid numItemsLg={3} className="gap-6">
-            <SearchableSelect
-              label="Año"
-              value={filters.year?.toString() || ''}
-              onChange={(value: string) => handleFilterChange('year', value ? parseInt(value) : undefined)}
-              options={filterOptions.years.map(year => year.toString())}
-              placeholder="Todos los años"
-              icon="📅"
-              emptyMessage="No se encontraron años"
+          <div className="space-y-6">
+            <DateRangeFilter
+              availableYears={availableYears}
+              availableMonths={availableMonths}
+              selectedYears={selectedYears}
+              selectedMonths={selectedMonths}
+              onYearsChange={handleYearsSelection}
+              onMonthsChange={handleMonthsSelection}
+              additionalBadges={additionalFilterBadges}
             />
 
-            <SearchableSelect
-              label="Mes"
-              value={filters.month?.toString() || ''}
-              onChange={(value: string) => handleFilterChange('month', value ? parseInt(value) : undefined)}
-              disabled={!filters.year}
-              options={filterOptions.months.map(month => ({
-                value: month.toString(),
-                label: new Date(2000, month - 1).toLocaleDateString('es', { month: 'long' })
-              }))}
-              placeholder="Todos los meses"
-              icon="🗓️"
-              emptyMessage="No se encontraron meses"
-            />
+            <Grid numItemsLg={4} className="gap-6">
+              <SearchableSelect
+                label="Categoría"
+                value={filters.categoria || ''}
+                onChange={(value: string) => handleFilterChange('categoria', value || undefined)}
+                options={filterOptions.categorias}
+                placeholder="Todas las categorías"
+                icon="🏷️"
+                emptyMessage="No se encontraron categorías"
+              />
 
-            <SearchableSelect
-              label="Categoría"
-              value={filters.categoria || ''}
-              onChange={(value: string) => handleFilterChange('categoria', value || undefined)}
-              options={filterOptions.categorias}
-              placeholder="Todas las categorías"
-              icon="🏷️"
-              emptyMessage="No se encontraron categorías"
-            />
+              <SearchableSelect
+                label="Canal"
+                value={filters.canal || ''}
+                onChange={(value: string) => handleFilterChange('canal', value || undefined)}
+                options={filterOptions.canales}
+                placeholder="Todos los canales"
+                icon="📊"
+                emptyMessage="No se encontraron canales"
+              />
 
-            <SearchableSelect
-              label="Canal"
-              value={filters.canal || ''}
-              onChange={(value: string) => handleFilterChange('canal', value || undefined)}
-              options={filterOptions.canales}
-              placeholder="Todos los canales"
-              icon="📊"
-              emptyMessage="No se encontraron canales"
-            />
+              <SearchableSelect
+                label="Vendedor"
+                value={filters.vendedor || ''}
+                onChange={(value: string) => handleFilterChange('vendedor', value || undefined)}
+                options={filterOptions.vendedores}
+                placeholder="Selecciona un vendedor"
+                icon="👤"
+                emptyMessage="No se encontraron vendedores"
+              />
 
-            <SearchableSelect
-              label="Vendedor"
-              value={filters.vendedor || ''}
-              onChange={(value: string) => handleFilterChange('vendedor', value || undefined)}
-              options={filterOptions.vendedores}
-              placeholder="Selecciona un vendedor"
-              icon="👤"
-              emptyMessage="No se encontraron vendedores"
-            />
-
-            <SearchableSelect
-              label="Cliente"
-              value={filters.cliente || ''}
-              onChange={(value: string) => handleFilterChange('cliente', value || undefined)}
-              options={filterOptions.clientes}
-              placeholder="Selecciona un cliente"
-              icon="🏢"
-              emptyMessage="No se encontraron clientes"
-            />
-          </Grid>
+              <SearchableSelect
+                label="Cliente"
+                value={filters.cliente || ''}
+                onChange={(value: string) => handleFilterChange('cliente', value || undefined)}
+                options={filterOptions.clientes}
+                placeholder="Selecciona un cliente"
+                icon="🏢"
+                emptyMessage="No se encontraron clientes"
+              />
+            </Grid>
+          </div>
         </Card>
       </motion.div>
 

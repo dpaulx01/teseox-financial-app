@@ -44,6 +44,7 @@ import {
 } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import api from '../../../services/api';
+import { appendTemporalFilters } from '../utils/filterUtils';
 
 ChartJS.register(
   CategoryScale,
@@ -108,6 +109,7 @@ export default function FinancialView({ filters }: Props) {
       new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
+        minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }).format(value ?? 0),
     []
@@ -258,8 +260,7 @@ export default function FinancialView({ filters }: Props) {
   const loadData = async () => {
     try {
       const params = new URLSearchParams({ group_by: groupBy, limit: '20' });
-      if (filters.year) params.append('year', filters.year);
-      if (filters.month) params.append('month', filters.month);
+      appendTemporalFilters(params, filters);
       if (filters.categoria) params.append('categoria', filters.categoria);
       if (filters.canal) params.append('canal', filters.canal);
       if (filters.vendedor) params.append('vendedor', filters.vendedor);
@@ -277,7 +278,7 @@ export default function FinancialView({ filters }: Props) {
   const loadTrends = async () => {
     try {
       const params = new URLSearchParams();
-      if (filters.year) params.append('year', filters.year);
+      appendTemporalFilters(params, filters);
       if (filters.categoria) params.append('categoria', filters.categoria);
       if (filters.canal) params.append('canal', filters.canal);
       if (filters.vendedor) params.append('vendedor', filters.vendedor);
@@ -565,7 +566,7 @@ export default function FinancialView({ filters }: Props) {
 
                 return data.labels.map((label: string, i: number) => {
                   const value = dataset.data[i];
-                  const percentage = ((value / total) * 100).toFixed(1);
+                  const percentage = ((value / total) * 100).toFixed(2);
 
                   return {
                     text: `${label} (${percentage}%)`,
@@ -599,7 +600,7 @@ export default function FinancialView({ filters }: Props) {
           callbacks: {
             label: (context: any) => {
               const total = context.dataset.data.reduce((acc: number, val: number) => acc + val, 0);
-              const percentage = ((context.parsed / total) * 100).toFixed(1);
+              const percentage = ((context.parsed / total) * 100).toFixed(2);
               return `${currencyFormatter(context.parsed)} (${percentage}%)`;
             },
           },
@@ -752,7 +753,7 @@ export default function FinancialView({ filters }: Props) {
                 </div>
                 <div className="glass-badge inline-flex items-center gap-2 rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-300">
                   <ShieldCheckIcon className="h-4 w-4" />
-                  Salud promedio: {promedioMargen.toFixed(1)}%
+                  Salud promedio: {promedioMargen.toFixed(2)}%
                 </div>
               </Flex>
 
@@ -866,7 +867,7 @@ export default function FinancialView({ filters }: Props) {
                           color={promedioMargen >= 35 ? 'emerald' : promedioMargen >= 20 ? 'yellow' : 'red'}
                           icon={promedioMargen >= 0 ? ArrowTrendingUpIcon : ArrowTrendingDownIcon}
                         >
-                          {promedioMargen.toFixed(1)}%
+                          {promedioMargen.toFixed(2)}%
                         </Badge>
                       </Flex>
                       <Text className="mt-2 text-xs text-text-muted">
@@ -899,7 +900,7 @@ export default function FinancialView({ filters }: Props) {
           <CollapsibleSection
             id="detail"
             title="Detalle Financiero"
-            subtitle={`${data.length} segmentos analizados • Margen prom. ${promedioMargen.toFixed(1)}%`}
+            subtitle={`${data.length} segmentos analizados • Margen prom. ${promedioMargen.toFixed(2)}%`}
           >
             <Card className="glass-panel border border-border/60 bg-dark-card/80 shadow-hologram">
               <div className="overflow-hidden rounded-xl border border-border/60">
