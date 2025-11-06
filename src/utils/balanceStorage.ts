@@ -216,7 +216,7 @@ export async function saveBalanceConfig(
   if (payload.leverageTarget != null) params.append('leverage_target', payload.leverageTarget.toString());
   if (payload.notes) params.append('notes', payload.notes);
 
-  const response = await fetch(`${API_BASE}/config?${params.toString()}`, {
+  const response = await fetch(`${balancePath('/config')}?${params.toString()}`, {
     method: 'POST',
     headers: authHeaders(),
   });

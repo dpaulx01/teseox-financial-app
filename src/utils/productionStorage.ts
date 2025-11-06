@@ -207,7 +207,7 @@ export const getStorageSummary = async (year?: number): Promise<{
   totalRecords: number;
 }> => {
   const selectedYear = year || new Date().getFullYear();
-  const response = await fetch(`${API_BASE}/summary?year=${selectedYear}`, {
+  const response = await fetch(`${productionPath('/summary')}?year=${selectedYear}`, {
     method: 'GET',
     headers: authHeaders()
   });
@@ -374,7 +374,7 @@ export const clearAllProductionData = async (year?: number): Promise<void> => {
 };
 
 export const getAvailableYears = async (): Promise<number[]> => {
-  const response = await fetch(`${API_BASE}/years`, {
+  const response = await fetch(productionPath('/years'), {
     method: 'GET',
     headers: authHeaders()
   });

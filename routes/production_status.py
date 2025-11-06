@@ -1287,12 +1287,18 @@ def parse_quote_excel(content: bytes, filename: str) -> dict:
         if subtotal is None:
             continue
 
-        quantity_value = cells[_qty_idx].strip() if _qty_idx is not None and _qty_idx < len(cells) else ''
+        quantity_value_raw = cells[_qty_idx].strip() if _qty_idx is not None and _qty_idx < len(cells) else ''
         unit_value = cells[_unidad_idx].strip() if _unidad_idx is not None and _unidad_idx < len(cells) else ''
-        quantity_text = " ".join(filter(None, [quantity_value, unit_value])).strip() or None
+        quantity_text = " ".join(filter(None, [quantity_value_raw, unit_value])).strip() or None
         codigo_value = cells[_codigo_idx].strip() if _codigo_idx is not None and _codigo_idx < len(cells) else ''
 
-        if not quantity_text and not codigo_value:
+        quantity_numeric = None
+        if quantity_text:
+            quantity_numeric, _ = _extract_quantity_info(quantity_text)
+
+        if quantity_numeric is None and not codigo_value:
+            if descripcion:
+                metadata_notes.append(descripcion)
             continue
 
         key = (descripcion.lower(), (quantity_text or "").lower(), subtotal)
