@@ -116,3 +116,9 @@ RUTAS_ARCHIVOS_ANALISIS.txt
 
 # Claude AI workspace
 .claude/
+
+# Machine-specific artifacts
+*-DESKTOP-*.txt
+*-DESKTOP-*.tsx
+*-DESKTOP-*.py
+*-DESKTOP-*.md
