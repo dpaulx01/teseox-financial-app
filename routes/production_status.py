@@ -1,7 +1,7 @@
 """
 Rutas para el módulo Status Producción.
 
-Permite cargar cotizaciones en PDF, extraer sus líneas de producto y gestionar
+Permite cargar cotizaciones en Excel, extraer sus líneas de producto y gestionar
 el estado operativo (fechas, estatus, notas, pagos) de cada ítem.
 """
 from __future__ import annotations
@@ -15,7 +15,6 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
-import pdfplumber
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field, validator
 from sqlalchemy import func
@@ -1124,25 +1123,6 @@ def _parse_decimal(value: Optional[str]) -> Optional[Decimal]:
         return None
 
 
-def _extract_text_from_pdf(content: bytes) -> str:
-    try:
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            pages = [page.extract_text() or "" for page in pdf.pages]
-    except Exception as exc:  # pragma: no cover - handled as HTTP error
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No se pudo leer el PDF: {exc}",
-        ) from exc
-
-    text = "\n".join(pages).strip()
-    if not text:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El PDF no contiene texto legible para el parser.",
-        )
-    return text
-
-
 def _detect_product_lines(lines: List[str]) -> List[str]:
     header_index = next(
         (
@@ -1347,51 +1327,6 @@ def _extract_table_products(content: bytes) -> List[dict]:
     except Exception:
         return []
     return productos
-
-
-def parse_quote_pdf(content: bytes) -> dict:
-    text = _extract_text_from_pdf(content)
-    normalized_text = _strip_accents(text)
-    lines = [_clean_line(line) for line in normalized_text.split("\n") if line.strip()]
-
-    def _search(pattern: str) -> Optional[str]:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if not match:
-            match = re.search(pattern, normalized_text, re.IGNORECASE)
-        if match:
-            return _clean_line(match.group(1))
-        return None
-
-    quote_number = _search(r"COTIZACION:\s*No\.?\s*([A-Za-z0-9\-]+)")
-    if not quote_number:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se encontró el número de cotización en el PDF.",
-        )
-
-    productos = _parse_products(lines)
-    if not productos:
-        productos = _extract_table_products(content)
-    if not productos:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se encontraron líneas de producto en el PDF.",
-        )
-
-    valor_total = _parse_total(normalized_text)
-    if valor_total is None:
-        valor_total = sum(item["valor_subtotal"] for item in productos)
-
-    return {
-        "numero_cotizacion": quote_number,
-        "cliente": _search(r"Cliente:\s*(.+)"),
-        "contacto": _search(r"ATENCION:\s*(.+)"),
-        "proyecto": _search(r"PROYECTO:\s*(.+)"),
-        "odc": _search(r"Referencia:\s*ODC:\s*([A-Za-z0-9\-]+)"),
-        "valor_total": valor_total,
-        "productos": productos,
-        "metadata_notes": [],
-    }
 
 
 def _read_excel(content: bytes, filename: str):
@@ -1925,32 +1860,30 @@ async def upload_quotes(
     db: Session = Depends(get_db),
 ):
     """
-    Carga múltiples cotizaciones en PDF. Extrae los productos y registra la información en MySQL.
+    Carga múltiples cotizaciones en Excel. Extrae los productos y registra la información en MySQL.
     """
     if not files:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Debe adjuntar al menos un archivo PDF."
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Debe adjuntar al menos un archivo Excel (.xls o .xlsx)."
         )
 
     resultados = []
     now = datetime.utcnow()
 
     for upload in files:
-        filename = upload.filename or "cotizacion.pdf"
+        filename = upload.filename or "cotizacion.xlsx"
         extension = Path(filename).suffix.lower()
         content = await upload.read()
 
-        if extension in {".xls", ".xlsx"}:
-            parsed = parse_quote_excel(content, filename)
-        else:
-            if upload.content_type not in {"application/pdf", "application/octet-stream"}:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"El archivo {upload.filename} no es un PDF/Excel válido.",
-                )
-            parsed = parse_quote_pdf(content)
+        if extension not in {".xls", ".xlsx"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El archivo {upload.filename} debe ser un archivo Excel (.xls o .xlsx).",
+            )
 
-        safe_name = _safe_filename(upload.filename or f"cotizacion_{parsed['numero_cotizacion']}.pdf")
+        parsed = parse_quote_excel(content, filename)
+
+        safe_name = _safe_filename(upload.filename or f"cotizacion_{parsed['numero_cotizacion']}.xlsx")
         timestamped_name = f"{int(now.timestamp())}_{safe_name}"
         file_path = UPLOAD_DIR / timestamped_name
         file_path.write_bytes(content)
