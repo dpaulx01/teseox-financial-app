@@ -41,6 +41,7 @@
   --grid-size: 40px;
   --shadow-soft: 0 2px 4px rgba(0, 0, 0, 0.1);
   --shadow-medium: 0 4px 6px rgba(0, 0, 0, 0.1);
+  color-scheme: light;
 }
 
 /* Tema Oscuro (JARVIS Cyberpunk) */
@@ -74,6 +75,7 @@
   
   --font-display: 'Orbitron';
   --font-mono: 'Roboto Mono';
+  color-scheme: dark;
 }
 
 /* Reset y estilos base */
@@ -564,4 +566,52 @@ body:not(.dark)::before {
   border-radius: 4px;
   background: #e2e8f0;
   border: 1px solid #cbd5e0;
+}
+
+/* =========================================
+   DATE PICKER FIXES FOR DARK THEME
+   ========================================= */
+input[type="date"], input[type="time"], input[type="datetime-local"] {
+  color-scheme: inherit;
+}
+
+.dark input[type="date"], .dark input[type="time"], .dark input[type="datetime-local"] {
+  color-scheme: dark;
+}
+
+:root input[type="date"], :root input[type="time"], :root input[type="datetime-local"] {
+  color-scheme: light;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+input[type="date"]:hover::-webkit-calendar-picker-indicator,
+input[type="time"]:hover::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator {
+  opacity: 1;
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator,
+.dark input[type="time"]::-webkit-calendar-picker-indicator,
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.8;
+}
+
+.dark input[type="date"]:hover::-webkit-calendar-picker-indicator,
+.dark input[type="time"]:hover::-webkit-calendar-picker-indicator,
+.dark input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 1;
+}
+
+.dark input[type="date"]::-moz-calendar-picker-indicator,
+.dark input[type="time"]::-moz-calendar-picker-indicator {
+  filter: invert(1);
 }
