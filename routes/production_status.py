@@ -1330,7 +1330,14 @@ def parse_quote_excel(content: bytes, filename: str) -> dict:
             detail="No se encontró el número de cotización en el archivo Excel.",
         )
 
-    cliente_value = _search(r"Cliente[:\s]*([A-Za-zÁÉÍÓÚÑáéíóúñ0-9 \-\.]+)")
+    # Capturar cliente, pero excluir palabras clave que indican el siguiente campo
+    cliente_raw = _search(r"Cliente[:\s]*([A-Za-zÁÉÍÓÚÑáéíóúñ0-9 \-\.]+)")
+    if cliente_raw:
+        # Remover palabras clave que no son parte del nombre del cliente
+        cliente_value = re.sub(r'\s+(Proyecto|PROYECTO|Atencion|ATENCION|ODC|Contacto|CONTACTO)\s*$', '', cliente_raw, flags=re.IGNORECASE).strip()
+    else:
+        cliente_value = None
+
     contacto_value = _search(r"ATENCION[:\s]*([A-Za-zÁÉÍÓÚÑáéíóúñ0-9 \-\.]+)")
     proyecto_value = _search(r"PROYECTO[:\s]*([A-Za-zÁÉÍÓÚÑáéíóúñ0-9 \-\.]+)")
     odc_value = _search(r"ODC[:\s]*([A-Za-z0-9\-]+)")
