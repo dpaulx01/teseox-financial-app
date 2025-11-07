@@ -1763,19 +1763,6 @@ async def upload_quotes(
             )
             quote.productos.append(product)
 
-        for note in parsed.get("metadata_notes", []):
-            clean_note = (note or "").strip()
-            if not clean_note:
-                continue
-            quote.productos.append(
-                ProductionProduct(
-                    descripcion=clean_note,
-                    cantidad=None,
-                    valor_subtotal=None,
-                    estatus=ProductionStatusEnum.EN_COLA,
-                )
-            )
-
         resultados.append(
             {
                 "archivo": upload.filename,
