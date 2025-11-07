@@ -7,7 +7,8 @@ from .permission import Permission
 from .session import UserSession
 from .audit import AuditLog
 from .financial_scenario import FinancialScenario
-from .financial import RawAccountData
+from .financial import RawAccountData, FinancialData
+from .company import Company
 from .production import (
     ProductionDailyPlan,
     ProductionQuote,
@@ -24,6 +25,8 @@ __all__ = [
     'AuditLog',
     'FinancialScenario',
     'RawAccountData',
+    'FinancialData',
+    'Company',
     'ProductionQuote',
     'ProductionProduct',
     'ProductionPayment',
