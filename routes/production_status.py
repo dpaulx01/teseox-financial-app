@@ -866,6 +866,7 @@ _METADATA_KEYWORDS = (
     "PROGRAMACION",
     "DESPACHO",
     "REFERENCIA TRANSPORTE",
+    "CRUCE CON ABONO",
 )
 
 
@@ -884,6 +885,8 @@ def _is_metadata_description(descripcion: str | None, odc_value: Optional[str]) 
     if "||" in (descripcion or ""):
         return True
     if re.match(r"^(?:ODC|ORDEN\s+DE\s+COMPRA)\b", normalized_compact):
+        return True
+    if re.match(r"^COTIZACION\s+\d+", normalized_compact):
         return True
     return False
 
@@ -1259,6 +1262,10 @@ def parse_quote_excel(content: bytes, filename: str) -> dict:
         cells = cells + [''] * max(0, _subtotal_idx + 1 - len(cells))
         if len(cells) <= _subtotal_idx:
             cells = cells + [''] * (_subtotal_idx + 1 - len(cells))
+        descripcion_cell = cells[_desc_idx].strip() if _desc_idx < len(cells) else ""
+        normalized_description = _strip_accents(descripcion_cell).upper()
+        if normalized_description.startswith("DESCRIPCION"):
+            break
 
         subtotal_cell_raw = cells[_subtotal_idx].strip() if _subtotal_idx < len(cells) else ''
         normalized_subtotal_label = re.sub(

@@ -45,6 +45,7 @@ class UserResponse(BaseModel):
 class AssignRoleRequest(BaseModel):
     role_ids: List[int]
 
+@router.get("", response_model=List[UserResponse])
 @router.get("/", response_model=List[UserResponse])
 async def list_users(
     skip: int = Query(0, ge=0),
@@ -111,6 +112,7 @@ async def get_user(
         roles=[{"id": role.id, "name": role.name, "description": role.description} for role in user.roles]
     )
 
+@router.post("", response_model=UserResponse)
 @router.post("/", response_model=UserResponse)
 async def create_user(
     user_data: UserCreate,
