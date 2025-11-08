@@ -122,3 +122,8 @@ RUTAS_ARCHIVOS_ANALISIS.txt
 *-DESKTOP-*.tsx
 *-DESKTOP-*.py
 *-DESKTOP-*.md
+# Database backups and temporary dumps
+database/backups/*.sql
+*_schema.sql
+*_status_*.sql
+*_backup.sql

@@ -13,6 +13,7 @@ services:
     volumes:
       - mysql-rbac-data:/var/lib/mysql
       - ./docker/mysql:/docker-entrypoint-initdb.d
+      - ./schema:/schema:ro
     networks:
       - artyco-rbac-network
     healthcheck:

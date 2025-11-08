@@ -38,3 +38,4 @@ Esta carpeta define la única fuente de verdad del esquema MySQL que usan los en
 - Cada cambio estructural nuevo debe ir en un archivo dentro de `schema/migrations/` y, cuando se estabilice, regenerar `000_base_schema.sql`.
 - Mantén sincronizados los entornos ejecutando `scripts/validate_schema.sh` tanto en local como en Cloud.
 - Usa `scripts/sync_cloud_from_local.sh` para clonar completamente la data local cuando sea necesario.
+- El contenedor MySQL de Docker (`docker-compose.yml`) monta `./schema` y ejecuta `docker/mysql/00-apply-base-schema.sh`, por lo que no se necesitan otros scripts en `docker/mysql/`.
