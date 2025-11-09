@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Home,
   BarChart2,
   FileText,
   Target,
@@ -19,6 +20,7 @@ import { NavigationProps } from '../../types';
 import ThemeToggle from '../ui/ThemeToggle';
 
 const iconMap = {
+  Home,
   BarChart2,
   FileText,
   Target,
@@ -41,6 +43,7 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
   const isAdmin = user.is_superuser || false;
   
   const navItems = [
+    { id: 'home', label: 'Inicio', icon: 'Home' },
     { id: 'kpi', label: 'Dashboard KPIs', icon: 'BarChart2' },
     { id: 'pnl', label: 'Análisis PyG', icon: 'FileText' },
     { id: 'pyg', label: 'PyG Comparativo', icon: 'TrendingUp' },

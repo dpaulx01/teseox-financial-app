@@ -15,6 +15,7 @@ import Navigation from './components/layout/Navigation';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import { ToastContainer } from './components/ui/Toast';
 import AnimatedBackground from './components/ui/AnimatedBackground';
+import HomePage from './pages/HomePage';
 import DashboardKPIs from './pages/DashboardKPIs';
 import PnlAnalysis from './pages/PnlAnalysis';
 // Lazy load para componentes grandes
@@ -43,7 +44,7 @@ import { useYearParamSync } from './hooks/useYearParamSync';
 // Componente interno que usa ScenarioContext
 const MainAppContent: React.FC = () => {
   const [financialData, setFinancialData] = useState<FinancialData | null>(null);
-  const [activeTab, setActiveTab] = useLocalStorage<string>('artyco-active-tab', 'kpi');
+  const [activeTab, setActiveTab] = useLocalStorage<string>('artyco-active-tab', 'home');
   const [savedData, setSavedData] = useLocalStorage<FinancialData | null>('artyco-financial-data', null);
   const { errors, addError, removeError } = useErrorHandler();
   
@@ -98,6 +99,11 @@ const MainAppContent: React.FC = () => {
   };
 
   const renderContent = () => {
+    // Home page doesn't require financial data
+    if (activeTab === 'home') {
+      return <HomePage onNavigate={setActiveTab} />;
+    }
+
     // La configuración no requiere datos financieros
     if (activeTab === 'config') {
       return <DataConfiguration />;
@@ -116,7 +122,7 @@ const MainAppContent: React.FC = () => {
       return <OperationalAnalysis onNavigateToConfig={() => setActiveTab('config')} />;
     }
 
-    const requiresFinancialData = !['status', 'operational', 'config', 'bi-ventas'].includes(activeTab);
+    const requiresFinancialData = !['home', 'status', 'operational', 'config', 'bi-ventas'].includes(activeTab);
 
     if (requiresFinancialData && !financialData) {
       // Sin datos: dirigir al flujo de Configuración (CSVUploaderYearAware)

@@ -39,12 +39,15 @@ export default function Login() {
             'Authorization': `Bearer ${data.access_token}`
           }
         });
-        
+
         if (userResponse.ok) {
           const userData = await userResponse.json();
           localStorage.setItem('user', JSON.stringify(userData));
         }
-        
+
+        // Reset active tab to 'home' on every login
+        localStorage.setItem('artyco-active-tab', 'home');
+
         navigate('/dashboard');
       } else {
         setError(data.detail || 'Error al iniciar sesión');
