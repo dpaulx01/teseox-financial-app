@@ -6,7 +6,8 @@
 ## 1. Entorno local (WSL + Docker)
 - Ruta del repo: `/mnt/c/Users/dpaul/OneDrive/Escritorio/artyco-financial-app-rbac`
 - WSL: abre tu distro y ejecuta `cd /mnt/c/...` antes de correr comandos.
-- Docker/Compose: `docker compose up -d` (o `docker compose --profile api up`).
+- Docker/Compose: `docker compose up -d` (o `docker compose --profile api up`). Desde aquí puedes levantar API, acceder a logs (`docker compose logs -f api`) y usar contenedores con credenciales ya mapeadas.
+- Túneles internos: cuando los contenedores están arriba, la API expone `http://localhost:8080`, la base MySQL queda accesible vía `docker compose exec mysql mysql ...` y los logs completos están en `docker/` (o con `docker compose logs`).
 - Frontend local: `npm install` y `npm run dev -- --host 0.0.0.0`.
 - Python: usa 3.11 del sistema o crea `python3 -m venv .venv && source .venv/bin/activate`.
 

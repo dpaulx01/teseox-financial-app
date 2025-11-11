@@ -86,8 +86,16 @@ interface RowFormState {
   estatus: string;
   notasEstatus: string;
   factura: string;
+  guiaRemision: string;
+  fechaDespacho: string;
   fechaVencimiento: string;
   pagos: PaymentForm[];
+}
+
+interface DeliveryPromptState {
+  item: ProductionItem;
+  previousForm: RowFormState;
+  nextForm: RowFormState;
 }
 
 interface QuoteRowFormState {
@@ -133,6 +141,7 @@ interface ProductViewRowModel {
   colorClass: string;
   readOnly: boolean;
   isHighlighted: boolean;
+  validationError?: string | null;
 }
 
 interface ClientSummaryRow {
@@ -165,6 +174,7 @@ interface StatusTableProps {
   onConsumeExternalFocus?: () => void;
   onRequestViewChange?: (viewMode: ViewMode) => void;
   readOnlyStatuses?: string[];
+  showDeliverySummary?: boolean;
 }
 
 interface ProgressInfo {
@@ -194,6 +204,23 @@ const statusBadgeVariants: Record<string, string> = {
   'En bodega': 'bg-accent/20 text-accent border border-accent/40',
   Entregado: 'bg-accent/20 text-accent border border-accent/40',
 };
+
+const STATUS_SEQUENCE = [
+  'En cola',
+  'En producción',
+  'Producción parcial',
+  'Listo para retiro',
+  'En bodega',
+  'Entregado',
+] as const;
+
+const STATUS_ORDER_MAP: Record<string, number> = STATUS_SEQUENCE.reduce(
+  (acc, status, index) => {
+    acc[status] = index;
+    return acc;
+  },
+  {} as Record<string, number>,
+);
 
 const metadataKeywords = [
   'TIEMPO DE PRODUCCION',
@@ -249,6 +276,8 @@ function getSearchableFields(item: ProductionItem): Array<string | null | undefi
 }
 
 const DAY_IN_MS = 86_400_000;
+const baseDateInputClass =
+  'bg-dark-card/70 border border-border rounded-lg text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed dark:bg-[#11131a] dark:text-white dark:border-border dark:[color-scheme:dark]';
 
 function normalizeText(value: string | null | undefined): string {
   if (!value) {
@@ -264,6 +293,34 @@ function normalizeText(value: string | null | undefined): string {
 function includesNormalized(haystack: string | null | undefined, needle: string): boolean {
   if (!needle) return true;
   return normalizeText(haystack).includes(needle);
+}
+
+const WAITING_STATUS_SIGNATURE = normalizeText('En cola');
+
+function resolveStatusFromDelivery(
+  status: string | null | undefined,
+  fechaEntrega: string | null | undefined,
+): string | null {
+  const hasDeliveryDate = Boolean(fechaEntrega && fechaEntrega.trim().length > 0);
+  const trimmedStatus = status?.trim() ?? '';
+
+  if (hasDeliveryDate) {
+    if (!trimmedStatus) {
+      return 'En producción';
+    }
+    if (normalizeText(trimmedStatus) === WAITING_STATUS_SIGNATURE) {
+      return 'En producción';
+    }
+  }
+
+  return trimmedStatus || null;
+}
+
+function normalizeStatusForSave(
+  status: string | null | undefined,
+  fechaEntrega: string | null | undefined,
+): string | null {
+  return resolveStatusFromDelivery(status, fechaEntrega);
 }
 
 function parseDateValue(dateLike: string | null | undefined): number | null {
@@ -302,6 +359,29 @@ function normalizePaymentsToForm(
     fecha_pago: pago.fecha_pago ?? '',
     descripcion: pago.descripcion ?? '',
   }));
+}
+
+function cloneRowFormState(form: RowFormState | null | undefined): RowFormState | null {
+  if (!form) {
+    return null;
+  }
+  return {
+    ...form,
+    pagos: form.pagos.map((pago) => ({ ...pago })),
+  };
+}
+
+function buildFormStateFromItem(item: ProductionItem): RowFormState {
+  return {
+    fechaEntrega: item.fechaEntrega ?? '',
+    estatus: item.estatus ?? '',
+    notasEstatus: item.notasEstatus ?? '',
+    factura: item.factura ?? '',
+    guiaRemision: item.guiaRemision ?? '',
+    fechaDespacho: item.fechaDespacho ?? '',
+    fechaVencimiento: item.fechaVencimiento ?? '',
+    pagos: normalizePaymentsToForm(item.pagos),
+  };
 }
 
 function formatCurrency(value: number | null | undefined): string {
@@ -479,16 +559,17 @@ function computeProgress(
   estatus: string | null | undefined,
   dailyPlan?: DailyProductionPlanEntry[] | null,
 ): ProgressInfo | null {
-  const statusLabel = estatus || 'Sin estatus';
+  const effectiveStatus = resolveStatusFromDelivery(estatus, fechaEntrega);
+  const statusLabel = effectiveStatus || 'Sin estatus';
   const tooltipParts: string[] = [];
-  const percentFromStatus = getStatusProgressPercent(estatus);
+  const percentFromStatus = getStatusProgressPercent(effectiveStatus);
   const quantity = parseQuantityFromString(item.cantidad);
   const quantityInfo = extractQuantityInfo(item.cantidad);
   const targetUnit = quantityInfo.unit;
   const unitLabel = targetUnit === 'metros' ? 'm²' : 'u';
 
-  if (estatus) {
-    tooltipParts.push(`Estatus: ${estatus}`);
+  if (effectiveStatus) {
+    tooltipParts.push(`Estatus: ${effectiveStatus}`);
   }
   if (fechaEntrega) {
     tooltipParts.push(`Entrega: ${formatDateLabel(fechaEntrega)}`);
@@ -595,8 +676,11 @@ function matchesFilters(item: ProductionItem, filters: Filters): boolean {
     return false;
   }
 
-  if (filters.status && (item.estatus ?? '') !== filters.status) {
-    return false;
+  if (filters.status) {
+    const effectiveStatus = resolveStatusFromDelivery(item.estatus, item.fechaEntrega) ?? '';
+    if (effectiveStatus !== filters.status) {
+      return false;
+    }
   }
 
   if (filters.client) {
@@ -666,6 +750,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
   onConsumeExternalFocus,
   onRequestViewChange,
   readOnlyStatuses,
+  showDeliverySummary = false,
 }) => {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [expandedQuotes, setExpandedQuotes] = useState<Record<number, boolean>>({});
@@ -678,12 +763,14 @@ const StatusTable: React.FC<StatusTableProps> = ({
     direction: 'asc',
   });
   const [forms, setForms] = useState<Record<number, RowFormState>>({});
+  const [validationErrors, setValidationErrors] = useState<Record<number, string | null>>({});
   const [savingStatus, setSavingStatus] = useState<Record<number, 'idle' | 'saving' | 'success' | 'error'>>({});
   const [planModalItem, setPlanModalItem] = useState<ProductionItem | null>(null);
   const [planModalData, setPlanModalData] = useState<DailyProductionPlanEntry[]>([]);
   const [planModalLoading, setPlanModalLoading] = useState<boolean>(false);
   const [planModalSaving, setPlanModalSaving] = useState<boolean>(false);
   const [planModalError, setPlanModalError] = useState<string | null>(null);
+  const [deliveryPrompt, setDeliveryPrompt] = useState<DeliveryPromptState | null>(null);
   const [highlightedProductId, setHighlightedProductId] = useState<number | null>(null);
   const [highlightedQuoteId, setHighlightedQuoteId] = useState<number | null>(null);
   const [productViewType, setProductViewType] = useState<'summary' | 'detailed'>('detailed');
@@ -704,17 +791,61 @@ const StatusTable: React.FC<StatusTableProps> = ({
     return new Set(statuses.map((status) => normalizeText(status)));
   }, [readOnlyStatuses]);
 
+  const orderedStatusOptions = useMemo(() => {
+    const fallback = STATUS_SEQUENCE.length;
+    return [...statusOptions].sort((a, b) => {
+      const orderA = STATUS_ORDER_MAP[a] ?? fallback;
+      const orderB = STATUS_ORDER_MAP[b] ?? fallback;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      return a.localeCompare(b, 'es', { sensitivity: 'base' });
+    });
+  }, [statusOptions]);
+
   const isStatusReadOnly = useCallback(
     (status: string | null | undefined) => readOnlyStatusSet.has(normalizeText(status)),
     [readOnlyStatusSet],
   );
 
   const isItemReadOnly = useCallback(
-    (item: ProductionItem, form?: RowFormState) => {
-      const effectiveStatus = form?.estatus ?? item.estatus ?? '';
-      return isStatusReadOnly(effectiveStatus);
+    (item: ProductionItem) => {
+      const effectiveStatus = resolveStatusFromDelivery(item.estatus, item.fechaEntrega);
+      return effectiveStatus ? isStatusReadOnly(effectiveStatus) : false;
     },
     [isStatusReadOnly],
+  );
+
+  const ensureDeliveryRequirements = useCallback(
+    (item: ProductionItem, form: RowFormState): { valid: boolean; message: string | null } => {
+      const normalizedStatus = normalizeStatusForSave(
+        form.estatus || item.estatus || null,
+        form.fechaEntrega || item.fechaEntrega || null,
+      );
+      if (normalizedStatus !== 'Entregado') {
+        return { valid: true, message: null };
+      }
+      if (!(form.fechaEntrega || item.fechaEntrega)) {
+        return {
+          valid: false,
+          message: 'Para marcar como Entregado debes ingresar la fecha de entrega.',
+        };
+      }
+      if (!(form.guiaRemision?.trim().length)) {
+        return {
+          valid: false,
+          message: 'Ingresa el número de guía de remisión para completar la entrega.',
+        };
+      }
+      if (!(form.fechaDespacho || item.fechaDespacho)) {
+        return {
+          valid: false,
+          message: 'Registra la fecha de despacho para completar la entrega.',
+        };
+      }
+      return { valid: true, message: null };
+    },
+    [],
   );
 
   // En la vista de productos, seleccionar la versión detallada la primera vez que llegamos desde otra pestaña
@@ -730,16 +861,10 @@ const StatusTable: React.FC<StatusTableProps> = ({
     const initialForms: Record<number, RowFormState> = {};
     for (const item of baseItems) {
       if (isMetadataDescription(item.producto)) continue;
-      initialForms[item.id] = {
-        fechaEntrega: item.fechaEntrega ?? '',
-        estatus: item.estatus ?? '',
-        notasEstatus: item.notasEstatus ?? '',
-        factura: item.factura ?? '',
-        fechaVencimiento: item.fechaVencimiento ?? '',
-        pagos: normalizePaymentsToForm(item.pagos),
-      };
+      initialForms[item.id] = buildFormStateFromItem(item);
     }
     setForms(initialForms);
+    setValidationErrors({});
   }, [baseItems]);
 
   // Cargar planes diarios para todos los items
@@ -776,6 +901,8 @@ const StatusTable: React.FC<StatusTableProps> = ({
         fechaEntrega: item.fechaEntrega ?? '',
         estatus: item.estatus ?? '',
         notasEstatus: item.notasEstatus ?? '',
+        guiaRemision: item.guiaRemision ?? '',
+        fechaDespacho: item.fechaDespacho ?? '',
       };
       const current = forms[item.id];
       if (!current) continue;
@@ -783,7 +910,9 @@ const StatusTable: React.FC<StatusTableProps> = ({
       if (
         original.fechaEntrega !== current.fechaEntrega ||
         original.estatus !== current.estatus ||
-        original.notasEstatus !== current.notasEstatus
+        original.notasEstatus !== current.notasEstatus ||
+        original.guiaRemision !== current.guiaRemision ||
+        original.fechaDespacho !== current.fechaDespacho
       ) {
         dirty.add(item.id);
       }
@@ -794,20 +923,84 @@ const StatusTable: React.FC<StatusTableProps> = ({
   const handleRowChange = useCallback(
     (itemId: number, newFormData: RowFormState) => {
       const item = baseItems.find((entry) => entry.id === itemId);
-      if (item && isItemReadOnly(item, newFormData)) {
+      if (item && isItemReadOnly(item)) {
         return;
       }
+      const previousForm = forms[itemId];
       setForms(prev => ({
         ...prev,
         [itemId]: newFormData,
       }));
       setSavingStatus(prev => ({ ...prev, [itemId]: 'idle' }));
+      if (item) {
+        setValidationErrors(prev => {
+          const validation = ensureDeliveryRequirements(item, newFormData);
+          const currentMessage = prev[itemId] ?? null;
+          if (validation.valid) {
+            if (!currentMessage) {
+              return prev;
+            }
+            return { ...prev, [itemId]: null };
+          }
+          if (currentMessage === validation.message) {
+            return prev;
+          }
+          return { ...prev, [itemId]: validation.message };
+        });
+
+        const previousStatus = normalizeStatusForSave(
+          previousForm?.estatus ?? item.estatus ?? null,
+          previousForm?.fechaEntrega ?? item.fechaEntrega ?? null,
+        );
+        const nextStatus = normalizeStatusForSave(
+          newFormData.estatus || item.estatus || null,
+          newFormData.fechaEntrega || item.fechaEntrega || null,
+        );
+        const shouldPromptDeliveryDetails =
+          nextStatus === 'Entregado' && previousStatus !== 'Entregado';
+        if (shouldPromptDeliveryDetails) {
+          const previousSnapshot =
+            cloneRowFormState(previousForm) ?? buildFormStateFromItem(item);
+          const targetSnapshot =
+            cloneRowFormState(newFormData) ?? buildFormStateFromItem(item);
+          setDeliveryPrompt({
+            item,
+            previousForm: previousSnapshot,
+            nextForm: targetSnapshot,
+          });
+        }
+      }
     },
-    [baseItems, isItemReadOnly],
+    [baseItems, forms, isItemReadOnly, ensureDeliveryRequirements],
   );
 
+  const handleDeliveryPromptConfirm = useCallback(
+    (details: { guiaRemision: string; fechaDespacho: string }) => {
+      if (!deliveryPrompt) {
+        return;
+      }
+      const updatedForm: RowFormState = {
+        ...deliveryPrompt.nextForm,
+        guiaRemision: details.guiaRemision,
+        fechaDespacho: details.fechaDespacho,
+      };
+      setDeliveryPrompt(null);
+      handleRowChange(deliveryPrompt.item.id, updatedForm);
+    },
+    [deliveryPrompt, handleRowChange],
+  );
+
+  const handleDeliveryPromptCancel = useCallback(() => {
+    if (!deliveryPrompt) {
+      return;
+    }
+    const rollbackForm = deliveryPrompt.previousForm;
+    setDeliveryPrompt(null);
+    handleRowChange(deliveryPrompt.item.id, rollbackForm);
+  }, [deliveryPrompt, handleRowChange]);
+
   const handleOpenPlanModal = useCallback(async (item: ProductionItem) => {
-    if (isItemReadOnly(item, forms[item.id])) {
+    if (isItemReadOnly(item)) {
       return;
     }
     setPlanModalItem(item);
@@ -831,6 +1024,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
     setPlanModalError(null);
   }, []);
 
+
   const handleSavePlanModal = useCallback(
     async (entries: DailyProductionPlanEntry[]) => {
       if (!planModalItem) {
@@ -852,62 +1046,82 @@ const StatusTable: React.FC<StatusTableProps> = ({
     [planModalItem],
   );
 
-  const handleAutoSave = useCallback(async (idsToSave: Set<number>) => {
-    if (idsToSave.size === 0) return;
+  const handleAutoSave = useCallback(
+    async (idsToSave: Set<number>) => {
+      if (idsToSave.size === 0) return;
 
-    setSavingStatus(prev => {
-      const next = { ...prev };
-      idsToSave.forEach(id => { next[id] = 'saving'; });
-      return next;
-    });
+      const entries: Array<{ id: number; form: RowFormState; item: ProductionItem }> = [];
+      const validationUpdates: Record<number, string | null> = {};
 
-    const savePromises = Array.from(idsToSave).map(itemId => {
-      const form = forms[itemId];
-      const item = baseItems.find(i => i.id === itemId);
-      if (!form || !item) return Promise.resolve();
-
-      const payload: ProductionUpdatePayload = {
-        fechaEntrega: form.fechaEntrega || null,
-        estatus: form.estatus || null,
-        notasEstatus: form.notasEstatus || null,
-        factura: item.factura || null,
-        fechaVencimiento: item.fechaVencimiento || null,
-        valorTotal: item.valorTotal || null,
-        pagos: item.pagos.map(p => ({...p, monto: Number(p.monto)})) || [],
-      };
-      return onSave(itemId, payload);
-    });
-
-    const results = await Promise.allSettled(savePromises);
-
-    setSavingStatus(prev => {
-      const next = { ...prev };
-      results.forEach((result, index) => {
-        const itemId = Array.from(idsToSave)[index];
-        if (result.status === 'fulfilled') {
-          next[itemId] = 'success';
-        } else {
-          next[itemId] = 'error';
+      idsToSave.forEach((itemId) => {
+        const form = forms[itemId];
+        const item = baseItems.find((entry) => entry.id === itemId);
+        if (!form || !item) {
+          return;
+        }
+        const validation = ensureDeliveryRequirements(item, form);
+        validationUpdates[itemId] = validation.message;
+        if (validation.valid) {
+          entries.push({ id: itemId, form, item });
         }
       });
-      return next;
-    });
 
-    // Reset success status after a delay
-    setTimeout(() => {
-      setSavingStatus(prev => {
+      if (Object.keys(validationUpdates).length > 0) {
+        setValidationErrors((prev) => ({ ...prev, ...validationUpdates }));
+      }
+
+      if (entries.length === 0) {
+        return;
+      }
+
+      setSavingStatus((prev) => {
         const next = { ...prev };
-        results.forEach((result, index) => {
-          const itemId = Array.from(idsToSave)[index];
-          if (next[itemId] === 'success') {
-            next[itemId] = 'idle';
-          }
+        entries.forEach(({ id }) => {
+          next[id] = 'saving';
         });
         return next;
       });
-    }, 2000);
 
-  }, [forms, baseItems, onSave]);
+      const savePromises = entries.map(({ id, form, item }) => {
+        const payload: ProductionUpdatePayload = {
+          fechaEntrega: form.fechaEntrega || null,
+          estatus: normalizeStatusForSave(form.estatus || null, form.fechaEntrega || item.fechaEntrega || null),
+          notasEstatus: form.notasEstatus || null,
+          factura: item.factura || null,
+          guiaRemision: form.guiaRemision?.trim() || null,
+          fechaDespacho: form.fechaDespacho || item.fechaDespacho || null,
+          fechaVencimiento: item.fechaVencimiento || null,
+          valorTotal: item.valorTotal || null,
+          pagos: item.pagos.map((p) => ({ ...p, monto: Number(p.monto) })) || [],
+        };
+        return onSave(id, payload);
+      });
+
+      const results = await Promise.allSettled(savePromises);
+
+      setSavingStatus((prev) => {
+        const next = { ...prev };
+        results.forEach((result, index) => {
+          const { id } = entries[index];
+          next[id] = result.status === 'fulfilled' ? 'success' : 'error';
+        });
+        return next;
+      });
+
+      setTimeout(() => {
+        setSavingStatus((prev) => {
+          const next = { ...prev };
+          entries.forEach(({ id }) => {
+            if (next[id] === 'success') {
+              next[id] = 'idle';
+            }
+          });
+          return next;
+        });
+      }, 2000);
+    },
+    [forms, baseItems, onSave, ensureDeliveryRequirements],
+  );
 
   // Debounced effect for autosaving
   useEffect(() => {
@@ -1244,7 +1458,9 @@ const StatusTable: React.FC<StatusTableProps> = ({
         item.fechaEntrega ? new Date(item.fechaEntrega).toLocaleDateString('es-CO') : '—',
         progressText
       );
-      if (showStatusColumn) row.push(item.estatus || '—');
+      if (showStatusColumn) {
+        row.push(resolveStatusFromDelivery(item.estatus, item.fechaEntrega) || '—');
+      }
       if (showFacturaColumn) row.push(item.factura || '—');
 
       return row;
@@ -1916,15 +2132,22 @@ const StatusTable: React.FC<StatusTableProps> = ({
 
     const detailHeaders = ['Fecha', 'Producto', 'Cliente', 'Cotización', 'Metros', 'Unidades', 'Estatus'];
     const detailBody = scheduleDays.flatMap((day) =>
-      day.items.map((item) => [
-        formatDateLabel(day.fecha),
-        item.descripcion,
-        item.cliente || '—',
-        item.numero_cotizacion || '—',
-        `${formatNumberWithDash(item.metros)} m²`,
-        formatNumberWithDash(item.unidades),
-        item.estatus || '—',
-      ]),
+      day.items.map((item) => {
+        const deliveryFromItem =
+          ((item as any)?.fecha_entrega as string | undefined | null) ??
+          ((item as any)?.fechaEntrega as string | undefined | null) ??
+          null;
+        const scheduleStatus = resolveStatusFromDelivery(item.estatus, deliveryFromItem) || '—';
+        return [
+          formatDateLabel(day.fecha),
+          item.descripcion,
+          item.cliente || '—',
+          item.numero_cotizacion || '—',
+          `${formatNumberWithDash(item.metros)} m²`,
+          formatNumberWithDash(item.unidades),
+          scheduleStatus,
+        ];
+      }),
     );
 
     const lastTable = (doc as any).lastAutoTable;
@@ -2105,8 +2328,9 @@ const StatusTable: React.FC<StatusTableProps> = ({
       let group = groups.get(item.cotizacionId);
       if (!group) {
         const estatusSet = new Set<string>();
-        if (item.estatus) {
-          estatusSet.add(item.estatus);
+        const initialStatus = resolveStatusFromDelivery(item.estatus, item.fechaEntrega);
+        if (initialStatus) {
+          estatusSet.add(initialStatus);
         }
 
         const totalAbonado = Number.isFinite(totalAbonadoFromItem) ? totalAbonadoFromItem : 0;
@@ -2183,8 +2407,9 @@ const StatusTable: React.FC<StatusTableProps> = ({
         }
       }
 
-      if (item.estatus) {
-        group.estatusSet.add(item.estatus);
+      const derivedStatus = resolveStatusFromDelivery(item.estatus, item.fechaEntrega);
+      if (derivedStatus) {
+        group.estatusSet.add(derivedStatus);
       }
 
       if (!group.fechaVencimiento && item.fechaVencimiento) {
@@ -2316,7 +2541,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
       const quantity = extractQuantityInfo(item.cantidad);
       const quote = quoteGroupMap.get(item.cotizacionId);
       const saving = savingStatus[item.id] || 'idle';
-      const readOnly = isItemReadOnly(item, form);
+      const readOnly = isItemReadOnly(item);
 
       const productKey = normalizeText(item.producto || '');
       uniqueProducts.add(productKey);
@@ -2375,6 +2600,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
         colorClass,
         readOnly,
         isHighlighted: highlightedProductId === item.id,
+        validationError: validationErrors[item.id] || null,
       });
     }
 
@@ -2424,8 +2650,16 @@ const StatusTable: React.FC<StatusTableProps> = ({
           break;
         }
         case 'estatus': {
-          const estatusA = a.form.estatus || a.item.estatus || '';
-          const estatusB = b.form.estatus || b.item.estatus || '';
+          const estatusA =
+            resolveStatusFromDelivery(
+              a.form.estatus || a.item.estatus,
+              a.form.fechaEntrega || a.item.fechaEntrega,
+            ) || '';
+          const estatusB =
+            resolveStatusFromDelivery(
+              b.form.estatus || b.item.estatus,
+              b.form.fechaEntrega || b.item.fechaEntrega,
+            ) || '';
           result = estatusA.localeCompare(estatusB, 'es', { sensitivity: 'base' });
           break;
         }
@@ -2450,7 +2684,17 @@ const StatusTable: React.FC<StatusTableProps> = ({
         unidadesDiarias: unidadesProximos7 / 7,
       },
     };
-  }, [filteredItems, forms, savingStatus, quoteGroupMap, dailyPlans, highlightedProductId, productSortConfig, isItemReadOnly]);
+  }, [
+    filteredItems,
+    forms,
+    savingStatus,
+    quoteGroupMap,
+    dailyPlans,
+    highlightedProductId,
+    productSortConfig,
+    isItemReadOnly,
+    validationErrors,
+  ]);
 
   const clientViewData = useMemo(() => {
     const aggregates = new Map<string, {
@@ -2468,7 +2712,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
 
     for (const item of filteredItems) {
       const form = forms[item.id];
-      if (form && isItemReadOnly(item, form)) {
+      if (isItemReadOnly(item)) {
         continue;
       }
 
@@ -2680,27 +2924,29 @@ const StatusTable: React.FC<StatusTableProps> = ({
           </thead>
           <tbody className="text-sm text-text-secondary">
             {sortedQuotes.map((group) => (
-            <QuoteRow
-              key={group.cotizacionId}
-              group={group}
-              expanded={Boolean(expandedQuotes[group.cotizacionId])}
-              onToggle={() => toggleQuote(group.cotizacionId)}
-              statusOptions={statusOptions}
-              onSave={onSave}
-              isSaving={isSaving}
-              onDeleteQuote={onDeleteQuote}
-              forms={forms}
-              onRowChange={handleRowChange}
-              savingStatus={savingStatus}
-              dailyPlans={dailyPlans}
-              onOpenDailyPlan={handleOpenPlanModal}
-              isItemReadOnly={isItemReadOnly}
-              highlightedItemId={highlightedProductId}
-              highlightedQuoteId={highlightedQuoteId}
-              onFilterByClient={handleFilterByClient}
-              onFilterByQuote={handleFilterByQuote}
-              onFilterByProduct={handleFilterByProduct}
-            />
+              <QuoteRow
+                key={group.cotizacionId}
+                group={group}
+                expanded={Boolean(expandedQuotes[group.cotizacionId])}
+                onToggle={() => toggleQuote(group.cotizacionId)}
+                statusOptions={orderedStatusOptions}
+                onSave={onSave}
+                isSaving={isSaving}
+                onDeleteQuote={onDeleteQuote}
+                forms={forms}
+                onRowChange={handleRowChange}
+                savingStatus={savingStatus}
+                dailyPlans={dailyPlans}
+                onOpenDailyPlan={handleOpenPlanModal}
+                isItemReadOnly={isItemReadOnly}
+                highlightedItemId={highlightedProductId}
+                highlightedQuoteId={highlightedQuoteId}
+                onFilterByClient={handleFilterByClient}
+                onFilterByQuote={handleFilterByQuote}
+                onFilterByProduct={handleFilterByProduct}
+                validationErrors={validationErrors}
+                showDeliverySummary={showDeliverySummary}
+              />
             ))}
           </tbody>
         </table>
@@ -2878,18 +3124,19 @@ const StatusTable: React.FC<StatusTableProps> = ({
                       </tr>
                     </thead>
                     <tbody className="text-sm text-text-secondary">
-                      {rows.map((row) => (
-                        <ProductViewRow
-                          key={row.item.id}
-                          data={row}
-                          statusOptions={statusOptions}
-                          onChange={handleRowChange}
-                          onPlanClick={handleOpenPlanModal}
-                          onFilterByClient={handleFilterByClient}
-                          onFilterByQuote={handleFilterByQuote}
-                          onFilterByProduct={handleFilterByProduct}
-                        />
-                      ))}
+                    {rows.map((row) => (
+                      <ProductViewRow
+                        key={row.item.id}
+                        data={row}
+                        statusOptions={orderedStatusOptions}
+                        onChange={handleRowChange}
+                        onPlanClick={handleOpenPlanModal}
+                        onFilterByClient={handleFilterByClient}
+                        onFilterByQuote={handleFilterByQuote}
+                        onFilterByProduct={handleFilterByProduct}
+                        showDeliverySummary={showDeliverySummary}
+                      />
+                    ))}
                     </tbody>
                   </table>
                 </div>
@@ -3083,7 +3330,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
                 onChange={(event) => handleFilterChange('status', event.target.value)}
               >
                 <option value="">Todos</option>
-                {statusOptions.map((option) => (
+                {orderedStatusOptions.map((option) => (
                   <option key={option} value={option}>
                     {option}
                   </option>
@@ -3095,7 +3342,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
                 Desde
                 <input
                   type="date"
-                  className="w-full bg-dark-card/70 border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus-border-primary outline-none"
+                  className={`w-full ${baseDateInputClass} px-3 py-2`}
                   value={filters.from}
                   onChange={(event) => handleFilterChange('from', event.target.value)}
                 />
@@ -3104,7 +3351,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
                 Hasta
                 <input
                   type="date"
-                  className="w-full bg-dark-card/70 border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus-border-primary outline-none"
+                  className={`w-full ${baseDateInputClass} px-3 py-2`}
                   value={filters.to}
                   onChange={(event) => handleFilterChange('to', event.target.value)}
                 />
@@ -3157,6 +3404,16 @@ const StatusTable: React.FC<StatusTableProps> = ({
         onClose={handleCloseClientDrawer}
         onViewProduct={handleViewProductFromClient}
       />
+
+      {deliveryPrompt && (
+        <DeliveryDetailsModal
+          item={deliveryPrompt.item}
+          initialGuide={deliveryPrompt.nextForm.guiaRemision}
+          initialDispatchDate={deliveryPrompt.nextForm.fechaDespacho}
+          onConfirm={handleDeliveryPromptConfirm}
+          onCancel={handleDeliveryPromptCancel}
+        />
+      )}
     </>
   );
 };
@@ -3174,12 +3431,14 @@ const QuoteRow: React.FC<{
   savingStatus: Record<number, 'idle' | 'saving' | 'success' | 'error'>;
   dailyPlans: Record<number, DailyProductionPlanEntry[]>;
   onOpenDailyPlan: (item: ProductionItem) => void;
-  isItemReadOnly: (item: ProductionItem, form?: RowFormState) => boolean;
+  isItemReadOnly: (item: ProductionItem) => boolean;
   highlightedItemId?: number | null;
   highlightedQuoteId?: number | null;
   onFilterByClient: (client: string) => void;
   onFilterByQuote: (quote: string) => void;
   onFilterByProduct: (product: string) => void;
+  validationErrors: Record<number, string | null>;
+  showDeliverySummary?: boolean;
 }> = ({
   group,
   expanded,
@@ -3199,6 +3458,8 @@ const QuoteRow: React.FC<{
   onFilterByClient,
   onFilterByQuote,
   onFilterByProduct,
+  validationErrors,
+  showDeliverySummary = false,
 }) => {
   const fileUrl = buildQuoteFileUrl(group.archivoOriginal);
   const [quoteForm, setQuoteForm] = useState<QuoteRowFormState>(() => ({
@@ -3246,7 +3507,7 @@ const QuoteRow: React.FC<{
       if (!form) {
         return true;
       }
-      return isItemReadOnly(item, form);
+      return isItemReadOnly(item);
     });
   }, [group.items, forms, isItemReadOnly]);
 
@@ -3420,9 +3681,11 @@ const QuoteRow: React.FC<{
           onSave(item.id, {
             fechaIngreso: pendingFechaIngreso,
             fechaEntrega: item.fechaEntrega || null,
-            estatus: item.estatus || null,
+            estatus: normalizeStatusForSave(item.estatus || null, item.fechaEntrega || null),
             notasEstatus: item.notasEstatus || null,
             factura: item.factura || null,
+            guiaRemision: (forms[item.id]?.guiaRemision || item.guiaRemision || '').trim() || null,
+            fechaDespacho: forms[item.id]?.fechaDespacho || item.fechaDespacho || null,
             fechaVencimiento: group.fechaVencimiento,
             valorTotal: group.totalCotizacion,
             pagos: [],
@@ -3506,9 +3769,11 @@ const QuoteRow: React.FC<{
           onSave(item.id, {
             fechaIngreso: fechaIng,
             fechaEntrega: item.fechaEntrega || null,
-            estatus: item.estatus || null,
+            estatus: normalizeStatusForSave(item.estatus || null, item.fechaEntrega || null),
             notasEstatus: item.notasEstatus || null,
             factura: facturaValue || null,
+            guiaRemision: (forms[item.id]?.guiaRemision || item.guiaRemision || '').trim() || null,
+            fechaDespacho: forms[item.id]?.fechaDespacho || item.fechaDespacho || null,
             fechaVencimiento: fechaVenc,
             valorTotal: group.totalCotizacion,
             pagos,
@@ -3559,7 +3824,7 @@ const QuoteRow: React.FC<{
         <td className="align-top px-4 py-3">
           <input
             type="date"
-            className="bg-dark-card/70 border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+            className={`${baseDateInputClass} px-2 py-1.5`}
             value={quoteForm.fechaIngreso}
             onChange={(event) => handleFechaIngresoChange(event.target.value)}
             disabled={isSavingQuote || quoteReadOnly}
@@ -3807,9 +4072,11 @@ const QuoteRow: React.FC<{
                           saveStatus={savingStatus[item.id] || 'idle'}
                           dailyPlan={dailyPlans[item.id]}
                           onPlanClick={onOpenDailyPlan}
-                          readOnly={isItemReadOnly(item, forms[item.id])}
+                          readOnly={isItemReadOnly(item)}
                           highlighted={item.id === highlightedItemId}
                           onFilterByProduct={onFilterByProduct}
+                          validationError={validationErrors[item.id] || null}
+                          showDeliverySummary={showDeliverySummary}
                         />
                       ) : null,
                     )}
@@ -3887,18 +4154,18 @@ const QuoteRow: React.FC<{
                       disabled={quoteReadOnly}
                     />
                   </label>
-                  <label className="flex flex-col gap-2 text-xs text-text-muted">
-                    Fecha de vencimiento
-                    <input
-                      type="date"
-                      className={`bg-dark-card/70 border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed ${dueDateBorderClass}`}
-                      value={quoteForm.fechaVencimiento}
-                      onChange={(event) => updateQuoteField('fechaVencimiento', event.target.value)}
-                      disabled={quoteReadOnly}
-                    />
-                    <span className={`text-[11px] ${dueDateHintClass}`}>{dueDateStatus.message}</span>
-                  </label>
-                </div>
+                <label className="flex flex-col gap-2 text-xs text-text-muted">
+                  Fecha de vencimiento
+                  <input
+                    type="date"
+                    className={`bg-dark-card/70 border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed dark:[color-scheme:dark] ${dueDateBorderClass}`}
+                    value={quoteForm.fechaVencimiento}
+                    onChange={(event) => updateQuoteField('fechaVencimiento', event.target.value)}
+                    disabled={quoteReadOnly}
+                  />
+                  <span className={`text-[11px] ${dueDateHintClass}`}>{dueDateStatus.message}</span>
+                </label>
+              </div>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
                     <h4 className="text-sm font-semibold text-text-primary">Pagos registrados</h4>
@@ -3942,7 +4209,7 @@ const QuoteRow: React.FC<{
                             />
                             <input
                               type="date"
-                              className="bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                              className="bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed dark:[color-scheme:dark]"
                               value={pago.fecha_pago}
                               onChange={(event) => updateQuotePayment(index, 'fecha_pago', event.target.value)}
                               disabled={quoteReadOnly}
@@ -4085,6 +4352,124 @@ const QuoteRow: React.FC<{
   );
 };
 
+interface DeliveryDetailsModalProps {
+  item: ProductionItem;
+  initialGuide: string;
+  initialDispatchDate: string;
+  onConfirm: (details: { guiaRemision: string; fechaDespacho: string }) => void;
+  onCancel: () => void;
+}
+
+const DeliveryDetailsModal: React.FC<DeliveryDetailsModalProps> = ({
+  item,
+  initialGuide,
+  initialDispatchDate,
+  onConfirm,
+  onCancel,
+}) => {
+  const [guide, setGuide] = useState(initialGuide ?? '');
+  const [dispatchDate, setDispatchDate] = useState(initialDispatchDate ?? '');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setGuide(initialGuide ?? '');
+    setDispatchDate(initialDispatchDate ?? '');
+    setError(null);
+  }, [initialGuide, initialDispatchDate]);
+
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  const clientLabel = item.cliente || 'Cliente sin nombre';
+  const handleConfirm = () => {
+    if (!guide.trim()) {
+      setError('Ingresa la guía de remisión para completar la entrega.');
+      return;
+    }
+    if (!dispatchDate) {
+      setError('Selecciona la fecha de despacho para completar la entrega.');
+      return;
+    }
+    onConfirm({
+      guiaRemision: guide.trim(),
+      fechaDespacho: dispatchDate,
+    });
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[1500] flex items-center justify-center bg-dark-bg/90 backdrop-blur">
+      <div className="w-full max-w-lg rounded-2xl border border-border/60 bg-dark-card/95 p-6 shadow-hologram space-y-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent/20 border border-accent/40">
+            <Calendar className="h-5 w-5 text-accent" />
+          </div>
+          <div className="flex-1">
+            <p className="text-xs uppercase tracking-wide text-text-secondary mb-1">Confirmar entrega</p>
+            <h2 className="text-lg font-semibold text-text-primary">Registra los datos logísticos</h2>
+            <p className="text-sm text-text-muted mt-1">
+              Necesitamos la guía de remisión y la fecha de despacho para cerrar la entrega de{' '}
+              <span className="font-semibold text-text-primary">{item.producto}</span> ({clientLabel}).
+            </p>
+            <p className="text-xs text-text-secondary mt-2 flex items-center gap-2">
+              <Info className="h-3.5 w-3.5" />
+              {item.numeroCotizacion ? `Cotización ${item.numeroCotizacion}` : 'Sin número de cotización'}
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <label className="flex flex-col gap-2 text-sm text-text-secondary">
+            Guía de remisión
+            <input
+              type="text"
+              className="w-full rounded-lg border border-border bg-dark-card/70 px-3 py-2 text-text-primary outline-none focus:border-accent disabled:opacity-60"
+              placeholder="Ej: GR-00123"
+              value={guide}
+              onChange={(event) => setGuide(event.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-2 text-sm text-text-secondary">
+            Fecha de despacho
+            <input
+              type="date"
+              className={`${baseDateInputClass} px-3 py-2`}
+              value={dispatchDate}
+              onChange={(event) => setDispatchDate(event.target.value)}
+            />
+          </label>
+          {error && (
+            <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-secondary hover:text-text-primary hover:border-text-muted transition-colors"
+          >
+            <X className="w-4 h-4" />
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border border-accent bg-accent/10 px-4 py-2.5 text-sm font-semibold text-accent hover:bg-accent/20 transition-colors"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            Guardar datos
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
+
 const ProductViewRow: React.FC<{
   data: ProductViewRowModel;
   statusOptions: string[];
@@ -4093,8 +4478,18 @@ const ProductViewRow: React.FC<{
   onFilterByClient: (client: string) => void;
   onFilterByQuote: (quote: string) => void;
   onFilterByProduct: (product: string) => void;
-}> = ({ data, statusOptions, onChange, onPlanClick, onFilterByClient, onFilterByQuote, onFilterByProduct }) => {
-  const { item, form, progress, quantity, saving, readOnly } = data;
+  showDeliverySummary?: boolean;
+}> = ({
+  data,
+  statusOptions,
+  onChange,
+  onPlanClick,
+  onFilterByClient,
+  onFilterByQuote,
+  onFilterByProduct,
+  showDeliverySummary = false,
+}) => {
+  const { item, form, progress, quantity, saving, readOnly, validationError } = data;
   const isStock = resolveProductionType(item) === 'stock';
   const clientLabel = getClientLabel(item);
   const stockPeriodLabel = useMemo(() => {
@@ -4113,6 +4508,15 @@ const ProductViewRow: React.FC<{
     return '';
   }, [item.fechaInicioPeriodo, item.fechaFinPeriodo]);
   const rowRef = useRef<HTMLTableRowElement>(null);
+
+  const displayStatus = useMemo(
+    () =>
+      resolveStatusFromDelivery(
+        form.estatus || item.estatus,
+        form.fechaEntrega || item.fechaEntrega,
+      ),
+    [form.estatus, form.fechaEntrega, item.estatus, item.fechaEntrega],
+  );
 
   useEffect(() => {
     if (data.isHighlighted && rowRef.current) {
@@ -4144,6 +4548,9 @@ const ProductViewRow: React.FC<{
   const fechaIngresoLabel = item.fechaIngreso ? formatDateLabel(item.fechaIngreso) : '—';
   const fechaEntregaLabel = form.fechaEntrega ? formatDateLabel(form.fechaEntrega) : 'Sin definir';
   const highlightClasses = data.isHighlighted ? 'ring-2 ring-accent/40 bg-accent/10' : '';
+  const guiaRemisionDisplay = (form.guiaRemision?.trim() || item.guiaRemision || '').trim();
+  const fechaDespachoDisplay = form.fechaDespacho || item.fechaDespacho || '';
+  const formattedFechaDespacho = fechaDespachoDisplay ? formatDateLabel(fechaDespachoDisplay) : 'Sin fecha';
 
   return (
     <tr
@@ -4217,7 +4624,7 @@ const ProductViewRow: React.FC<{
           <Calendar className="w-4 h-4 text-text-muted" />
           <input
             type="date"
-            className="bg-dark-card/70 border border-border rounded-lg px-2 py-1 text-text-primary focus-border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+            className={`${baseDateInputClass} px-2 py-1`}
             value={form.fechaEntrega}
             onChange={(event) => updateField('fechaEntrega', event.target.value)}
             disabled={readOnly}
@@ -4252,20 +4659,53 @@ const ProductViewRow: React.FC<{
           </button>
         </div>
       </td>
-      <td className="px-4 py-2 align-top">
-        <select
-          className="w-full bg-dark-card/70 border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus-border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
-          value={form.estatus}
-          onChange={(event) => updateField('estatus', event.target.value)}
-          disabled={readOnly}
-        >
-          <option value="">Seleccionar...</option>
-          {statusOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+      <td className="px-4 py-2 align-top min-w-[220px]">
+        <div className="space-y-2">
+          <select
+            className="w-full bg-dark-card/70 border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus-border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+            value={form.estatus}
+            onChange={(event) => updateField('estatus', event.target.value)}
+            disabled={readOnly}
+          >
+            <option value="">Seleccionar...</option>
+            {statusOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+          <span
+            className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1 rounded-full border ${
+              displayStatus
+                ? statusBadgeVariants[displayStatus] || 'bg-primary/10 text-primary border-primary/40'
+                : 'border-border text-text-muted'
+            }`}
+          >
+            <CheckCircle2 className="w-3 h-3" />
+            {displayStatus || 'Sin estatus'}
+          </span>
+          {showDeliverySummary && (
+            <div className="rounded-xl border border-border/60 bg-dark-card/50 px-3 py-2 space-y-2">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-text-muted">Guía de remisión</span>
+                <span className="text-text-primary font-semibold">
+                  {guiaRemisionDisplay || 'Sin dato'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-text-muted">Fecha de despacho</span>
+                <span className="text-text-primary font-semibold">
+                  {formattedFechaDespacho}
+                </span>
+              </div>
+            </div>
+          )}
+          {validationError && (
+            <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/40 rounded-lg px-2 py-1">
+              {validationError}
+            </p>
+          )}
+        </div>
       </td>
       <td className="px-4 py-2 align-top">
         <textarea
@@ -4292,6 +4732,8 @@ const ProductionRow: React.FC<{
   readOnly: boolean;
   highlighted?: boolean;
   onFilterByProduct?: (product: string) => void;
+  validationError?: string | null;
+  showDeliverySummary?: boolean;
 }> = ({
   item,
   form,
@@ -4304,6 +4746,8 @@ const ProductionRow: React.FC<{
   readOnly,
   highlighted = false,
   onFilterByProduct,
+  validationError,
+  showDeliverySummary = false,
 }) => {
   const totalCotizacion = useMemo(() => {
     if (quoteTotal !== null && quoteTotal !== undefined) {
@@ -4325,8 +4769,20 @@ const ProductionRow: React.FC<{
     }, 0);
   }, [form.pagos]);
 
+  const displayStatus = useMemo(
+    () =>
+      resolveStatusFromDelivery(
+        form.estatus || item.estatus,
+        form.fechaEntrega || item.fechaEntrega,
+      ),
+    [form.estatus, form.fechaEntrega, item.estatus, item.fechaEntrega],
+  );
+
   const saldoPendiente = totalCotizacion !== null ? Math.max(totalCotizacion - totalAbonado, 0) : null;
   const progress = computeProgress(item, form.fechaEntrega, form.estatus, dailyPlan);
+  const guiaRemisionDisplay = (form.guiaRemision?.trim() || item.guiaRemision || '').trim();
+  const fechaDespachoDisplay = form.fechaDespacho || item.fechaDespacho || '';
+  const formattedFechaDespacho = fechaDespachoDisplay ? formatDateLabel(fechaDespachoDisplay) : 'Sin fecha';
 
   const updateField = (key: keyof RowFormState, value: string) => {
     if (readOnly) {
@@ -4390,9 +4846,10 @@ const ProductionRow: React.FC<{
             <Calendar className="w-4 h-4 text-text-muted" />
             <input
               type="date"
-              className="bg-dark-card/70 border border-border rounded-lg px-2 py-1 text-text-primary focus-border-primary outline-none"
+              className={`${baseDateInputClass} px-2 py-1`}
               value={form.fechaEntrega}
               onChange={(event) => updateField('fechaEntrega', event.target.value)}
+              disabled={readOnly}
             />
           </div>
           <div className="text-xs text-text-muted">
@@ -4437,7 +4894,7 @@ const ProductionRow: React.FC<{
         </div>
       </td>
       <td className="align-top px-4 py-4">
-        <div className="space-y-2 min-w-[180px]">
+        <div className="space-y-3 min-w-[200px]">
           <select
             className="w-full bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-text-primary focus-border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
             value={form.estatus}
@@ -4451,15 +4908,38 @@ const ProductionRow: React.FC<{
               </option>
             ))}
           </select>
-          {form.estatus && (
+          {displayStatus ? (
             <span
               className={`inline-flex items-center gap-2 text-xs font-medium px-3 py-1 rounded-full border ${
-                statusBadgeVariants[form.estatus] || 'bg-primary/10 text-primary border-primary/40'
+                statusBadgeVariants[displayStatus] || 'bg-primary/10 text-primary border-primary/40'
               }`}
             >
               <CheckCircle2 className="w-3 h-3" />
-              {form.estatus}
+              {displayStatus}
             </span>
+          ) : (
+            <span className="text-[11px] text-text-muted">Sin estatus</span>
+          )}
+          {showDeliverySummary && (
+            <div className="rounded-xl border border-border/60 bg-dark-card/50 px-3 py-2 space-y-2">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-text-muted">Guía de remisión</span>
+                <span className="text-text-primary font-semibold">
+                  {guiaRemisionDisplay || 'Sin dato'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-text-muted">Fecha de despacho</span>
+                <span className="text-text-primary font-semibold">
+                  {formattedFechaDespacho}
+                </span>
+              </div>
+            </div>
+          )}
+          {validationError && (
+            <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/40 rounded-lg px-2 py-1">
+              {validationError}
+            </p>
           )}
         </div>
       </td>
