@@ -1646,6 +1646,8 @@ def product_to_dict(product: ProductionProduct) -> dict:
         "estatus": product.estatus.value if product.estatus else None,
         "notasEstatus": product.notas_estatus,
         "factura": product.factura,
+        "guiaRemision": product.guia_remision,
+        "fechaDespacho": product.fecha_despacho.isoformat() if product.fecha_despacho else None,
         "pagos": pagos,
         "totalAbonado": total_abonado,
         "saldoPendiente": saldo_pendiente,
@@ -1676,6 +1678,8 @@ class ProductionUpdatePayload(BaseModel):
     )
     notasEstatus: Optional[str] = None
     factura: Optional[str] = None
+    guiaRemision: Optional[str] = Field(default=None, max_length=128)
+    fechaDespacho: Optional[date] = None
     fechaVencimiento: Optional[date] = None
     valorTotal: Optional[Decimal] = None
     pagos: List[PaymentPayload] = Field(default_factory=list)
@@ -2072,6 +2076,11 @@ async def update_item(
     )
     product.notas_estatus = payload.notasEstatus
     product.factura = payload.factura
+    if payload.guiaRemision is not None:
+        cleaned_guia = payload.guiaRemision.strip()
+        product.guia_remision = cleaned_guia if cleaned_guia else None
+    if payload.fechaDespacho is not None:
+        product.fecha_despacho = payload.fechaDespacho
     product.updated_at = datetime.utcnow()
 
     # Actualizar fecha_ingreso (convertir date a datetime para la base de datos)

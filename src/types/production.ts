@@ -26,6 +26,8 @@ export interface ProductionItem {
   estatus: string | null;
   notasEstatus: string | null;
   factura: string | null;
+  guiaRemision?: string | null;
+  fechaDespacho?: string | null;
   metadataNotes?: string[];
   pagos: ProductionPayment[];
   totalAbonado: number;
@@ -70,6 +72,8 @@ export interface ProductionUpdatePayload {
   estatus: string | null;
   notasEstatus: string | null;
   factura: string | null;
+  guiaRemision: string | null;
+  fechaDespacho: string | null;
   fechaVencimiento: string | null;
   valorTotal: number | null;
   pagos: ProductionPaymentPayload[];

@@ -98,6 +98,8 @@ class ProductionProduct(Base):
     estatus: Mapped[Optional[ProductionStatusEnum]] = mapped_column(Enum(ProductionStatusEnum))
     notas_estatus: Mapped[Optional[str]] = mapped_column(Text)
     factura: Mapped[Optional[str]] = mapped_column(String(128))
+    guia_remision: Mapped[Optional[str]] = mapped_column(String(128))
+    fecha_despacho: Mapped[Optional[date]] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

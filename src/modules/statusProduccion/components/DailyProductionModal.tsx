@@ -502,7 +502,7 @@ const DailyProductionModal: React.FC<DailyProductionModalProps> = ({
                   type="date"
                   value={customDate}
                   onChange={(event) => setCustomDate(event.target.value)}
-                  className="rounded-lg border border-border bg-dark-card px-3 py-2 text-xs text-text-primary focus:border-primary focus:ring-0"
+                  className="rounded-lg border border-border bg-dark-card px-3 py-2 text-xs text-text-primary focus:border-primary focus:ring-0 dark:[color-scheme:dark]"
                 />
                 <button
                   type="button"
