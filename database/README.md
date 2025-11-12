@@ -90,33 +90,33 @@ echo "✅ Base de datos configurada correctamente"
 ## 📁 Estructura de Carpetas
 
 ```
+schema/                                 # ⭐ Fuente de verdad (fuera de database/)
+├── 000_base_schema.sql
+└── migrations/
+    └── README.md
+
 database/
-├── schema/
-│   ├── 000_base_schema.sql          # ⭐ FUENTE DE VERDAD ÚNICA
-│   └── migrations/                   # Migraciones pendientes (vacío actualmente)
-│       └── .gitkeep
+├── init/                               # Scripts de inicialización
+│   ├── 01-create-database.sql         # [DEPRECADO] Usa el schema base en su lugar
+│   ├── 02-create-views.sql            # ✅ Vistas de cálculo financiero
+│   ├── 02-enhanced-schema.sql         # [DEPRECADO] Redundante con el schema base
+│   └── 03-sample-data.sql             # ⚠️ Datos de prueba (editar DB antes de usar)
 │
-├── init/                             # Scripts de inicialización
-│   ├── 01-create-database.sql       # [DEPRECADO] Usa schema base en su lugar
-│   ├── 02-create-views.sql          # ✅ Vistas de cálculo financiero
-│   ├── 02-enhanced-schema.sql       # [DEPRECADO] Redundante con schema base
-│   └── 03-sample-data.sql           # ⚠️ Datos de prueba (requiere ajuste de BD)
-│
-├── migrations/                       # Migraciones idempotentes opcionales
+├── migrations/                         # Migraciones idempotentes opcionales
 │   ├── 20250115_add_sales_transactions_indexes.sql
 │   ├── 20250217_align_production_metrics.sql
 │   ├── 20251024_add_production_rbac.sql
 │   └── utf8_fix.sql
 │
-├── legacy/                           # Scripts históricos (solo referencia)
-│   ├── old_migrations/              # Migraciones ya aplicadas al schema base
-│   ├── ad_hoc/                      # Scripts de desarrollo ad-hoc
-│   └── sql/                         # Scripts SQL antiguos
+├── legacy/                             # Scripts históricos (solo referencia)
+│   ├── old_migrations/                # Migraciones ya aplicadas al schema base
+│   ├── ad_hoc/                        # Scripts de desarrollo ad-hoc
+│   └── sql/                           # Scripts SQL anteriores a la reorganización
 │
-├── backups/                          # Respaldos de la base de datos
-│   └── safe/                        # Respaldos críticos
+├── backups/                            # Respaldos de la base de datos
+│   └── safe/                          # Respaldos críticos
 │
-└── README.md                         # 📖 Este archivo
+└── README.md                           # 📖 Este archivo
 ```
 
 ### Archivos Clave
@@ -124,9 +124,9 @@ database/
 | Archivo | Propósito | Cuándo Usar |
 |---------|-----------|-------------|
 | `schema/000_base_schema.sql` | Schema completo y actualizado | **SIEMPRE** en instalación nueva |
-| `init/02-create-views.sql` | Vistas de cálculo financiero | Después del schema base |
-| `migrations/*.sql` | Optimizaciones opcionales | Si necesitas índices/ajustes específicos |
-| `legacy/` | Referencia histórica | Solo para consulta, NO ejecutar |
+| `database/init/02-create-views.sql` | Vistas de cálculo financiero | Después del schema base |
+| `database/migrations/*.sql` | Optimizaciones opcionales | Si necesitas índices/ajustes específicos |
+| `database/legacy/` | Referencia histórica | Solo para consulta, NO ejecutar |
 
 ---
 

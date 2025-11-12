@@ -73,9 +73,11 @@ mysqldump \
   -h "${DB_HOST}" \
   -P "${DB_PORT}" \
   -u "${DB_USER}" \
+  --no-data \
   --single-transaction \
   --routines \
   --triggers \
+  --set-gtid-purged=OFF \
   --skip-comments \
   --skip-extended-insert \
   "${DB_NAME}" > "${SCHEMA_FILE}"

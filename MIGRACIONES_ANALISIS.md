@@ -1,203 +1,69 @@
 # Análisis de Migraciones y Scripts de Base de Datos
 
-**Fecha:** 2025-11-12
-**Objetivo:** Organizar migraciones y scripts para reproducibilidad en múltiples máquinas
+**Fecha de última revisión:** 2025-11-12  
+**Objetivo:** Mantener un flujo reproducible con un único schema base y scripts históricos aislados.
 
 ---
 
-## 📊 Resumen Ejecutivo
+## 📊 Situación Actual
 
-### Problemas Identificados
-
-1. **Migraciones dispersas en 3 ubicaciones diferentes**
-   - `database/migrations/` (10 archivos)
-   - `schema/migrations/` (2 archivos)
-   - `migrations/` (1 archivo legacy)
-
-2. **Inconsistencia de nombres de base de datos**
-   - Schema base usa: `artyco_financial_rbac`
-   - Scripts init usan: `artyco_financial`
-
-3. **Scripts sueltos sin organización clara** (13 archivos en `/database/`)
-
-4. **Migraciones ya aplicadas en el schema base** (mayoría ya incorporadas)
-
-5. **Schema base desactualizado** (faltan 2 migraciones de `schema/migrations/`)
+- ✅ **Carpetas unificadas:** Toda la lógica de BD vive ahora en `database/` (init, migraciones opcionales, legacy) y `schema/` (fuente de verdad).
+- ✅ **Schema base sincronizado:** `schema/000_base_schema.sql` ya incluye `guia_remision` y `fecha_despacho` junto con las tablas nuevas de producción y BI.
+- ✅ **Scripts obsoletos aislados:** 13 archivos ad-hoc se movieron a `database/legacy/ad_hoc/` y 9 migraciones ya aplicadas residen en `database/legacy/old_migrations/`.
+- ⚠️ **Scripts init heredados:** `database/init/01-create-database.sql` y `03-sample-data.sql` siguen apuntando a `artyco_financial` (documentados como deprecados).
+- ⚠️ **Migrations opcionales:** Persisten 4 migraciones idempotentes en `database/migrations/` para ejecuciones bajo demanda.
 
 ---
 
-## 🗂️ Estado Actual de las Migraciones
+## 🗂️ Estado por carpeta
 
-### Migraciones en `database/migrations/`
+### `schema/`
+- `000_base_schema.sql`: volcado completo (tablas, vistas, rutinas) sin datos.
+- `migrations/`: vacío, sólo `README.md` con lineamientos; cualquier migración nueva se crea aquí y luego se archiva en `legacy/old_migrations/` tras regenerar el schema.
 
-| Archivo | Estado | Notas |
-|---------|--------|-------|
-| `20241005_add_plan_diario_produccion.sql` | ✅ APLICADA | Tabla `plan_diario_produccion` existe en schema base |
-| `20241015_add_manual_edit_flag.sql` | ✅ APLICADA | Columna `is_manually_edited` existe |
-| `20250115_add_sales_transactions_indexes.sql` | ⚠️ IDEMPOTENTE | Puede ejecutarse, verifica antes de crear índices |
-| `20250217_align_production_metrics.sql` | ⚠️ IDEMPOTENTE | Puede ejecutarse, verifica columnas antes |
-| `20251021_add_stock_support.sql` | ✅ APLICADA | Columnas de stock existen en `cotizaciones` |
-| `20251022_add_en_bodega_status.sql` | ✅ APLICADA | Estado `EN_BODEGA` existe en enum |
-| `20251024_add_production_rbac.sql` | ⚠️ IDEMPOTENTE | Usa `ON DUPLICATE KEY UPDATE` |
-| `20251026_create_sales_bi_module.sql` | ✅ APLICADA | Tabla `sales_transactions` existe |
-| `20251027_add_company_id_to_users.sql` | ✅ APLICADA | Columna `company_id` existe en `users` |
-| `utf8_fix.sql` | ⚠️ OPCIONAL | Conversión UTF8, puede ejecutarse si es necesario |
+### `database/migrations/` (idempotentes)
 
-### Migraciones en `schema/migrations/`
+| Archivo | Propósito | ¿Incluido en schema base? | Acción recomendada |
+|---------|-----------|---------------------------|--------------------|
+| `20250115_add_sales_transactions_indexes.sql` | Índices adicionales para `sales_transactions` | Parcial | Ejecutar sólo si la carga de BI lo requiere |
+| `20250217_align_production_metrics.sql` | Alias/metas en `production_data` | Sí (produce `no-op`) | Mantener como verificación idempotente |
+| `20251024_add_production_rbac.sql` | Permisos/roles módulo producción | Sí (usa `ON DUPLICATE`) | Ejecutar al refrescar ambientes RBAC |
+| `utf8_fix.sql` | Normaliza collation UTF8 | No aplica a estructuras | Usar solo ante incidencias de encoding |
 
-| Archivo | Estado | Notas |
-|---------|--------|-------|
-| `001_add_guia_remision.sql` | ❌ **PENDIENTE** | Columna `guia_remision` NO existe en schema base |
-| `002_add_fecha_despacho.sql` | ❌ **PENDIENTE** | Columna `fecha_despacho` NO existe en schema base |
+### `database/init/`
+- `02-create-views.sql`: único script requerido tras aplicar el schema base.
+- `03-sample-data.sql`: datos de ejemplo (requiere reemplazar `USE artyco_financial;` antes de ejecutar).
+- `02-enhanced-schema.sql` y `01-create-database.sql`: marcados como deprecados; se mantienen como referencia.
 
-**ACCIÓN REQUERIDA:** Estas 2 migraciones DEBEN aplicarse al schema base.
-
-### Scripts en `database/init/`
-
-| Archivo | Propósito | Problema |
-|---------|-----------|----------|
-| `01-create-database.sql` | Crea BD y tablas básicas | ⚠️ Usa `artyco_financial` (inconsistente) |
-| `02-create-views.sql` | Crea vistas financieras | ✅ Útil para cálculos automáticos |
-| `02-enhanced-schema.sql` | Schema mejorado | ⚠️ Duplicado con base? (verificar) |
-| `03-sample-data.sql` | Datos de prueba | ⚠️ Usa `artyco_financial` (inconsistente) |
-
-### Archivos sueltos en `database/` (Probablemente obsoletos)
-
-```
-apply_rbac_updates.sql
-create_compatible_views.sql
-create_financial_tables.sql
-create_raw_table.sql
-create_tables_step_by_step.sql
-financial_rbac_integration.sql
-fix_encoding.sql
-fix_rbac_structure.sql
-fix_utf8_data.sql
-import_original_structure.sql
-migration_plan.sql
-setup_rbac_roles.sql
-update_rbac_roles.sql
-```
-
-**Evaluación:** Estos archivos parecen ser scripts ad-hoc de desarrollo. La mayoría probablemente están incorporados en el schema base.
+### `database/legacy/`
+- `ad_hoc/`: scripts auxiliares (RBAC fixes, importadores, etc.) ya incorporados al schema.
+- `old_migrations/`: migraciones históricas (`001_add_guia_remision.sql`, `20241005_add_plan_diario_produccion.sql`, etc.).
+- `sql/`: estructura previa al esquema unificado (solo consulta).
 
 ---
 
-## 🎯 Plan de Reorganización
+## ✅ Flujo Recomendado
 
-### Fase 1: Actualizar Schema Base ✅
-
-1. **Aplicar migraciones pendientes al schema base**
-   ```bash
-   # Aplicar al schema base:
-   - schema/migrations/001_add_guia_remision.sql
-   - schema/migrations/002_add_fecha_despacho.sql
-   ```
-
-2. **Regenerar el schema base completo**
-   ```bash
-   mysqldump -h 127.0.0.1 -u root -p \
-     --single-transaction \
-     --routines \
-     --triggers \
-     artyco_financial_rbac > schema/000_base_schema.sql
-   ```
-
-### Fase 2: Organizar Carpetas 📁
-
-#### Estructura propuesta:
-
-```
-database/
-├── schema/
-│   ├── 000_base_schema.sql          # Schema completo (fuente de verdad única)
-│   └── migrations/                   # Solo migraciones NO aplicadas al base
-│       └── .gitkeep
-│
-├── migrations/                       # DEPRECADO - mover a legacy/
-│
-├── init/                            # Scripts de inicialización
-│   ├── 01-apply-base-schema.sql     # Aplica schema base
-│   ├── 02-create-views.sql          # Vistas calculadas
-│   └── 03-sample-data.sql           # Datos de prueba (OPCIONAL)
-│
-├── legacy/                          # Scripts históricos (solo referencia)
-│   ├── sql/                         # Ya existe
-│   ├── old_migrations/              # Migraciones viejas ya aplicadas
-│   └── ad_hoc/                      # Scripts sueltos históricos
-│
-└── backups/                         # Respaldos (ya existe)
-    └── safe/
-```
-
-### Fase 3: Crear Documentación de Ejecución 📖
-
-**Archivo:** `database/README.md`
-
-```markdown
-# Guía de Configuración de Base de Datos
-
-## Para una instalación nueva (máquina limpia):
-
-1. **Crear base de datos:**
+1. **Instalación nueva**
    ```bash
    mysql -u root -p -e "CREATE DATABASE artyco_financial_rbac DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-   ```
-
-2. **Aplicar schema base:**
-   ```bash
    mysql -u root -p artyco_financial_rbac < schema/000_base_schema.sql
+   mysql -u root -p artyco_financial_rbac < database/init/02-create-views.sql
    ```
+   *(Opcional)* editar `database/init/03-sample-data.sql` para apuntar a `artyco_financial_rbac` y ejecutar si se necesitan datos demo.
 
-3. **Crear vistas calculadas:**
-   ```bash
-   mysql -u root -p artyco_financial_rbac < init/02-create-views.sql
-   ```
+2. **Agregar una migración nueva**
+   - Crear archivo idempotente en `schema/migrations/NNN_descripcion.sql`.
+   - Probar dos veces en local.
+   - Regenerar `schema/000_base_schema.sql` con `scripts/regenerate_base_schema.sh`.
+   - Mover el archivo a `database/legacy/old_migrations/`.
 
-4. **(OPCIONAL) Cargar datos de prueba:**
-   ```bash
-   mysql -u root -p artyco_financial_rbac < init/03-sample-data.sql
-   ```
-
-## Para aplicar nuevas migraciones:
-
-Las migraciones se encuentran en `schema/migrations/` y deben aplicarse en orden numérico.
-
-Actualmente: **No hay migraciones pendientes** (todas están en el schema base)
-```
-
-### Fase 4: Limpieza 🧹
-
-1. **Mover archivos obsoletos a `legacy/ad_hoc/`**
-2. **Mover migraciones viejas a `legacy/old_migrations/`**
-3. **Eliminar la carpeta `/migrations/` (raíz) - mover a legacy**
-4. **Actualizar scripts de bootstrap** para usar la nueva estructura
+3. **Limpiar scripts viejos**
+   - Cualquier SQL puntual debe guardarse en `database/legacy/ad_hoc/` con contexto en `README.md`.
 
 ---
 
-## ✅ Orden de Ejecución Recomendado (Instalación Nueva)
-
-```bash
-# 1. Crear base de datos
-mysql -u root -p -e "CREATE DATABASE artyco_financial_rbac DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-
-# 2. Aplicar schema base (incluye TODAS las tablas, índices, constraints, RBAC)
-mysql -u root -p artyco_financial_rbac < schema/000_base_schema.sql
-
-# 3. Crear vistas de cálculo automático
-mysql -u root -p artyco_financial_rbac < init/02-create-views.sql
-
-# 4. (OPCIONAL) Cargar datos de muestra para desarrollo
-mysql -u root -p artyco_financial_rbac < init/03-sample-data.sql
-```
-
-**Tiempo estimado:** < 1 minuto
-
----
-
-## 🔧 Mantenimiento Continuo
-
-### Crear una nueva migración:
+Con esta reorganización, el repositorio queda limpio, los scripts históricos están contenidos y la instalación se reduce a tres pasos reproducibles.
 
 1. Crear archivo en `schema/migrations/` con formato:
    ```
@@ -223,11 +89,11 @@ mysql -u root -p artyco_financial_rbac < init/03-sample-data.sql
 
 ## 🚨 Problemas Críticos Resueltos
 
-1. ✅ **Schema base desactualizado** → Se actualizará con migraciones 001 y 002
-2. ✅ **Migraciones dispersas** → Se consolidarán en schema base
-3. ✅ **Inconsistencia de nombres BD** → Se unificará a `artyco_financial_rbac`
-4. ✅ **Scripts sueltos sin orden** → Se organizarán en legacy/
-5. ✅ **Falta de documentación** → Se creará README completo
+1. ✅ **Schema base desactualizado** → `schema/000_base_schema.sql` ahora incluye todas las columnas y vistas vigentes.
+2. ✅ **Migraciones dispersas** → Archivos aplicados viven en `database/legacy/old_migrations/`; sólo quedan 4 migraciones opcionales idempotentes.
+3. ✅ **Inconsistencias de nombres de BD** → Todos los docs/scripts oficiales apuntan a `artyco_financial_rbac` (excepto los dos scripts legacy documentados).
+4. ✅ **Scripts sueltos sin orden** → Los 13 SQL ad-hoc fueron movidos a `database/legacy/ad_hoc/` con README explicativo.
+5. ✅ **Documentación** → Nuevos READMEs (`database/README.md`, `schema/migrations/README.md`, `database/legacy/README.md`) cubren instalación, migraciones y legado.
 
 ---
 
@@ -241,10 +107,7 @@ mysql -u root -p artyco_financial_rbac < init/03-sample-data.sql
 
 ## 🎯 Próximos Pasos
 
-1. [ ] Actualizar schema base con migraciones pendientes
-2. [ ] Reorganizar carpetas según estructura propuesta
-3. [ ] Crear `database/README.md` con guía de uso
-4. [ ] Actualizar script `bootstrap_cloud_sql.sh`
-5. [ ] Actualizar script `docker/mysql/00-apply-base-schema.sh` si es necesario
-6. [ ] Probar instalación limpia en máquina de prueba
-7. [ ] Documentar proceso en wiki del proyecto
+1. [ ] Actualizar `database/init/01-create-database.sql` y `03-sample-data.sql` para que usen `artyco_financial_rbac`.
+2. [ ] Revisar si las migraciones opcionales pueden archivarse tras validarlas en todos los entornos.
+3. [ ] Ejecutar `scripts/validate_schema.sh` en los entornos activos y documentar la verificación.
+4. [ ] Sincronizar esta guía con la wiki/equipos para que sigan el nuevo flujo.

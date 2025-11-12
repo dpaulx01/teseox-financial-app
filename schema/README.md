@@ -12,6 +12,11 @@ Esta carpeta define la única fuente de verdad del esquema MySQL que usan los en
 1. Asegúrate de que la base local tenga el estado deseado.
 2. Ejecuta:
    ```bash
+   ./scripts/regenerate_base_schema.sh
+   ```
+   El script realiza backup automático y usa `mysqldump --no-data --set-gtid-purged=OFF`.
+3. Si prefieres hacerlo manualmente (por ejemplo en CI), puedes usar:
+   ```bash
    sudo env MYSQL_PWD='rootpassword123' mysqldump \
      --no-data --routines --triggers --set-gtid-purged=OFF \
      -h 127.0.0.1 -P 3307 -u root artyco_financial_rbac > schema/000_base_schema.sql
@@ -22,7 +27,7 @@ Esta carpeta define la única fuente de verdad del esquema MySQL que usan los en
    path.write_text(re.sub(r'DEFINER=`[^`]+`@`[^`]+`', 'DEFINER=CURRENT_USER', text))
    PY
    ```
-3. Revisa el diff y confirma que solo haya cambios relacionados con modificaciones reales de estructura.
+4. Revisa el diff y confirma que solo haya cambios relacionados con modificaciones reales de estructura.
 
 ## Bootstrap estándar
 
