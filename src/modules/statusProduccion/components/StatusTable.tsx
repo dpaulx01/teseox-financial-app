@@ -196,6 +196,40 @@ const defaultFilters: Filters = {
   productionType: 'all',
 };
 
+const SETTLED_TOLERANCE = 0.01;
+
+const openPdfPreview = (doc: jsPDF, fileName: string) => {
+  try {
+    const pdfDataUri = doc.output('datauristring');
+    const previewWindow = window.open('', '_blank', 'noopener,noreferrer');
+
+    if (!previewWindow) {
+      throw new Error('PDF preview blocked');
+    }
+
+    previewWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>${fileName}</title>
+          <meta charset="utf-8" />
+          <style>
+            html, body { margin: 0; height: 100%; background: #111; }
+            iframe { border: 0; width: 100%; height: 100%; }
+          </style>
+        </head>
+        <body>
+          <iframe src="${pdfDataUri}" title="${fileName}"></iframe>
+        </body>
+      </html>
+    `);
+    previewWindow.document.close();
+  } catch (error) {
+    console.warn('No se pudo abrir el PDF en una pestaña nueva, descargando directamente.', error);
+    doc.save(fileName);
+  }
+};
+
 const statusBadgeVariants: Record<string, string> = {
   'En cola': 'bg-dark-card/70 text-text-muted border border-border/40',
   'En producción': 'bg-primary-glow text-primary border border-primary/30',
@@ -410,15 +444,19 @@ function formatDateLabel(dateIso: string | null | undefined): string {
   if (!dateIso) {
     return 'Sin fecha';
   }
-  const parsed = new Date(dateIso);
-  if (Number.isNaN(parsed.getTime())) {
-    return dateIso;
+  const trimmed = dateIso.trim();
+  const [datePart] = trimmed.split('T');
+  if (datePart && /^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+    const [year, month, day] = datePart.split('-');
+    return `${day}/${month}/${year}`;
   }
-  return parsed.toLocaleDateString('es-EC', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return trimmed;
+  }
+  const day = `${parsed.getDate()}`.padStart(2, '0');
+  const month = `${parsed.getMonth() + 1}`.padStart(2, '0');
+  return `${day}/${month}/${parsed.getFullYear()}`;
 }
 
 function compareValues<T>(aValue: T, bValue: T): number {
@@ -1204,35 +1242,44 @@ const StatusTable: React.FC<StatusTableProps> = ({
   }, []);
 
   const filteredItems = useMemo(() => {
-    const hasFilters =
-      filters.query.trim() ||
-      filters.client.trim() ||
-      filters.status ||
-      filters.from ||
-      filters.to ||
-      filters.productionType !== 'all';
+    const evaluate = (item: ProductionItem) => matchesFilters(item, filters);
+    const strictMatches = baseItems.filter(evaluate);
 
-    if (!hasFilters) {
+    if (viewMode !== 'quotes') {
+      return strictMatches;
+    }
+
+    if (strictMatches.length === 0) {
+      return [];
+    }
+
+    if (strictMatches.length === baseItems.length) {
       return baseItems;
     }
 
-    const quoteMatches = new Map<number, boolean>();
+    const matchingQuoteIds = new Set(strictMatches.map((item) => item.cotizacionId));
+    return baseItems.filter((item) => matchingQuoteIds.has(item.cotizacionId));
+  }, [baseItems, filters, viewMode]);
 
-    const evaluate = (item: ProductionItem) => matchesFilters(item, filters);
-
-    for (const item of baseItems) {
-      const matches = evaluate(item);
-      if (matches) {
-        quoteMatches.set(item.cotizacionId, true);
-      } else if (!quoteMatches.has(item.cotizacionId)) {
-        quoteMatches.set(item.cotizacionId, false);
-      }
-    }
-
-    return baseItems.filter((item) => quoteMatches.get(item.cotizacionId) ?? evaluate(item));
-  }, [baseItems, filters]);
+  const productViewItems = useMemo(() => {
+    return filteredItems.filter((item) => {
+      const effectiveStatus = resolveStatusFromDelivery(item.estatus, item.fechaEntrega);
+      return normalizeText(effectiveStatus) !== 'entregado';
+    });
+  }, [filteredItems]);
 
   const handleExportProductsPDF = () => {
+    const exportItems = productViewItems.filter((item) => !isMetadataDescription(item.producto));
+
+    if (exportItems.length === 0) {
+      window.alert('No hay productos activos para exportar con los filtros actuales.');
+      return;
+    }
+
+    const includeProgressColumn = window.confirm(
+      '¿Deseas incluir la columna de progreso y avance del estatus en el PDF?',
+    );
+
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',
@@ -1293,23 +1340,25 @@ const StatusTable: React.FC<StatusTableProps> = ({
     doc.setFont('helvetica', 'normal');
     doc.text('Control de Producción', pageWidth - 14, 24, { align: 'right' });
 
+    const formatDateForPdf = (value: string | null | undefined) => {
+      const label = formatDateLabel(value);
+      return label === 'Sin fecha' ? '—' : label;
+    };
+
     // === MÉTRICAS RESUMEN ===
     let yPos = 42;
 
-    // Filtrar metadata para las métricas también
-    const itemsSinMetadata = filteredItems.filter(item => !isMetadataDescription(item.producto));
-
     const metrics = {
-      total: itemsSinMetadata.length,
-      metros: itemsSinMetadata.reduce((sum, item) => {
+      total: exportItems.length,
+      metros: exportItems.reduce((sum, item) => {
         const qty = extractQuantityInfo(item.cantidad);
         return sum + (qty.unit === 'metros' ? (qty.amount || 0) : 0);
       }, 0),
-      unidades: itemsSinMetadata.reduce((sum, item) => {
+      unidades: exportItems.reduce((sum, item) => {
         const qty = extractQuantityInfo(item.cantidad);
         return sum + (qty.unit === 'unidades' ? (qty.amount || 0) : 0);
       }, 0),
-      productosUnicos: new Set(itemsSinMetadata.map(i => i.producto)).size,
+      productosUnicos: new Set(exportItems.map((i) => i.producto)).size,
     };
 
     // Cards de métricas
@@ -1400,32 +1449,40 @@ const StatusTable: React.FC<StatusTableProps> = ({
     // Determinar qué columnas mostrar según los filtros y datos
     const showClientColumn = !filters.client; // Ocultar si hay filtro de cliente
     const showStatusColumn = !filters.status; // Ocultar si hay filtro de estatus
-    const showCotizacionColumn = !filters.query || itemsSinMetadata.length > 1; // Ocultar si es búsqueda específica de una sola cotización
-    const showFacturaColumn = itemsSinMetadata.some(item => item.factura && item.factura.trim() !== ''); // Mostrar solo si hay facturas
+    const showCotizacionColumn = !filters.query || exportItems.length > 1; // Ocultar si es búsqueda específica de una sola cotización
+    const showFacturaColumn = exportItems.some((item) => item.factura && item.factura.trim() !== ''); // Mostrar solo si hay facturas
 
     // Construir headers dinámicamente
     const tableHeaders: string[] = ['Producto'];
     if (showClientColumn) tableHeaders.push('Cliente');
     if (showCotizacionColumn) tableHeaders.push('Cotización');
-    tableHeaders.push('Ingreso', 'Cantidad', 'Entrega', 'Progreso');
+    tableHeaders.push('ODC / Pedido', 'Ingreso', 'Cantidad', 'Entrega');
+    if (includeProgressColumn) {
+      tableHeaders.push('Progreso');
+    }
     if (showStatusColumn) tableHeaders.push('Estatus');
     if (showFacturaColumn) tableHeaders.push('Factura');
 
     // Mapear índices de columnas para los estilos
     let colIndex = 0;
-    const colMap: Record<string, number> = {
-      producto: colIndex++,
+    const colMap: Record<string, number> = {};
+    const registerColumn = (key: string) => {
+      colMap[key] = colIndex;
+      colIndex += 1;
     };
-    if (showClientColumn) colMap.cliente = colIndex++;
-    if (showCotizacionColumn) colMap.cotizacion = colIndex++;
-    colMap.ingreso = colIndex++;
-    colMap.cantidad = colIndex++;
-    colMap.entrega = colIndex++;
-    colMap.progreso = colIndex++;
-    if (showStatusColumn) colMap.estatus = colIndex++;
-    if (showFacturaColumn) colMap.factura = colIndex++;
 
-    const tableData = itemsSinMetadata.map((item) => {
+    registerColumn('producto');
+    if (showClientColumn) registerColumn('cliente');
+    if (showCotizacionColumn) registerColumn('cotizacion');
+    registerColumn('orden');
+    registerColumn('ingreso');
+    registerColumn('cantidad');
+    registerColumn('entrega');
+    if (includeProgressColumn) registerColumn('progreso');
+    if (showStatusColumn) registerColumn('estatus');
+    if (showFacturaColumn) registerColumn('factura');
+
+    const tableData = exportItems.map((item) => {
       const quantity = extractQuantityInfo(item.cantidad);
       const quantityText =
         quantity.amount !== null
@@ -1433,33 +1490,40 @@ const StatusTable: React.FC<StatusTableProps> = ({
           : item.cantidad || '—';
 
       const form = forms[item.id];
-      const progressInfo = computeProgress(
-        item,
-        form?.fechaEntrega ?? item.fechaEntrega,
-        form?.estatus ?? item.estatus,
-        dailyPlans[item.id],
-      );
-      const progressPercent = progressInfo ? Math.round(progressInfo.percent) : 0;
-      let progressText = `${progressPercent}%`;
-      if (progressInfo?.producedEstimate !== null && progressInfo.quantity !== null) {
-        progressText += ` (${formatNumberWithDash(progressInfo.producedEstimate)} / ${formatNumberWithDash(
-          progressInfo.quantity,
-        )}${progressInfo.quantityUnit === 'metros' ? ' m²' : ' u'})`;
-      } else if (progressInfo?.label) {
-        progressText += ` - ${progressInfo.label}`;
+      const orderLabel = item.odc?.trim() || item.numeroPedidoStock?.trim() || '—';
+      const ingresoLabel = formatDateForPdf(item.fechaIngreso);
+      const entregaLabel = formatDateForPdf(form?.fechaEntrega ?? item.fechaEntrega);
+
+      let progressText = '';
+      if (includeProgressColumn) {
+        const progressInfo = computeProgress(
+          item,
+          form?.fechaEntrega ?? item.fechaEntrega,
+          form?.estatus ?? item.estatus,
+          dailyPlans[item.id],
+        );
+        const progressPercent = progressInfo ? Math.round(progressInfo.percent) : 0;
+        progressText = `${progressPercent}%`;
+        if (progressInfo?.producedEstimate !== null && progressInfo.quantity !== null) {
+          progressText += ` (${formatNumberWithDash(progressInfo.producedEstimate)} / ${formatNumberWithDash(
+            progressInfo.quantity,
+          )}${progressInfo.quantityUnit === 'metros' ? ' m²' : ' u'})`;
+        } else if (progressInfo?.label) {
+          progressText += ` - ${progressInfo.label}`;
+        }
       }
 
       const row: (string | number)[] = [item.producto];
       if (showClientColumn) row.push(item.cliente || item.bodega || '—');
       if (showCotizacionColumn) row.push(item.numeroCotizacion);
-      row.push(
-        item.fechaIngreso ? new Date(item.fechaIngreso).toLocaleDateString('es-CO') : '—',
-        quantityText,
-        item.fechaEntrega ? new Date(item.fechaEntrega).toLocaleDateString('es-CO') : '—',
-        progressText
-      );
+      row.push(orderLabel, ingresoLabel, quantityText, entregaLabel);
+      if (includeProgressColumn) {
+        row.push(progressText || '—');
+      }
       if (showStatusColumn) {
-        row.push(resolveStatusFromDelivery(item.estatus, item.fechaEntrega) || '—');
+        row.push(
+          resolveStatusFromDelivery(form?.estatus ?? item.estatus, form?.fechaEntrega ?? item.fechaEntrega) || '—',
+        );
       }
       if (showFacturaColumn) row.push(item.factura || '—');
 
@@ -1470,12 +1534,15 @@ const StatusTable: React.FC<StatusTableProps> = ({
     const columnStyles: any = {
       [colMap.producto]: { fontStyle: 'bold' },
     };
-    if (showClientColumn) columnStyles[colMap.cliente] = {};
-    if (showCotizacionColumn) columnStyles[colMap.cotizacion] = {};
+    if (showClientColumn) columnStyles[colMap.cliente] = { halign: 'left' };
+    if (showCotizacionColumn) columnStyles[colMap.cotizacion] = { halign: 'left' };
+    columnStyles[colMap.orden] = { halign: 'left' };
     columnStyles[colMap.ingreso] = { halign: 'center' };
     columnStyles[colMap.cantidad] = { halign: 'right' };
     columnStyles[colMap.entrega] = { halign: 'center' };
-    columnStyles[colMap.progreso] = { halign: 'center', fontStyle: 'bold' };
+    if (includeProgressColumn) {
+      columnStyles[colMap.progreso] = { halign: 'left', fontStyle: 'bold' };
+    }
     if (showStatusColumn) columnStyles[colMap.estatus] = { halign: 'center' };
     if (showFacturaColumn) columnStyles[colMap.factura] = { halign: 'center', fontSize: 8 };
 
@@ -1512,7 +1579,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
         // Aplicar fondos de color ANTES del texto
         if (data.section === 'body') {
           // Columna de Progreso
-          if (data.column.index === colMap.progreso) {
+          if (includeProgressColumn && data.column.index === colMap.progreso) {
             const progressText = String(data.cell.raw);
             const progressValue = parseInt(progressText);
             let bgColor: number[] = [245, 247, 250]; // Default
@@ -1601,12 +1668,41 @@ const StatusTable: React.FC<StatusTableProps> = ({
     }
 
     const fileName = `Reporte_Produccion_${new Date().toISOString().split('T')[0]}.pdf`;
-    doc.save(fileName);
+    openPdfPreview(doc, fileName);
   };
 
   const handleExportQuotesPDF = () => {
     if (sortedQuotes.length === 0) {
       window.alert('No hay cotizaciones para exportar con los filtros actuales.');
+      return;
+    }
+
+    const quotesForPdf = sortedQuotes.filter((group) => {
+      if (group.items.length === 0) {
+        return true;
+      }
+      const allDelivered = group.items.every(
+        (item) => normalizeText(resolveStatusFromDelivery(item.estatus, item.fechaEntrega)) === 'entregado',
+      );
+      if (!allDelivered) {
+        return true;
+      }
+
+      const saldo = typeof group.saldoPendiente === 'number' ? group.saldoPendiente : null;
+      if (saldo !== null) {
+        return saldo > SETTLED_TOLERANCE;
+      }
+
+      const total = group.totalCotizacion ?? null;
+      if (total === null) {
+        return true;
+      }
+      const abonado = group.totalAbonado ?? 0;
+      return total - abonado > SETTLED_TOLERANCE;
+    });
+
+    if (quotesForPdf.length === 0) {
+      window.alert('Todas las cotizaciones visibles están entregadas y saldadas. No hay nada para exportar.');
       return;
     }
 
@@ -1695,13 +1791,13 @@ const StatusTable: React.FC<StatusTableProps> = ({
       cursor += 18;
     }
 
-    const totalCotizaciones = sortedQuotes.length;
-    const totalProductos = sortedQuotes.reduce((sum, group) => sum + group.items.length, 0);
-    const totalValor = sortedQuotes.reduce(
+    const totalCotizaciones = quotesForPdf.length;
+    const totalProductos = quotesForPdf.reduce((sum, group) => sum + group.items.length, 0);
+    const totalValor = quotesForPdf.reduce(
       (sum, group) => sum + (group.totalCotizacion ?? 0),
       0,
     );
-    const totalSaldo = sortedQuotes.reduce(
+    const totalSaldo = quotesForPdf.reduce(
       (sum, group) => sum + (group.saldoPendiente ?? 0),
       0,
     );
@@ -1744,7 +1840,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
       'Estatus',
     ];
 
-    const tableData = sortedQuotes.map((group) => [
+    const tableData = quotesForPdf.map((group) => [
       group.numeroCotizacion,
       group.cliente || group.bodega || '—',
       group.fechaIngreso ? formatDateLabel(group.fechaIngreso) : '—',
@@ -1804,7 +1900,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
     }
 
     const fileName = `Reporte_Cotizaciones_${todayIso}.pdf`;
-    doc.save(fileName);
+    openPdfPreview(doc, fileName);
   };
 
   const handleExportClientsPDF = () => {
@@ -1997,7 +2093,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
       doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, pageWidth - 14, pageHeight - 8, { align: 'right' });
     }
 
-    doc.save(`Reporte_Clientes_${todayIso}.pdf`);
+    openPdfPreview(doc, `Reporte_Clientes_${todayIso}.pdf`);
   };
 
   const handleExportCalendarPDF = () => {
@@ -2202,7 +2298,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
       doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, pageWidth - 14, pageHeight - 8, { align: 'right' });
     }
 
-    doc.save(`Reporte_Calendario_${todayIso}.pdf`);
+    openPdfPreview(doc, `Reporte_Calendario_${todayIso}.pdf`);
   };
 
   // Callbacks para la vista resumida de productos
@@ -2214,11 +2310,11 @@ const StatusTable: React.FC<StatusTableProps> = ({
   }, []);
 
   const handleOpenDailyPlanFromCard = useCallback((itemId: number) => {
-    const item = filteredItems.find(it => it.id === itemId);
+    const item = productViewItems.find((it) => it.id === itemId);
     if (item) {
       handleOpenPlanModal(item);
     }
-  }, [filteredItems, handleOpenPlanModal]);
+  }, [productViewItems, handleOpenPlanModal]);
 
   // Handlers para el drawer de cliente
   const handleOpenClientDrawer = useCallback((clientName: string) => {
@@ -2532,7 +2628,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
     today.setHours(0, 0, 0, 0);
     const next7 = new Date(today.getTime() + 7 * DAY_IN_MS);
 
-    for (const item of filteredItems) {
+    for (const item of productViewItems) {
       const form = forms[item.id];
       if (!form) {
         continue;
@@ -2685,7 +2781,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
       },
     };
   }, [
-    filteredItems,
+    productViewItems,
     forms,
     savingStatus,
     quoteGroupMap,
@@ -3006,7 +3102,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
         {/* Renderizado condicional según el tipo de vista */}
         {productViewType === 'summary' ? (
           <ProductSummaryView
-            items={filteredItems}
+            items={productViewItems}
             dailyPlans={dailyPlans}
             onViewDetails={handleViewDetails}
             onOpenDailyPlan={handleOpenDailyPlanFromCard}
@@ -4572,6 +4668,16 @@ const ProductViewRow: React.FC<{
           {item.producto}
         </button>
         {item.proyecto && <p className="text-[11px] text-text-secondary mt-1">Proyecto: {item.proyecto}</p>}
+        <button
+          type="button"
+          onClick={handlePlanClick}
+          className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:text-primary disabled:opacity-60 disabled:cursor-not-allowed"
+          title="Abrir plan diario de producción"
+          disabled={readOnly}
+        >
+          <CalendarDays className="h-3 w-3" />
+          Plan diario de producción
+        </button>
       </td>
       <td className="px-4 py-2 align-top min-w-[180px]" title={clientLabel}>
         <button
