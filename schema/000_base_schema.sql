@@ -570,6 +570,8 @@ CREATE TABLE `productos` (
   `estatus` enum('EN_COLA','EN_PRODUCCION','PRODUCCION_PARCIAL','LISTO_PARA_RETIRO','EN_BODEGA','ENTREGADO') DEFAULT NULL,
   `notas_estatus` text,
   `factura` varchar(128) DEFAULT NULL,
+  `guia_remision` varchar(128) DEFAULT NULL,
+  `fecha_despacho` date DEFAULT NULL,
   `created_at` datetime NOT NULL,
   `updated_at` datetime NOT NULL,
   PRIMARY KEY (`id`),
