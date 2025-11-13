@@ -65,6 +65,18 @@ Documentación del módulo de Balance General.
 
 ---
 
+### 🧮 [CONSULTORIA_REFACTORIZACION_PE.md](./CONSULTORIA_REFACTORIZACION_PE.md)
+Informe de consultoría para la refactorización del módulo de Punto de Equilibrio / análisis financiero.
+
+**Qué contiene:**
+- Diagnóstico de arquitectura actual (capa API, ETL, vistas de análisis, front-end).
+- Roadmap de refactorización por fases (datos, servicios, UI, monitoreo).
+- Estimaciones de esfuerzo y costo, dependencias y quick wins.
+
+**Uso recomendado:** compartir con stakeholders cuando se discutan inversiones en el módulo financiero y como guía para planificar sprints de refactorización.
+
+---
+
 ## 🎯 Roadmaps y Prioridades
 
 ### Prioridad CRÍTICA (Ejecutar de inmediato)
@@ -96,7 +108,7 @@ Documentación del módulo de Balance General.
 | **Database** | Tablas en Cloud | 25 ⚠️ |
 | **RBAC** | Permisos en Local | 82 |
 | **RBAC** | Permisos en Cloud | 8 ⚠️ |
-| **Documentación** | Archivos .md | 10 |
+| **Documentación** | Archivos .md | 11 |
 | **Documentación** | Tamaño total | ~160KB |
 
 ---
