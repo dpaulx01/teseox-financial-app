@@ -230,8 +230,11 @@ export default function SalesBIDashboard() {
       maximumFractionDigits: 2,
     }).format(value ?? 0);
 
-  const formatNumber = (value: number = 0) =>
-    (value ?? 0).toLocaleString('es-CO');
+  const formatNumber = (value: number = 0, options?: Intl.NumberFormatOptions) =>
+    (value ?? 0).toLocaleString('es-CO', options);
+
+  const formatAccountingNumber = (value: number = 0) =>
+    formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   useEffect(() => {
     loadFilterOptions();
@@ -428,13 +431,13 @@ export default function SalesBIDashboard() {
         {
           title: 'Ticket promedio (USD)',
           value: formatCurrency(ticket),
-          subtitle: `${formatNumber(metros)} m² facturados`,
+          subtitle: `${formatAccountingNumber(metros)} m² facturados`,
           icon: ShoppingCartIcon,
           color: 'amber',
         },
         {
           title: 'Ticket promedio (m²)',
-          value: `${formatNumber(metros / (facturas || 1))} m²`,
+          value: `${formatAccountingNumber(metros / (facturas || 1))} m²`,
           subtitle: `${formatCurrency(ticket)} por factura`,
           icon: ChartBarIcon,
           color: 'teal',
@@ -501,7 +504,7 @@ export default function SalesBIDashboard() {
         },
         {
           title: 'Ticket promedio (m²)',
-          value: `${formatNumber(metros / (facturas || 1))} m²`,
+          value: `${formatAccountingNumber(metros / (facturas || 1))} m²`,
           subtitle: `${formatCurrency(ticket)} por factura`,
           icon: ChartBarIcon,
           color: 'purple',
@@ -600,7 +603,7 @@ export default function SalesBIDashboard() {
         },
         {
           title: 'Volumen vendido',
-          value: `${formatNumber(metros)} m²`,
+          value: `${formatAccountingNumber(metros)} m²`,
           description: 'Metros cuadrados vendidos en el período',
           icon: ChartBarIcon,
         },
