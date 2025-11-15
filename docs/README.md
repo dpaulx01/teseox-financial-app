@@ -45,14 +45,23 @@ RBAC y arquitectura SaaS multi-tenant.
 
 **Documentos principales:**
 - [ANALISIS_RBAC_SAAS_MULTITENANT.md](./rbac-multitenant/ANALISIS_RBAC_SAAS_MULTITENANT.md) - Análisis completo de modernización (70KB)
+- [MULTITENANT_DATABASE_ANALYSIS.md](./MULTITENANT_DATABASE_ANALYSIS.md) - Análisis técnico DB para multitenant (Nov 2025)
+- [MULTITENANT_IMPLEMENTATION_PLAN.md](./MULTITENANT_IMPLEMENTATION_PLAN.md) - **Plan integral de implementación** (Nov 2025) 🎯
 
 **Decisión arquitectónica:**
 - ✅ **Shared Database + company_id** (elegida)
 - Justificación: 92% más económico, escalable hasta 1000+ empresas
 
+**Estado actual (Nov 2025):**
+- 17/32 tablas (53%) con `company_id` ⚠️
+- Solo 6/17 (35%) con FK a companies ❌ **CRÍTICO**
+- 5 tablas necesitan `company_id` urgente 🔴
+- Modelo Company necesita campos SaaS
+
 **Plan de implementación:**
 - 7 fases (Fundamentos → Onboarding → RBAC → UI → Contifico → Facturación → Monitoreo)
-- Tiempo estimado: 16-24 semanas
+- Fase 1 (Fundamentos): 6-8 horas de trabajo
+- Tiempo total: 16-24 semanas
 - RBAC + ABAC híbrido
 
 **Modelo de negocio:**

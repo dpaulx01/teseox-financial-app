@@ -7,36 +7,195 @@
 
 ---
 
-## 1. Resumen Ejecutivo
-- La app está lista para evolucionar a SaaS multi-empresa siempre que se cierre la deuda técnica de integridad (53% de las tablas tienen `company_id`, solo 35% tienen FK).  
-- Reutilizaremos la base compartida actual porque es la única económicamente viable para 200-1000 clientes de Contifico. El foco es endurecer aislamiento: `company_id` obligatorio, FK, índices compuestos, middleware de tenant, caches/archivos segregados y RBAC con contexto.
-- Este documento unifica el diagnóstico de BD, la guía de RBAC y el plan de implementación en una sola ruta accionable (6-8 horas para Fase 1, ~3 semanas para completar backend/infra, ~4 semanas adicionales para ABAC + QA).
+## 🚨 ALERTA DE SEGURIDAD - PROBLEMAS CRÍTICOS ACTIVOS
+
+**Fecha de verificación:** 2025-11-14
+**Severidad:** 🔴 CRÍTICA - Data Leakage Confirmado
+**Estado:** EN PRODUCCIÓN - Requiere acción URGENTE
+
+### Vulnerabilidades Confirmadas en Código
+
+#### 🔴 1. Módulo de Producción SIN Aislamiento de Tenant
+**Archivo:** `routes/production_status.py:282-288`
+**Problema:**
+```python
+active_items: List[ProductionProduct] = (
+    db.query(ProductionProduct)
+    .filter(
+        ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO,
+        ProductionProduct.estatus != ProductionStatusEnum.EN_BODEGA
+    )
+    .all()  # ❌ NO FILTRA POR company_id
+)
+```
+**Impacto:** Cualquier usuario ve productos de producción de TODAS las empresas.
+**Tablas afectadas:** `cotizaciones`, `productos`, `pagos`, `plan_diario_produccion`
+**Datos expuestos:** 26 cotizaciones, 84 productos, 29 pagos (mixtos entre empresas)
+
+#### 🔴 2. Upload Financiero Hardcodeado a Empresa 1
+**Archivo:** `routes/financial_data.py` - 7 instancias
+**Problema:**
+```python
+# Líneas: 63, 381, 535, 595, 716, 753, 843
+company_id = 1  # ❌ HARDCODED - Solo empresa 1 puede operar
+```
+**Impacto:** Empresas con id ≠ 1 NO pueden subir datos financieros.
+**Módulos afectados:** Upload PyG, Balance, Análisis Financiero
+
+#### 🔴 3. JWT sin company_id
+**Archivo:** `auth/jwt_handler.py:26-34`
+**Problema:**
+```python
+payload = {
+    "user_id": user_id,
+    "username": username,
+    "email": email,
+    "permissions": permissions or [],
+    # ❌ FALTA: "company_id": company_id
+    "exp": expire,
+}
+```
+**Impacto:**
+- Frontend no puede validar tenant context
+- Session hijacking entre empresas (cambiar user_id en token)
+- No hay enforcement de tenant en middleware
+
+#### 🔴 4. Modelos ORM sin company_id
+**Archivo:** `models/production.py`
+**Problema:**
+```python
+class ProductionQuote(Base):      # cotizaciones
+    __tablename__ = "cotizaciones"
+    id: Mapped[int]
+    numero_cotizacion: Mapped[str]
+    # ❌ NO TIENE: company_id
+
+class ProductionProduct(Base):    # productos
+class ProductionPayment(Base):    # pagos
+class ProductionDailyPlan(Base):  # plan_diario_produccion
+# ❌ NINGUNO tiene company_id
+```
+**Impacto:** Imposible filtrar por tenant a nivel ORM.
+
+#### ⚠️ 5. Tablas con company_id pero SIN Foreign Key
+**Tablas afectadas:** `users`, `sales_transactions`, `balance_data`, `raw_account_data`, `sales_alerts`, `sales_kpis_cache` (6 tablas)
+**Problema:** Pueden existir registros con `company_id` inválidos (huérfanos)
+**Riesgo:** Corrupción de datos, queries lentos, fallos en JOINs
+
+### Resumen de Exposición
+
+| Componente | Estado | Exposición de Datos |
+|------------|--------|---------------------|
+| **Módulo Producción** | 🔴 0% protegido | 100% de datos expuestos a todos |
+| **Módulo Financiero** | 🔴 Hardcoded | Solo empresa 1 funcional |
+| **Autenticación** | 🔴 Sin tenant | Cambio de empresa no detectado |
+| **Base de Datos** | 🔴 14% con FK | 86% sin integridad |
+
+**Conclusión:** Sistema NO es multi-tenant seguro en estado actual. Requiere intervención inmediata.
 
 ---
 
-## 2. Estado Actual (Noviembre 2025)
+## 1. Resumen Ejecutivo
+
+**Hallazgo crítico:** El análisis de código confirma que solo **1 de 12 tablas críticas** (8%) tiene integridad referencial completa para multitenant. El 58% tiene la columna `company_id` pero sin FK, y el 42% no tiene siquiera la columna.
+
+**Impacto de negocio:** El sistema NO puede operar como SaaS multi-empresa de forma segura hasta corregir:
+1. 5 tablas de producción sin `company_id` (data leakage activo)
+2. 6 tablas sin FK (integridad rota)
+3. JWT sin `company_id` (autenticación débil)
+4. 7 endpoints con company_id hardcoded (solo funciona para empresa 1)
+
+**Plan de acción:** Priorizar arreglos de seguridad (Fase 0-1-2) en **3-5 días** antes de cualquier desarrollo nuevo. Reutilizaremos la base compartida actual porque es económicamente viable, pero con enforcement estricto de aislamiento.
+
+---
+
+## 2. Estado Actual (Noviembre 2025) - DATOS VERIFICADOS
 
 ### 2.1 Base de Datos
-| Indicador | Valor | Riesgo |
-|-----------|-------|--------|
+
+**⚠️ ESTADO CRÍTICO DE SEGURIDAD - VERIFICADO EN CÓDIGO**
+
+| Indicador | Valor Real | Riesgo |
+|-----------|------------|--------|
 | Tablas totales | 32 | - |
-| Tablas con `company_id` | 17 (53%) | ⚠️ incompleto |
-| Tablas con FK a `companies` | 6 (35% de las anteriores) | 🔴 data leakage potencial |
-| Tablas sensibles sin `company_id` | 5 (cotizaciones, productos, plan diario, pagos, scenarios) | 🔴 crítico |
-| Vistas que agregan sin `company_id` | `v_financial_summary`, `v_production_summary`, `v_sales_summary` | 🔴 |
-| Caches con datos globales | `sales_kpis_cache`, `sales_saved_filters` | ⚠️ |
+| Tablas críticas analizadas | 12 | - |
+| Tablas con `company_id` | 7/12 (58%) | 🔴 **CRÍTICO** |
+| Tablas con FK a `companies` | 1/7 (14%) | 🔴 **CRÍTICO - Data integrity ROTA** |
+| Tablas producción SIN `company_id` | 5 (cotizaciones, productos, pagos, plan, scenarios) | 🔴 **DATA LEAKAGE ACTIVO** |
+| Vistas sin filtrar tenant | `v_financial_summary`, `v_production_summary`, `v_sales_summary` | 🔴 |
+| Caches con tenant | `sales_kpis_cache` tiene columna pero sin FK | ⚠️ |
 
-### 2.2 Capa de Aplicación (FastAPI / SQLAlchemy)
-- `company_id` se filtra manualmente en algunas queries; ~80 endpoints no contemplan tenant.  
-- No existe `TenantContext` global ni eventos SQLAlchemy para inyectar filtros.  
-- El módulo Sales BI y Production Status consumen vistas/agregados no filtrados → dashboards mezclan datos.  
-- Scripts (`sync_cloud_from_local`, `bootstrap_cloud_sql*`) aún exportan/importan todo sin segmentar.
+**Desglose por Tabla (Verificado):**
 
-### 2.3 RBAC / Autenticación
-- RBAC clásico con roles/permissions granulares; logs y JWT activos.  
-- Falta `Company` ORM, relationships y roles por empresa.  
-- No hay ABAC, permisos temporales ni policy engine.  
-- Tokens y sesiones no incluyen `company_id` como claim obligatorio.
+| Tabla | company_id | FK a companies | Estado |
+|-------|------------|----------------|--------|
+| ✅ `financial_data` | ✅ SÍ | ✅ **SÍ** | Única tabla correcta |
+| ⚠️ `users` | ✅ SÍ | ❌ NO | Sin integridad referencial |
+| ⚠️ `sales_transactions` | ✅ SÍ | ❌ NO | Sin integridad referencial |
+| ⚠️ `balance_data` | ✅ SÍ | ❌ NO | Sin integridad referencial |
+| ⚠️ `raw_account_data` | ✅ SÍ | ❌ NO | Sin integridad referencial |
+| ⚠️ `sales_alerts` | ✅ SÍ | ❌ NO | Sin integridad referencial |
+| ⚠️ `sales_kpis_cache` | ✅ SÍ | ❌ NO | Sin integridad referencial |
+| 🔴 `cotizaciones` | ❌ NO | ❌ NO | **DATA LEAKAGE** |
+| 🔴 `productos` | ❌ NO | ❌ NO | **DATA LEAKAGE** |
+| 🔴 `pagos` | ❌ NO | ❌ NO | **DATA LEAKAGE** |
+| 🔴 `plan_diario_produccion` | ❌ NO | ❌ NO | **DATA LEAKAGE** |
+| 🔴 `financial_scenarios` | ❌ NO | ❌ NO | **DATA LEAKAGE** |
+
+### 2.2 Capa de Aplicación (FastAPI / SQLAlchemy) - VERIFICADO
+
+**Estado de Rutas por Módulo:**
+
+| Módulo/Ruta | Archivo | Estado Filtrado | Problemas Confirmados |
+|-------------|---------|-----------------|----------------------|
+| 🔴 **Production Status** | `routes/production_status.py` | **0% - SIN FILTRAR** | Queries globales sin `company_id` (líneas 282-288) |
+| 🔴 **Financial Data** | `routes/financial_data.py` | **30% - HARDCODED** | 7 instancias de `company_id = 1` (líneas 63, 381, 535, 595, 716, 753, 843) |
+| ⚠️ **Sales BI** | `routes/sales_bi_api.py` | **~60%** | Algunos endpoints filtran, otros no |
+| ⚠️ **Balance Data** | `routes/balance_data_api.py` | **~70%** | Mayoría filtra correctamente |
+| 🔴 **Users** | `routes/users.py` | **0%** | Lista todos los usuarios sin filtrar por tenant |
+| 🔴 **Financial Scenarios** | (no existe route separada) | **N/A** | Tabla ni siquiera tiene `company_id` |
+
+**Componentes Faltantes (Confirmado):**
+- ❌ `TenantContext` (ContextVar) - NO EXISTE
+- ❌ `require_tenant` dependency - NO EXISTE
+- ❌ `TenantScoped` mixin - NO EXISTE
+- ❌ SQLAlchemy event listeners - NO EXISTEN
+- ❌ Middleware global de tenant - NO EXISTE
+- ❌ JWT con `company_id` - NO INCLUIDO
+
+**Impacto:** Sin enforcement automático, cada endpoint debe filtrar manualmente → alto riesgo de olvidos.
+
+### 2.3 RBAC / Autenticación - VERIFICADO
+
+**Estado de Componentes:**
+
+| Componente | Estado | Archivo | Problema |
+|------------|--------|---------|----------|
+| ✅ RBAC básico | Funcional | `models/user.py`, `models/role.py` | OK |
+| ⚠️ Company ORM | Parcial | `models/company.py` | Existe pero sin relationships, sin campos SaaS |
+| 🔴 JWT | Incompleto | `auth/jwt_handler.py:26-34` | **NO incluye `company_id`** |
+| 🔴 User-Company relationship | Roto | `models/user.py` | FK existe, NO hay `relationship()` |
+| ❌ Policy Engine | No existe | - | Falta ABAC |
+| ❌ role_permission_overrides | No existe | - | No hay personalización por empresa |
+| ❌ Permisos temporales | No existe | - | No hay `valid_from`/`valid_until` |
+| ⚠️ Sessions con company_id | No se usa | `models/session.py` | Tabla existe pero no se llena |
+
+**Hallazgos Críticos:**
+```python
+# auth/jwt_handler.py - ACTUAL (INSEGURO)
+payload = {
+    "user_id": user_id,
+    "username": username,
+    "email": email,
+    "permissions": permissions or [],
+    # ❌ FALTA: "company_id": company_id
+}
+
+# models/user.py - ACTUAL (INCOMPLETO)
+class User(Base):
+    company_id = Column(Integer, default=1, nullable=True, index=True)
+    # ❌ NO HAY: company = relationship('Company', back_populates='users')
+```
 
 ### 2.4 Storage y Backups
 - `file_uploads` tiene `company_id` pero los archivos se guardan en un solo directorio (`/uploads`).  
@@ -247,16 +406,140 @@ class User(Base):
 
 ---
 
-## 10. Roadmap de Despliegue
-| Fase | Duración | Objetivo |
-|------|----------|----------|
-| **0. Preparación** | 0.5 día | Backup, scripts de validación, habilitar tenant context (sin enforcement). |
-| **1. Esquema & Backfill** | 1 día | Extender `companies`, agregar `company_id` + FK + índices, ejecutar Option A/B de backfill, validar. |
-| **2. Capa de Datos** | 2-3 días | Refactor vistas SQL, caches, scripts; actualizar endpoints críticos con `require_tenant`. |
-| **3. Storage & Assets** | 0.5 día | Segregar uploads, exportaciones y backups. |
-| **4. RBAC Moderno** | 3-4 días | Company ORM, roles por tenant, JWT con `company_id`, ABAC básico, policy engine, permisos temporales. |
-| **5. QA & Observabilidad** | 2 días | Tests automatizados, monitoreo, documentación de soporte. |
-| **6. Rollout Cloud SQL** | 0.5 día | Aplicar migraciones en producción, validar dashboards, comunicar a clientes. |
+## 10. Roadmap de Despliegue - PRIORIZADO POR SEGURIDAD
+
+### ⏱️ Timeline General
+- **🔴 URGENTE (Fases 0-2):** 3-5 días - Arreglar data leakage activo
+- **🟡 Importante (Fases 3-4):** 5-7 días - Completar multitenant
+- **🟢 Mejoras (Fases 5-6):** 3-5 días - ABAC, QA, observabilidad
+
+**Total estimado:** 11-17 días (~52-68 horas)
+
+---
+
+### 🔴 FASE 0: Preparación y Backup (4 horas) - DÍA 1
+**Prioridad:** CRÍTICA - No tocar DB sin esto
+
+| Tarea | Tiempo | Entregable |
+|-------|--------|-----------|
+| Backup completo DB local | 30 min | `backup_pre_multitenant_YYYYMMDD.sql` |
+| Script validación pre-migración | 1h | `scripts/validate_pre_migration.py` |
+| Verificar datos actuales | 1h | Reporte de company_id inválidos |
+| Crear empresa por defecto | 30 min | `INSERT INTO companies (id=1)` |
+| Documentar decisiones de mapeo | 1h | `MIGRATION_DECISIONS.md` |
+
+**Criterio de éxito:** Backup existe y se puede restaurar en <5 min.
+
+---
+
+### 🔴 FASE 1: Esquema & Backfill (8 horas) - DÍA 1-2
+**Prioridad:** CRÍTICA - Arregla data leakage
+
+| Tarea | Tiempo | Archivo/Script |
+|-------|--------|---------------|
+| **1.1** Extender `companies` con campos SaaS | 30 min | `migrations/001_extend_companies.sql` |
+| **1.2** Agregar `company_id` a 5 tablas producción | 1h | `migrations/002_add_company_id_production.sql` |
+| **1.3** Backfill con company_id=1 | 1h | `migrations/003_backfill_company_id.sql` |
+| **1.4** Agregar FKs a 6 tablas existentes | 2h | `migrations/004_add_foreign_keys.sql` |
+| **1.5** Crear 15+ índices compuestos | 1.5h | `migrations/005_create_indexes.sql` |
+| **1.6** Validar integridad | 1h | `scripts/validate_post_migration.py` |
+| **1.7** Actualizar modelos ORM | 1h | `models/production.py`, `models/company.py` |
+
+**Criterio de éxito:**
+- ✅ Todas las tablas críticas tienen `company_id` NOT NULL
+- ✅ Todas tienen FK a `companies`
+- ✅ Validación pasa sin errores
+
+---
+
+### 🔴 FASE 2: Tenant Context & Endpoints Críticos (8 horas) - DÍA 2-3
+**Prioridad:** CRÍTICA - Evita queries globales
+
+| Tarea | Tiempo | Archivo |
+|-------|--------|---------|
+| **2.1** Implementar `TenantContext` | 1h | `auth/tenant_context.py` |
+| **2.2** Crear `require_tenant` dependency | 1h | `auth/dependencies.py` |
+| **2.3** Actualizar JWT con `company_id` | 2h | `auth/jwt_handler.py` + tests |
+| **2.4** Arreglar Production Status (20 queries) | 2h | `routes/production_status.py` |
+| **2.5** Quitar hardcode Financial Data (7 lugares) | 1h | `routes/financial_data.py` |
+| **2.6** Middleware global de tenant | 1h | `main.py` |
+
+**Criterio de éxito:**
+- ✅ JWT incluye `company_id`
+- ✅ Production Status NO retorna datos de otras empresas
+- ✅ Financial Data NO usa company_id=1 hardcoded
+
+---
+
+### 🟡 FASE 3: Rutas Restantes (8 horas) - DÍA 3-4
+**Prioridad:** ALTA - Completar coverage
+
+| Tarea | Tiempo | Archivo |
+|-------|--------|---------|
+| **3.1** Sales BI (~15 queries pendientes) | 3h | `routes/sales_bi_api.py` |
+| **3.2** Users (filtrar listados) | 1h | `routes/users.py` |
+| **3.3** Balance (arreglar queries restantes) | 2h | `routes/balance_data_api.py` |
+| **3.4** Vistas SQL | 1h | `database/init/02-create-views.sql` |
+| **3.5** Caches (sales_kpis, saved_filters) | 1h | `models/sales.py` |
+
+**Criterio de éxito:**
+- ✅ 100% de endpoints filtran por tenant
+- ✅ Vistas SQL incluyen `company_id`
+
+---
+
+### 🟡 FASE 4: Storage & Validación (4 horas) - DÍA 4
+**Prioridad:** ALTA
+
+| Tarea | Tiempo | Archivo |
+|-------|--------|---------|
+| **4.1** FileService con segregación | 1h | `utils/file_storage.py` |
+| **4.2** Migrar archivos existentes | 1h | `scripts/migrate_files_by_tenant.sh` |
+| **4.3** Tests de aislamiento | 2h | `tests/test_tenant_isolation.py` |
+
+**Criterio de éxito:**
+- ✅ Archivos en `/uploads/company_{id}/`
+- ✅ 10+ tests de aislamiento pasan
+
+---
+
+### 🟢 FASE 5: RBAC Avanzado (16 horas) - DÍA 5-7
+**Prioridad:** MEDIA - Mejoras
+
+| Tarea | Tiempo | Archivo |
+|-------|--------|---------|
+| **5.1** Company-User relationships | 2h | `models/company.py`, `models/user.py` |
+| **5.2** RolePermissionOverride | 3h | `models/rbac.py` |
+| **5.3** Policy Engine básico | 4h | `auth/policy_engine.py` |
+| **5.4** Permisos temporales | 2h | `models/permission.py` |
+| **5.5** Sessions con company_id | 1h | `models/session.py` |
+| **5.6** Tests RBAC | 4h | `tests/test_rbac_multitenant.py` |
+
+---
+
+### 🟢 FASE 6: QA & Deploy (8 horas) - DÍA 8
+**Prioridad:** MEDIA
+
+| Tarea | Tiempo | Archivo |
+|-------|--------|---------|
+| **6.1** Testing con 2+ empresas ficticias | 3h | Manual + automated |
+| **6.2** Script validación automatizada | 2h | `scripts/validate_multitenant.sh` |
+| **6.3** CI/CD integration | 1h | `.github/workflows/multitenant.yml` |
+| **6.4** Aplicar a Cloud SQL | 1h | Ejecutar migraciones en prod |
+| **6.5** Documentación | 1h | Actualizar README, CHANGELOG |
+
+---
+
+### 📊 Resumen por Prioridad
+
+| Nivel | Fases | Días | Horas | % Crítico |
+|-------|-------|------|-------|-----------|
+| 🔴 URGENTE | 0-2 | 3-5 | 20h | **Data leakage resuelto** |
+| 🟡 IMPORTANTE | 3-4 | 3-4 | 12h | Multitenant completo |
+| 🟢 MEJORAS | 5-6 | 5-8 | 24h | ABAC, QA, observabilidad |
+| **TOTAL** | 0-6 | **11-17** | **56h** | Sistema seguro |
+
+**Recomendación:** Ejecutar Fases 0-2 INMEDIATAMENTE (esta semana), luego evaluar antes de Fase 3+.
 
 ---
 
@@ -272,15 +555,68 @@ class User(Base):
 
 ---
 
-## 12. Próximos Pasos Inmediatos
-1. Ejecutar respaldo y Option A de backfill en ambiente local.  
-2. Refactorizar vistas SQL principales (`v_financial_summary`, `v_production_summary`, `v_sales_summary`).  
-3. Implementar `TenantContext` + dependencia global en FastAPI, y actualizar Sales BI + Production endpoints.  
-4. Ajustar `file_uploads` y exportaciones para segregación por carpeta.  
-5. Actualizar JWT/ sesiones con `company_id` y documentar el nuevo flujo para el frontend.  
-6. Correr `scripts/validate_schema.sh` extendido y añadirlo a CI/CD.  
-7. Compartir este plan con el equipo para alinear responsabilidades y calendario.
+## 12. Próximos Pasos Inmediatos - ACCIÓN URGENTE
+
+### 🚨 ESTA SEMANA (Días 1-3): Resolver Data Leakage
+
+**Lunes (Fase 0 - 4h):**
+1. ✅ **Backup DB:** `mysqldump --all-databases > backup_pre_multitenant_$(date +%Y%m%d).sql`
+2. ✅ **Verificar datos:**
+   ```sql
+   SELECT 'cotizaciones', COUNT(*) FROM cotizaciones;
+   SELECT 'productos', COUNT(*) FROM productos;
+   SELECT 'pagos', COUNT(*) FROM pagos;
+   ```
+3. ✅ **Crear empresa default:** `INSERT INTO companies (id, name, slug) VALUES (1, 'Default', 'default');`
+
+**Martes (Fase 1 - 8h):**
+1. ✅ Ejecutar `migrations/001_extend_companies.sql`
+2. ✅ Ejecutar `migrations/002_add_company_id_production.sql`
+3. ✅ Ejecutar `migrations/003_backfill_company_id.sql`
+4. ✅ Ejecutar `migrations/004_add_foreign_keys.sql`
+5. ✅ Ejecutar `migrations/005_create_indexes.sql`
+6. ✅ Validar con `scripts/validate_post_migration.py`
+
+**Miércoles (Fase 2 - 8h):**
+1. ✅ Crear `auth/tenant_context.py`
+2. ✅ Actualizar `auth/jwt_handler.py` - agregar `company_id` al payload
+3. ✅ Arreglar `routes/production_status.py` - filtrar todas las queries
+4. ✅ Arreglar `routes/financial_data.py` - quitar 7 hardcodes de `company_id = 1`
+5. ✅ Testing manual con 2 empresas
+
+### 📋 Checklist de Validación Post-Fase 2
+
+- [ ] **DB:** Todas las tablas críticas tienen `company_id` NOT NULL con FK
+- [ ] **JWT:** Token incluye `company_id` en payload
+- [ ] **Production:** Endpoint `/production/dashboard` NO muestra datos de otras empresas
+- [ ] **Financial:** Endpoint `/financial/upload` usa `current_user.company_id`
+- [ ] **Tests:** Usuario empresa A NO ve datos de empresa B
+
+### 🎯 Siguiente Sprint (Días 4-8): Completar Multitenant
+
+**Solo después de validar Fases 0-2:**
+- Ejecutar Fases 3-4 (rutas restantes + storage)
+- Testing exhaustivo con múltiples empresas
+- Aplicar a Cloud SQL
 
 ---
 
-Con este plan unificado, TODO el stack (BD, API, frontend, storage y seguridad) queda alineado con un modelo multitenant robusto y listo para escalar a cientos de empresas sin comprometer datos.  Ejecuta las fases en orden; cada paso construye sobre el anterior.
+## 13. Conclusión
+
+### Estado Actual Verificado
+- 🔴 **Data leakage ACTIVO** en módulo de producción
+- 🔴 **Solo empresa 1 funcional** en módulo financiero
+- 🔴 **JWT sin tenant context** - vulnerabilidad de autenticación
+- 🔴 **86% de tablas sin FK** - integridad rota
+
+### Plan de Remediación
+- ✅ **Fases 0-2 (URGENTES):** 20 horas - Resuelven todos los problemas críticos
+- ⚠️ **Fases 3-4:** 12 horas - Completan coverage al 100%
+- 🟢 **Fases 5-6:** 24 horas - Mejoras ABAC y QA
+
+### Compromiso de Seguridad
+**NO desarrollar features nuevas hasta completar Fases 0-2.**
+
+Todo el stack (BD, API, storage, RBAC) quedará alineado con un modelo multitenant robusto, verificable y listo para escalar a cientos de empresas sin comprometer datos.
+
+**Ejecuta las fases en orden estricto; cada paso construye sobre el anterior y valida el anterior.**
