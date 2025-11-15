@@ -60,6 +60,8 @@ ChartJS.register(
   Legend
 );
 
+const MONTH_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
 interface Props {
   filters: any;
 }
@@ -76,7 +78,7 @@ const SECTIONS: Section[] = [
   { id: 'overview', label: 'Resumen Comercial', icon: <ChartBarIcon className="h-5 w-5" /> },
   { id: 'clients', label: 'Análisis de Ventas', icon: <UsersIcon className="h-5 w-5" /> },
   { id: 'evolution', label: 'Evolución Mensual', icon: <ChartPieIcon className="h-5 w-5" /> },
-  { id: 'details', label: 'Detalle de Ventas', icon: <TableCellsIcon className="h-5 w-5" /> }
+  { id: 'details', label: 'Detalle de Ventas por Categoría de Producto', icon: <TableCellsIcon className="h-5 w-5" /> }
 ];
 
 export default function CommercialView({ filters }: Props) {
@@ -206,7 +208,7 @@ export default function CommercialView({ filters }: Props) {
 
   const loadClientsData = async () => {
     try {
-      const params = new URLSearchParams({ group_by: 'cliente', limit: '10' });
+      const params = new URLSearchParams({ group_by: 'cliente', limit: '100' });
       appendTemporalFilters(params, filters);
       if (filters.categoria) params.append('categoria', filters.categoria);
       if (filters.canal) params.append('canal', filters.canal);
@@ -298,10 +300,93 @@ export default function CommercialView({ filters }: Props) {
     [data]
   );
 
-  // Muestra inteligentemente hasta 10 clientes, o menos si hay menos disponibles
-  const topClientsData = useMemo(() => {
-    const maxClients = Math.min(10, clientsData.length);
-    return clientsData.slice(0, maxClients);
+  const filterSummaryChips = useMemo(() => {
+    const chips: string[] = [];
+    const yearList = filters.years ?? (filters.year ? [filters.year] : []);
+    if (yearList && yearList.length) {
+      chips.push(`Años: ${yearList.join(', ')}`);
+    }
+
+    const monthList = filters.months ?? (filters.month ? [filters.month] : []);
+    if (monthList && monthList.length) {
+      const monthLabels = monthList
+        .map((month: number) => MONTH_LABELS[month - 1] || `Mes ${month}`)
+        .join(', ');
+      chips.push(`Meses: ${monthLabels}`);
+    }
+
+    if (filters.categoria) {
+      chips.push(`Categoría: ${filters.categoria}`);
+    }
+    if (filters.canal) {
+      chips.push(`Canal: ${filters.canal}`);
+    }
+    if (filters.vendedor) {
+      chips.push(`Vendedor: ${filters.vendedor}`);
+    }
+    if (filters.cliente) {
+      chips.push(`Cliente: ${filters.cliente}`);
+    }
+
+    return chips;
+  }, [filters]);
+
+  const {
+    topClientsData,
+    clientsChartData,
+    totalClientsValue,
+    totalClientsVolume
+  } = useMemo(() => {
+    if (!clientsData || clientsData.length === 0) {
+      return {
+        topClientsData: [],
+        clientsChartData: [],
+        totalClientsValue: 0,
+        totalClientsVolume: 0
+      };
+    }
+
+    const sorted = [...clientsData].sort(
+      (a, b) => Number(b.venta_neta || 0) - Number(a.venta_neta || 0)
+    );
+
+    const totalClientsValue = sorted.reduce(
+      (acc, item) => acc + Number(item.venta_neta || 0),
+      0
+    );
+    const totalClientsVolume = sorted.reduce(
+      (acc, item) => acc + Number(item.metros_cuadrados || item.m2 || item.unidades || 0),
+      0
+    );
+
+    const maxVisible = Math.min(10, sorted.length);
+    const topClientsData = sorted.slice(0, maxVisible);
+    const remainder = sorted.slice(maxVisible);
+
+    const remainderTotals = remainder.reduce(
+      (acc, item) => ({
+        value: acc.value + Number(item.venta_neta || 0),
+        volume: acc.volume + Number(item.metros_cuadrados || item.m2 || item.unidades || 0),
+      }),
+      { value: 0, volume: 0 }
+    );
+
+    const clientsChartData = [...topClientsData];
+    if (remainderTotals.value > 0 || remainderTotals.volume > 0) {
+      clientsChartData.push({
+        dimension: 'Otros',
+        venta_neta: remainderTotals.value,
+        metros_cuadrados: remainderTotals.volume,
+        m2: remainderTotals.volume,
+      });
+    }
+
+    return {
+      topClientsData,
+      clientsChartData,
+      totalClientsValue,
+      totalClientsVolume,
+    };
   }, [clientsData]);
 
   const sortedData = useMemo(() => {
@@ -516,71 +601,66 @@ export default function CommercialView({ filters }: Props) {
     }
   };
 
+  const doughnutBackgroundColors = [
+    'rgba(0, 240, 255, 0.85)',
+    'rgba(0, 255, 153, 0.85)',
+    'rgba(147, 51, 234, 0.85)',
+    'rgba(255, 184, 0, 0.85)',
+    'rgba(236, 72, 153, 0.85)',
+    'rgba(59, 130, 246, 0.85)',
+    'rgba(239, 68, 68, 0.85)',
+    'rgba(16, 185, 129, 0.85)',
+  ];
+
+  const doughnutBorderColors = [
+    '#00F0FF',
+    '#00FF99',
+    '#9333EA',
+    '#FFB800',
+    '#EC4899',
+    '#3B82F6',
+    '#EF4444',
+    '#10B981'
+  ];
+
+  const buildColorArray = (length: number, base: string[]) =>
+    Array.from({ length }, (_, idx) => base[idx % base.length]);
+
   // Doughnut chart para composición de clientes por VALOR - Colores modernos y vibrantes
-  const clientsValueChartData = {
-    labels: topClientsData.map((item: any) => item.dimension || 'Sin definir'),
-    datasets: [
-      {
-        data: topClientsData.map((item: any) => item.venta_neta || 0),
-        backgroundColor: [
-          'rgba(0, 240, 255, 0.85)',    // Cyan brillante
-          'rgba(0, 255, 153, 0.85)',    // Verde esmeralda
-          'rgba(147, 51, 234, 0.85)',   // Púrpura vibrante
-          'rgba(255, 184, 0, 0.85)',    // Naranja dorado
-          'rgba(236, 72, 153, 0.85)',   // Rosa fucsia
-          'rgba(59, 130, 246, 0.85)',   // Azul brillante
-          'rgba(239, 68, 68, 0.85)',    // Rojo vibrante
-          'rgba(16, 185, 129, 0.85)',   // Verde agua
-        ],
-        borderColor: [
-          '#00F0FF',
-          '#00FF99',
-          '#9333EA',
-          '#FFB800',
-          '#EC4899',
-          '#3B82F6',
-          '#EF4444',
-          '#10B981'
-        ],
-        borderWidth: 3,
-        hoverOffset: 10,
-        hoverBorderWidth: 4,
-      }
-    ]
-  };
+  const clientsValueChartData = useMemo(() => {
+    const colorCount = clientsChartData.length;
+    return {
+      labels: clientsChartData.map((item: any) => item.dimension || 'Sin definir'),
+      datasets: [
+        {
+          data: clientsChartData.map((item: any) => Number(item.venta_neta || 0)),
+          backgroundColor: buildColorArray(colorCount, doughnutBackgroundColors),
+          borderColor: buildColorArray(colorCount, doughnutBorderColors),
+          borderWidth: 3,
+          hoverOffset: 10,
+          hoverBorderWidth: 4,
+        }
+      ]
+    };
+  }, [clientsChartData]);
 
   // Pie chart para composición de clientes por M2 - Paleta complementaria
-  const clientsM2ChartData = {
-    labels: topClientsData.map((item: any) => item.dimension || 'Sin definir'),
-    datasets: [
-      {
-        data: topClientsData.map((item: any) => item.metros_cuadrados || item.m2 || 0),
-        backgroundColor: [
-          'rgba(0, 240, 255, 0.85)',
-          'rgba(0, 255, 153, 0.85)',
-          'rgba(147, 51, 234, 0.85)',
-          'rgba(255, 184, 0, 0.85)',
-          'rgba(236, 72, 153, 0.85)',
-          'rgba(59, 130, 246, 0.85)',
-          'rgba(239, 68, 68, 0.85)',
-          'rgba(16, 185, 129, 0.85)',
-        ],
-        borderColor: [
-          '#00F0FF',
-          '#00FF99',
-          '#9333EA',
-          '#FFB800',
-          '#EC4899',
-          '#3B82F6',
-          '#EF4444',
-          '#10B981'
-        ],
-        borderWidth: 3,
-        hoverOffset: 10,
-        hoverBorderWidth: 4,
-      }
-    ]
-  };
+  const clientsM2ChartData = useMemo(() => {
+    const colorCount = clientsChartData.length;
+    return {
+      labels: clientsChartData.map((item: any) => item.dimension || 'Sin definir'),
+      datasets: [
+        {
+          data: clientsChartData.map((item: any) => Number(item.metros_cuadrados || item.m2 || 0)),
+          backgroundColor: buildColorArray(colorCount, doughnutBackgroundColors),
+          borderColor: buildColorArray(colorCount, doughnutBorderColors),
+          borderWidth: 3,
+          hoverOffset: 10,
+          hoverBorderWidth: 4,
+        }
+      ]
+    };
+  }, [clientsChartData]);
 
   const sortedCategoryComposition = useMemo(() => {
     const rows = [...categoryComposition];
@@ -656,8 +736,8 @@ export default function CommercialView({ filters }: Props) {
       animateScale: true,
     },
     interaction: {
-      mode: 'index' as const,
-      intersect: false,
+      mode: 'nearest' as const,
+      intersect: true,
     },
     plugins: {
       legend: {
@@ -815,8 +895,8 @@ export default function CommercialView({ filters }: Props) {
       animateScale: true,
     },
     interaction: {
-      mode: 'index' as const,
-      intersect: false,
+      mode: 'nearest' as const,
+      intersect: true,
     },
     plugins: {
       legend: {
@@ -888,7 +968,7 @@ export default function CommercialView({ filters }: Props) {
   }), [chartPalette, currencyFormatter, numberFormatter]);
 
   // Gráfico de evolución mensual - Line Chart con una línea por año
-  const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const monthNames = MONTH_LABELS;
 
   const evolutionChartData = useMemo(() => {
     // Obtener años únicos
@@ -992,6 +1072,23 @@ export default function CommercialView({ filters }: Props) {
     }
   };
 
+  const renderFilterSummary = () => (
+    <div className="mt-2 flex flex-wrap gap-2 text-[11px] uppercase tracking-wide">
+      {filterSummaryChips.length > 0 ? (
+        filterSummaryChips.map((chip, idx) => (
+          <span
+            key={`${chip}-${idx}`}
+            className="px-2 py-0.5 rounded-full border border-border/50 bg-dark-card/50 text-text-secondary"
+          >
+            {chip}
+          </span>
+        ))
+      ) : (
+        <span className="text-[11px] text-text-muted">Sin filtros adicionales</span>
+      )}
+    </div>
+  );
+
   const CollapsibleSection = ({
     id,
     title,
@@ -1021,6 +1118,7 @@ export default function CommercialView({ filters }: Props) {
             {subtitle && (
               <Text className="text-sm text-text-muted">{subtitle}</Text>
             )}
+            {renderFilterSummary()}
           </div>
           <button
             type="button"
@@ -1378,6 +1476,9 @@ export default function CommercialView({ filters }: Props) {
                       Composición por Valor
                     </Title>
                     <Text className="text-xs text-text-muted">Top {topClientsData.length} clientes por ventas</Text>
+                    <Text className="text-[11px] text-text-secondary">
+                      Total ventas filtradas: {currencyFormatter(totalClientsValue)}
+                    </Text>
                   </div>
                 </Flex>
                 <div className="h-96">
@@ -1403,6 +1504,9 @@ export default function CommercialView({ filters }: Props) {
                       Composición por Volumen
                     </Title>
                     <Text className="text-xs text-text-muted">Top {topClientsData.length} clientes por m²</Text>
+                    <Text className="text-[11px] text-text-secondary">
+                      Total m² filtrados: {numberFormatter(totalClientsVolume)} m²
+                    </Text>
                   </div>
                 </Flex>
                 <div className="h-96">
@@ -1441,6 +1545,9 @@ export default function CommercialView({ filters }: Props) {
                         Precio/m²
                       </TableHeaderCell>
                       <TableHeaderCell className="text-right text-xs uppercase tracking-wide text-text-secondary">
+                        Desc. %
+                      </TableHeaderCell>
+                      <TableHeaderCell className="text-right text-xs uppercase tracking-wide text-text-secondary">
                         Facturas
                       </TableHeaderCell>
                       <TableHeaderCell className="text-right text-xs uppercase tracking-wide text-text-secondary">
@@ -1452,6 +1559,9 @@ export default function CommercialView({ filters }: Props) {
                     {topClientsData.map((row: any, idx) => {
                       const m2 = Number(row.metros_cuadrados || row.m2 || 0);
                       const ventaNeta = Number(row.venta_neta || 0);
+                      const descuento = Number(row.descuento || 0);
+                      const bruto = ventaNeta + descuento;
+                      const descuentoPct = bruto > 0 ? (descuento / bruto) * 100 : 0;
                       const precioM2 = m2 > 0 ? ventaNeta / m2 : 0;
 
                       return (
@@ -1470,6 +1580,9 @@ export default function CommercialView({ filters }: Props) {
                           </TableCell>
                           <TableCell className="text-right text-accent">
                             {currencyFormatter(precioM2)}
+                          </TableCell>
+                          <TableCell className="text-right text-text-secondary">
+                            {descuentoPct.toFixed(2)}%
                           </TableCell>
                           <TableCell className="text-right text-text-secondary">
                             {row.num_facturas}
@@ -1528,7 +1641,7 @@ export default function CommercialView({ filters }: Props) {
         >
           <CollapsibleSection
             id="details"
-            title="Detalle de Ventas"
+            title="Detalle de Ventas por Categoría de Producto"
             subtitle={`${data.length} segmentos • ${numberFormatter(totalMetros)} m² • ${currencyFormatter(totalVentas)}`}
           >
             <Card className="glass-panel border border-border/60 bg-dark-card/80 shadow-hologram">
@@ -1580,6 +1693,9 @@ export default function CommercialView({ filters }: Props) {
                         </button>
                       </TableHeaderCell>
                       <TableHeaderCell className="text-right text-xs uppercase tracking-wide text-text-secondary">
+                        Desc. %
+                      </TableHeaderCell>
+                      <TableHeaderCell className="text-right text-xs uppercase tracking-wide text-text-secondary">
                         <button
                           type="button"
                           onClick={() => handleSort('num_facturas')}
@@ -1605,6 +1721,9 @@ export default function CommercialView({ filters }: Props) {
                     {sortedData.map((row: any, idx) => {
                       const m2 = Number(row.metros_cuadrados || row.m2 || row.unidades || 0);
                       const ventaNeta = Number(row.venta_neta || 0);
+                      const descuento = Number(row.descuento || 0);
+                      const bruto = ventaNeta + descuento;
+                      const descuentoPct = bruto > 0 ? (descuento / bruto) * 100 : 0;
                       const precioM2 = m2 > 0 ? ventaNeta / m2 : 0;
 
                       return (
@@ -1625,7 +1744,10 @@ export default function CommercialView({ filters }: Props) {
                             {currencyFormatter(precioM2)}
                           </TableCell>
                           <TableCell className="text-right text-text-secondary">
-                            {currencyFormatter(row.descuento)}
+                            {currencyFormatter(descuento)}
+                          </TableCell>
+                          <TableCell className="text-right text-text-secondary">
+                            {descuentoPct.toFixed(2)}%
                           </TableCell>
                           <TableCell className="text-right text-text-secondary">
                             {row.num_facturas}
