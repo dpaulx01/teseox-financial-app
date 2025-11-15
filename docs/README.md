@@ -40,13 +40,12 @@ Auditorías de sincronización entre entornos local y Cloud SQL.
 
 ---
 
-### 🔐 [rbac-multitenant/](./rbac-multitenant/)
-RBAC y arquitectura SaaS multi-tenant.
+### 🔐 Arquitectura RBAC / Multi-Tenant
+Documentación para la evolución SaaS de la plataforma.
 
 **Documentos principales:**
-- [ANALISIS_RBAC_SAAS_MULTITENANT.md](./rbac-multitenant/ANALISIS_RBAC_SAAS_MULTITENANT.md) - Análisis completo de modernización (70KB)
-- [MULTITENANT_DATABASE_ANALYSIS.md](./MULTITENANT_DATABASE_ANALYSIS.md) - Análisis técnico DB para multitenant (Nov 2025)
-- [MULTITENANT_IMPLEMENTATION_PLAN.md](./MULTITENANT_IMPLEMENTATION_PLAN.md) - **Plan integral de implementación** (Nov 2025) 🎯
+- [ANALISIS_RBAC_SAAS_MULTITENANT.md](./rbac-multitenant/ANALISIS_RBAC_SAAS_MULTITENANT.md) - Análisis conceptual de modernización (70KB)
+- [MULTITENANT_IMPLEMENTATION_PLAN.md](./MULTITENANT_IMPLEMENTATION_PLAN.md) - **Plan integral unificado (Fases 0-6)** – actualizado a Nov 2025 🎯
 
 **Decisión arquitectónica:**
 - ✅ **Shared Database + company_id** (elegida)
