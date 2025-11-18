@@ -1,3 +1,7 @@
+# ⚠️ ARCHIVO DEPRECADO - VER GCP_DEPLOYMENT_MASTER_GUIDE.md
+
+> Este archivo contenía contexto antiguo (Artyco). Para Teseo X, usa únicamente `GCP_DEPLOYMENT_MASTER_GUIDE.md`, que tiene proyecto, Cloud SQL, secrets y comandos vigentes.
+
 # Iteracion Rapida - Guia de Conexiones y Entorno
 
 > Ultima actualizacion: 2025-11-07
@@ -55,3 +59,13 @@
 - Auditoria rapida: `SELECT table_name FROM information_schema.tables WHERE table_schema='artyco_financial_rbac';` y cruza con `rg "CREATE TABLE" docker/mysql database`.
 
 Mantener este archivo actualizado evita repetir pasos de conexion y despliegue en futuras sesiones.
+
+## 6. Checklist sincronización datos (Nov 2025)
+- [x] 1. Exportar datos de Cloud SQL a local (dump `cloud_production_20251116.sql`)
+- [x] 2. Limpiar base de datos MySQL local (DROP/CREATE `artyco_financial_rbac`)
+- [x] 3. Importar datos de Cloud SQL y limpiar definers
+- [x] 4. Aplicar migración 004 RBAC multitenant (helpers `created_at` index fix)
+- [x] 5. Validar servidor con datos reales (`scripts/backend_smoke_test.py` → login, `/api/users`, `/api/admin/stats`)
+- [x] 6. Probar frontend con datos reales (`npm run build && preview` + `scripts/frontend_api_probe.mjs`)
+
+> Resumen: Se ejecutó también `schema/migrations/003_multitenant_phase1.sql` antes de la 004 porque el dump carecía de columnas SaaS (slug, subscription_tier, etc.). El backend quedó validado con el TestClient y el frontend compila apuntando a `VITE_API_BASE_URL=http://localhost:8001/api`, con un smoke HTTP adicional usando Node + fetch.

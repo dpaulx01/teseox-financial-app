@@ -1,3 +1,7 @@
+# ⚠️ Referencia única: usa **GCP_DEPLOYMENT_MASTER_GUIDE.md**
+
+> Este archivo es solo un resumen histórico. Para deployment, comandos y credenciales vigentes, usa siempre `GCP_DEPLOYMENT_MASTER_GUIDE.md`.
+
 # Correcciones Aplicadas al Deployment - 2025-11-18
 
 ## Resumen Ejecutivo

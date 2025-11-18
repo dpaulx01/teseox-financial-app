@@ -5,6 +5,15 @@
 **Tipo:** Multi-tenant SaaS con RBAC
 **Stack:** FastAPI + React + MySQL
 
+### 🧭 Contexto Rápido (Teseo X)
+- Proyecto GCP: `teseo-x` (us-central1)
+- Cloud SQL: instancia `teseox-db`, DB `teseox_db`, usuario app `teseox_user` (password en Secret Manager `db-password`), root `TeseoX2025SecureRoot!`
+- Artifact Registry: `us-central1-docker.pkg.dev/teseo-x/teseox-repo`
+- Secrets: `db-password`, `jwt-secret`
+- Despliegue: usa `deploy-cloud-run.sh` (API+Frontend) y `init-database.sh` (root, aplica `schema/000_base_schema.sql` + `003` + `004`)
+- Rate limiting: in-memory (100 req/min) en `/api/superadmin/*` (no distribuido)
+- TenantStorage: localStorage con namespace por `company_id`
+
 ---
 
 ## 📚 TABLA DE CONTENIDOS
