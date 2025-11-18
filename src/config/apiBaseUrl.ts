@@ -9,7 +9,16 @@ const resolveApiBaseUrl = (): string => {
     return envBaseUrl;
   }
 
-  return isDevelopment ? 'http://localhost:8001' : '';
+  if (isDevelopment) {
+    return 'http://localhost:8001';
+  }
+
+  // Auto-detect API URL in production based on frontend URL
+  if (typeof window !== 'undefined' && window.location.hostname.includes('teseox-frontend')) {
+    return 'https://teseox-api-jrmpkqareq-uc.a.run.app';
+  }
+
+  return '';
 };
 
 export const API_BASE_URL = resolveApiBaseUrl();
