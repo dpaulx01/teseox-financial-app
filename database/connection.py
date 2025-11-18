@@ -38,13 +38,27 @@ def get_db() -> Generator[Session, None, None]:
 
 def seed_initial_data():
     """
-    Seed initial data (roles, permissions, admin user)
+    Seed initial data (roles, permissions, admin user, default company)
     """
-    from models import User, Role, Permission
+    from models import User, Role, Permission, Company
     from auth.password import PasswordHandler
 
     db = SessionLocal()
     try:
+        # Ensure default company exists (id=1 expected by admin user)
+        default_company = db.query(Company).filter(Company.id == 1).first()
+        if not default_company:
+            default_company = Company(
+                name="Teseo X",
+                slug="teseox",
+                description="Default company for initial admin",
+                subscription_tier="trial",
+                max_users=100,
+                is_active=True,
+            )
+            db.add(default_company)
+            db.flush()  # get id
+
         # Check if admin user already exists
         admin_exists = db.query(User).filter(User.username == "admin").first()
         if admin_exists:
@@ -53,13 +67,16 @@ def seed_initial_data():
                 # Try to verify password works
                 if PasswordHandler.verify_password("admin123", admin_exists.password_hash):
                     print("✅ Admin password is valid")
-                    return
                 else:
                     print("⚠️  Admin password incorrect - updating...")
                     admin_exists.password_hash = PasswordHandler.hash_password("admin123")
                     db.commit()
                     print("✅ Admin password updated successfully")
-                    return
+                # Ensure company assignment exists
+                if not admin_exists.company_id:
+                    admin_exists.company_id = default_company.id
+                    db.commit()
+                return
             except Exception as e:
                 print(f"⚠️  Admin user has corrupted password - recreating: {e}")
                 # Delete corrupted admin user
@@ -142,7 +159,8 @@ def seed_initial_data():
             first_name="System",
             last_name="Administrator",
             is_active=True,
-            is_superuser=True
+            is_superuser=True,
+            company_id=default_company.id
         )
         db.add(admin_user)
         db.flush()
