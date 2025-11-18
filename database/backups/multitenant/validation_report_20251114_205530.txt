@@ -1,0 +1,214 @@
+================================================================================
+REPORTE DE VALIDACIÓN PRE-MIGRACIÓN MULTITENANT
+================================================================================
+Fecha: 2025-11-14 20:55:30
+Base de datos: artyco_financial_rbac (local Docker)
+
+================================================================================
+RESUMEN EJECUTIVO
+================================================================================
+
+Estado: ⚠️  LISTO CON PRECAUCIONES
+Errores críticos: 0
+Advertencias: 9
+
+El sistema puede migrarse a multitenant, pero requiere:
+- Agregar company_id a 5 tablas
+- Agregar Foreign Keys a 4 tablas
+- Agregar columnas SaaS a tabla companies
+
+================================================================================
+1. VERIFICACIÓN DE TABLAS CRÍTICAS
+================================================================================
+
+✅ Todas las 11 tablas críticas existen:
+   - companies
+   - users
+   - cotizaciones
+   - productos
+   - pagos
+   - plan_diario_produccion
+   - financial_scenarios
+   - sales_transactions
+   - financial_data
+   - balance_data
+   - raw_account_data
+
+================================================================================
+2. ANÁLISIS DE COLUMNA company_id
+================================================================================
+
+Tablas verificadas: 10 (excluyendo companies)
+Con company_id: 5/10 (50%)
+Sin company_id: 5/10 (50%)
+
+✅ TIENEN company_id:
+   1. users
+   2. balance_data
+   3. financial_data
+   4. raw_account_data
+   5. sales_transactions
+
+❌ NO TIENEN company_id (requieren migración):
+   1. cotizaciones
+   2. financial_scenarios
+   3. pagos
+   4. plan_diario_produccion
+   5. productos
+
+================================================================================
+3. ANÁLISIS DE FOREIGN KEYS
+================================================================================
+
+Tablas con company_id: 5
+Con FK a companies: 1/5 (20%)
+Sin FK a companies: 4/5 (80%)
+
+✅ TIENEN FK:
+   1. financial_data
+
+⚠️  NO TIENEN FK (requieren agregar):
+   1. users
+   2. balance_data
+   3. raw_account_data
+   4. sales_transactions
+
+================================================================================
+4. VERIFICACIÓN DE REGISTROS HUÉRFANOS
+================================================================================
+
+✅ NO HAY REGISTROS HUÉRFANOS
+
+Verificación detallada:
+- users: 3 registros, 0 nulos, 0 huérfanos
+- balance_data: 99 registros, 0 nulos, 0 huérfanos
+- financial_data: 21 registros, 0 nulos, 0 huérfanos
+- raw_account_data: 1,639 registros, 0 nulos, 0 huérfanos
+- sales_transactions: 1,019 registros, 0 nulos, 0 huérfanos
+
+Total: 2,781 registros verificados
+
+Conclusión: Todos los registros existentes tienen company_id válido.
+Se pueden agregar Foreign Keys sin conflictos.
+
+================================================================================
+5. ANÁLISIS DE TABLA COMPANIES
+================================================================================
+
+✅ Tabla companies existe
+✅ Total empresas: 1
+✅ Empresa por defecto (id=1): Existe
+
+⚠️  Columnas SaaS faltantes (se agregarán en Fase 1):
+   ❌ slug
+   ❌ is_active
+   ❌ subscription_tier
+   ❌ subscription_expires_at
+   ❌ max_users
+
+================================================================================
+6. CONTEO DE DATOS ACTUALES
+================================================================================
+
+Tablas con datos:
+- companies: 1 registro
+- users: 3 registros
+- cotizaciones: (no verificado - sin company_id)
+- productos: (no verificado - sin company_id)
+- pagos: (no verificado - sin company_id)
+- plan_diario_produccion: (no verificado - sin company_id)
+- financial_data: 21 registros
+- balance_data: 99 registros
+- raw_account_data: 1,639 registros
+- sales_transactions: 1,019 registros
+
+Total verificado: 2,781 registros con company_id válido
+
+================================================================================
+DECISIONES REQUERIDAS PARA FASE 1
+================================================================================
+
+1. TABLAS SIN company_id - Estrategia de backfill:
+
+   ❓ cotizaciones → ¿Asignar a company_id=1 por defecto?
+   ❓ productos → ¿Asignar a company_id=1 por defecto?
+   ❓ pagos → ¿Asignar a company_id=1 por defecto?
+   ❓ plan_diario_produccion → ¿Asignar a company_id=1 por defecto?
+   ❓ financial_scenarios → ¿Asignar a company_id=1 por defecto?
+
+   RECOMENDACIÓN: Asignar todos a company_id=1 (empresa existente)
+
+2. COLUMNAS SaaS - Valores por defecto:
+
+   ❓ slug → ¿Generar de 'name' o asignar 'default'?
+   ❓ is_active → ¿TRUE por defecto?
+   ❓ subscription_tier → ¿'enterprise' o 'free'?
+   ❓ subscription_expires_at → ¿NULL (sin límite)?
+   ❓ max_users → ¿NULL (ilimitado) o 10?
+
+   RECOMENDACIÓN:
+   - slug: 'artyco' (de la empresa existente)
+   - is_active: TRUE
+   - subscription_tier: 'enterprise'
+   - subscription_expires_at: NULL (sin límite)
+   - max_users: NULL (ilimitado)
+
+================================================================================
+PRÓXIMOS PASOS - FASE 1
+================================================================================
+
+1. ✅ BACKUP COMPLETO - COMPLETADO
+   Archivo: backup_pre_multitenant_20251114_204841.sql (676KB)
+
+2. ⏭️  DOCUMENTAR DECISIONES
+   Crear: database/migrations/MIGRATION_DECISIONS.md
+
+3. ⏭️  SCHEMA CHANGES (4h)
+   a. Agregar columnas SaaS a companies
+   b. Agregar company_id a 5 tablas
+   c. Backfill company_id=1 en todas las tablas
+   d. Agregar Foreign Keys (4 tablas)
+   e. Agregar índices en company_id
+
+4. ⏭️  VALIDACIÓN POST-MIGRACIÓN
+   Ejecutar: scripts/phase1_validate_post_schema.sh
+
+================================================================================
+ANÁLISIS DE RIESGO
+================================================================================
+
+🟢 BAJO RIESGO:
+   - No hay registros huérfanos
+   - Empresa por defecto existe
+   - Todos los datos actuales tienen company_id válido
+   - Backup completo disponible
+
+🟡 RIESGO MEDIO:
+   - 5 tablas requieren agregar company_id (cambio de schema)
+   - 4 tablas requieren agregar FK (puede afectar performance)
+
+🔴 RIESGO ALTO:
+   - Ninguno detectado
+
+RECOMENDACIÓN: ✅ Proceder con Fase 1
+
+================================================================================
+MÉTRICAS DE PROGRESO MULTITENANT
+================================================================================
+
+Schema (Base de Datos):
+- Tablas con company_id: 5/10 (50%) ← Objetivo: 10/10 (100%)
+- Tablas con FK: 1/5 (20%) ← Objetivo: 5/5 (100%)
+- Columnas SaaS: 0/5 (0%) ← Objetivo: 5/5 (100%)
+
+Aplicación (Código):
+- Endpoints con tenant context: 0% ← Objetivo: 100%
+- JWT con company_id: NO ← Objetivo: SÍ
+- Middleware de tenant: NO ← Objetivo: SÍ
+- RLS policies: 0 ← Objetivo: 10+
+
+Progreso general: ~15%
+
+================================================================================
+FIN DEL REPORTE
+================================================================================

@@ -1,11 +1,16 @@
 """
 Modelos SQLAlchemy para módulo BI de ventas
 """
-from sqlalchemy import Column, Integer, String, Date, DECIMAL, DateTime, Enum, Boolean, Text, ForeignKey, JSON, Computed
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Date, DECIMAL, DateTime, Enum, Boolean, Text, ForeignKey, JSON
+from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.sql import func
 from database.connection import Base
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from models.company import Company
+    from models.user import User
 
 class SalesTransaction(Base):
     """Transacción de venta individual"""
@@ -15,9 +20,9 @@ class SalesTransaction(Base):
 
     # Información temporal
     fecha_emision = Column(Date, nullable=False, index=True)
-    year = Column(Integer, Computed("YEAR(fecha_emision)"), index=True)
-    month = Column(Integer, Computed("MONTH(fecha_emision)"), index=True)
-    quarter = Column(Integer, Computed("QUARTER(fecha_emision)"))
+    year = Column(Integer, nullable=True, index=True)  # Computed in MySQL, manual in SQLite
+    month = Column(Integer, nullable=True, index=True)  # Computed in MySQL, manual in SQLite
+    quarter = Column(Integer, nullable=True)  # Computed in MySQL, manual in SQLite
 
     # Información comercial
     categoria_producto = Column(String(100), nullable=False, index=True)
@@ -41,9 +46,10 @@ class SalesTransaction(Base):
     rentabilidad = Column(DECIMAL(12, 2), default=0)
 
     # Metadata
-    company_id = Column(Integer, default=1, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id', ondelete='RESTRICT'), nullable=False, default=1, index=True)
     created_at = Column(DateTime, server_default=func.current_timestamp())
     updated_at = Column(DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+    company: Mapped["Company"] = relationship('Company', back_populates='sales_transactions')
 
     def __repr__(self):
         return f"<SalesTransaction(id={self.id}, factura='{self.numero_factura}', venta_neta={self.venta_neta})>"
@@ -108,8 +114,9 @@ class SalesKPICache(Base):
     ratio_costo_venta = Column(DECIMAL(5, 2), default=0)
 
     # Metadata
-    company_id = Column(Integer, default=1, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id', ondelete='RESTRICT'), nullable=False, default=1, index=True)
     calculated_at = Column(DateTime, server_default=func.current_timestamp())
+    company: Mapped["Company"] = relationship('Company')
 
     def __repr__(self):
         return f"<SalesKPICache(year={self.year}, month={self.month}, type={self.dimension_type}, value='{self.dimension_value}')>"
@@ -171,11 +178,12 @@ class SalesAlert(Base):
     acknowledged_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'))
     acknowledged_at = Column(DateTime)
 
-    company_id = Column(Integer, default=1, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id', ondelete='RESTRICT'), nullable=False, default=1, index=True)
     created_at = Column(DateTime, server_default=func.current_timestamp())
 
     # Relationships
-    acknowledged_user = relationship('User', foreign_keys=[acknowledged_by])
+    acknowledged_user: Mapped["User"] = relationship('User', foreign_keys=[acknowledged_by])
+    company: Mapped["Company"] = relationship('Company')
 
     def __repr__(self):
         return f"<SalesAlert(id={self.id}, type={self.alert_type}, severity={self.severity}, status={self.status})>"
@@ -205,7 +213,7 @@ class SalesSavedFilter(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
-    company_id = Column(Integer, default=1, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id', ondelete='RESTRICT'), nullable=False, default=1, index=True)
 
     filter_name = Column(String(100), nullable=False)
     filter_type = Column(
@@ -224,7 +232,8 @@ class SalesSavedFilter(Base):
     updated_at = Column(DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
 
     # Relationships
-    user = relationship('User', foreign_keys=[user_id])
+    user: Mapped["User"] = relationship('User', foreign_keys=[user_id])
+    company: Mapped["Company"] = relationship('Company')
 
     def __repr__(self):
         return f"<SalesSavedFilter(id={self.id}, name='{self.filter_name}', type={self.filter_type})>"

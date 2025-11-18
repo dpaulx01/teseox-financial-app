@@ -10,6 +10,7 @@ from database.connection import get_db
 from models import User, UserSession
 from auth.jwt_handler import JWTHandler
 from auth.permissions import PermissionChecker
+from auth.tenant_context import get_current_tenant, set_current_tenant
 
 # Security scheme
 security = HTTPBearer()
@@ -54,6 +55,28 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    if not user.company_id or not user.company:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User does not belong to a company",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    company = user.company
+    if not company.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Company is disabled",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not company.is_subscription_active():
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Company subscription expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
     # Check if session exists and is active
     token_hash = JWTHandler.get_token_hash(token)
     session = db.query(UserSession).filter(
@@ -67,6 +90,9 @@ async def get_current_user(
             detail="Session expired or invalid",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    if get_current_tenant() is None:
+        set_current_tenant(user.company_id)
     
     return user
 

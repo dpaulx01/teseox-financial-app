@@ -1,0 +1,43 @@
+# Cloud Build configuration for Teseo X
+# Builds and pushes both API and Frontend images to Artifact Registry
+
+steps:
+  # Build API image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-api'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/teseox-repo/teseox-api:$BUILD_ID'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/teseox-repo/teseox-api:latest'
+      - '-f'
+      - 'Dockerfile.api'
+      - '.'
+
+  # Build Frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-frontend'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/teseox-repo/teseox-frontend:$BUILD_ID'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/teseox-repo/teseox-frontend:latest'
+      - '-f'
+      - 'Dockerfile.frontend.prod'
+      - '.'
+
+# Images to be pushed to Artifact Registry
+# Solo se pushean automáticamente las imágenes listadas aquí
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/teseox-repo/teseox-api:$BUILD_ID'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/teseox-repo/teseox-api:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/teseox-repo/teseox-frontend:$BUILD_ID'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/teseox-repo/teseox-frontend:latest'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1800s'  # 30 minutes

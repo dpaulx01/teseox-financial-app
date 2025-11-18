@@ -31,7 +31,7 @@ except ImportError:  # pragma: no cover - optional dependency
     holidays = None
 
 from auth.dependencies import get_current_user
-from config import Config
+from auth.tenant_context import get_current_tenant
 from database.connection import get_db
 from models import User
 from models.production import (
@@ -188,6 +188,17 @@ class DailyScheduleResponse(BaseModel):
     days: List[DailyScheduleDay]
 
 
+def _get_company_id(current_user: User) -> int:
+    tenant_id = get_current_tenant()
+    company_id = tenant_id or getattr(current_user, "company_id", None)
+    if not company_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Usuario sin empresa asignada"
+        )
+    return int(company_id)
+
+
 # Stock Planning Models
 class StockProductProgramming(BaseModel):
     """Programación diaria de un producto de stock."""
@@ -249,6 +260,7 @@ async def get_dashboard_kpis(
     """
     Endpoint para obtener los KPIs del dashboard de producción.
     """
+    company_id = _get_company_id(current_user)
     today = date.today()
     start_of_week = today - timedelta(days=today.weekday())
     history_window_days = 31
@@ -282,6 +294,7 @@ async def get_dashboard_kpis(
         db.query(ProductionProduct)
         .options(joinedload(ProductionProduct.cotizacion))
         .filter(
+            ProductionProduct.company_id == company_id,
             ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO,
             ProductionProduct.estatus != ProductionStatusEnum.EN_BODEGA
         )
@@ -333,7 +346,10 @@ async def get_dashboard_kpis(
     if active_items:
         plan_entries = (
             db.query(ProductionDailyPlan)
-            .filter(ProductionDailyPlan.producto_id.in_([item.id for item in active_items]))
+            .filter(
+                ProductionDailyPlan.company_id == company_id,
+                ProductionDailyPlan.producto_id.in_([item.id for item in active_items])
+            )
             .all()
         )
         for plan_entry in plan_entries:
@@ -534,6 +550,7 @@ async def get_dashboard_kpis(
         db.query(ProductionProduct)
         .options(joinedload(ProductionProduct.cotizacion))
         .filter(
+            ProductionProduct.company_id == company_id,
             ProductionProduct.fecha_entrega >= start_of_week,
             ProductionProduct.fecha_entrega <= end_of_week,
             # Incluir productos en producción Y entregados (entregas programadas)
@@ -581,6 +598,7 @@ async def get_dashboard_kpis(
         db.query(ProductionQuote.id.distinct())
         .join(ProductionProduct)
         .filter(
+            ProductionProduct.company_id == company_id,
             ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO,
             ProductionProduct.estatus != ProductionStatusEnum.EN_BODEGA
         )
@@ -591,6 +609,7 @@ async def get_dashboard_kpis(
     total_cotizaciones_activas = (
         db.query(func.sum(ProductionQuote.valor_total))
         .filter(
+            ProductionQuote.company_id == company_id,
             ProductionQuote.id.in_(active_quote_ids),
             ProductionQuote.valor_total.isnot(None)
         )
@@ -609,6 +628,7 @@ async def get_dashboard_kpis(
             func.sum(ProductionPayment.monto).label("total_abonado"),
         )
         .outerjoin(ProductionPayment)
+        .filter(ProductionQuote.company_id == company_id)
         .group_by(ProductionQuote.id)
         .all()
     )
@@ -849,8 +869,9 @@ async def get_dashboard_kpis(
 
 
 
-UPLOAD_DIR = Path(Config.UPLOAD_DIR) / "production"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+from utils.file_storage import FileStorageService, sanitize_filename
+
+file_storage = FileStorageService(namespace="production")
 
 STATUS_CHOICES = {status.value for status in ProductionStatusEnum}
 
@@ -1587,8 +1608,8 @@ def parse_stock_planning_excel(content: bytes, filename: str) -> dict:
 
 
 def _safe_filename(name: str) -> str:
-    name = re.sub(r"[^\w\-.]", "_", name)
-    return name[:120]
+    safe = sanitize_filename(name)
+    return safe[:120]
 
 
 def product_to_dict(product: ProductionProduct) -> dict:
@@ -1706,6 +1727,7 @@ async def upload_quotes(
     """
     Carga múltiples cotizaciones en Excel. Extrae los productos y registra la información en MySQL.
     """
+    company_id = _get_company_id(current_user)
     if not files:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Debe adjuntar al menos un archivo Excel (.xls o .xlsx)."
@@ -1729,12 +1751,14 @@ async def upload_quotes(
 
         safe_name = _safe_filename(upload.filename or f"cotizacion_{parsed['numero_cotizacion']}.xlsx")
         timestamped_name = f"{int(now.timestamp())}_{safe_name}"
-        file_path = UPLOAD_DIR / timestamped_name
-        file_path.write_bytes(content)
+        file_path = file_storage.save_bytes(company_id, timestamped_name, content)
 
         quote = (
             db.query(ProductionQuote)
-            .filter(ProductionQuote.numero_cotizacion == parsed["numero_cotizacion"])
+            .filter(
+                ProductionQuote.company_id == company_id,
+                ProductionQuote.numero_cotizacion == parsed["numero_cotizacion"]
+            )
             .one_or_none()
         )
 
@@ -1742,6 +1766,7 @@ async def upload_quotes(
             quote = ProductionQuote(
                 numero_cotizacion=parsed["numero_cotizacion"],
                 fecha_ingreso=now,
+                company_id=company_id,
             )
             db.add(quote)
             db.flush()
@@ -1749,6 +1774,7 @@ async def upload_quotes(
             quote.productos.clear()
             quote.pagos.clear()
             quote.fecha_ingreso = now
+            quote.company_id = company_id
 
         quote.cliente = parsed.get("cliente")
         quote.contacto = parsed.get("contacto")
@@ -1764,6 +1790,7 @@ async def upload_quotes(
                 cantidad=product_data.get("cantidad"),
                 valor_subtotal=product_data.get("valor_subtotal"),
                 estatus=ProductionStatusEnum.EN_COLA,
+                company_id=company_id,
             )
             quote.productos.append(product)
 
@@ -1865,11 +1892,15 @@ async def confirm_stock_planning(
     Crea una cotización de tipo 'stock' con sus productos y plan diario.
     """
     parsed = request.parsed_data
+    company_id = _get_company_id(current_user)
 
     # Verificar si ya existe un pedido con este número
     existing_quote = (
         db.query(ProductionQuote)
-        .filter(ProductionQuote.numero_pedido_stock == parsed.numero_pedido)
+        .filter(
+            ProductionQuote.company_id == company_id,
+            ProductionQuote.numero_pedido_stock == parsed.numero_pedido
+        )
         .one_or_none()
     )
 
@@ -1886,10 +1917,12 @@ async def confirm_stock_planning(
             tipo_produccion=ProductionTypeEnum.STOCK,
             numero_pedido_stock=parsed.numero_pedido,
             fecha_ingreso=datetime.utcnow(),
+            company_id=company_id,
         )
         db.add(quote)
 
     # Actualizar campos de la cotización
+    quote.company_id = company_id
     quote.bodega = request.bodega
     quote.responsable = parsed.responsable
     quote.fecha_inicio_periodo = parsed.fecha_inicio
@@ -1932,6 +1965,7 @@ async def confirm_stock_planning(
             estatus=ProductionStatusEnum.EN_PRODUCCION,  # Stock inicia en producción
             notas_estatus="\n".join(additional_notes) if additional_notes else None,
             fecha_entrega=last_plan_date,
+            company_id=company_id,
         )
         quote.productos.append(product)
         db.flush()  # Para obtener el ID del producto
@@ -1960,6 +1994,7 @@ async def confirm_stock_planning(
                 cantidad_sugerida=None,  # Podríamos agregar esto si el Excel lo trae
                 is_manually_edited=True,  # Viene del Excel, se considera manual
                 completado=False,
+                company_id=company_id,
             )
             db.add(daily_plan)
             total_planes_creados += 1
@@ -1985,9 +2020,11 @@ async def list_all_items(
     """
     Devuelve TODAS las líneas de producción, activas e históricas.
     """
+    company_id = _get_company_id(current_user)
     products = (
         db.query(ProductionProduct)
         .join(ProductionQuote)
+        .filter(ProductionProduct.company_id == company_id)
         .order_by(ProductionQuote.fecha_ingreso.desc(), ProductionProduct.id.desc())
         .all()
     )
@@ -2008,9 +2045,11 @@ async def list_active_items(
     """
     Devuelve solo las líneas de producción ACTIVAS (no entregadas).
     """
+    company_id = _get_company_id(current_user)
     products = (
         db.query(ProductionProduct)
         .join(ProductionQuote)
+        .filter(ProductionProduct.company_id == company_id)
         .order_by(ProductionQuote.fecha_ingreso.desc(), ProductionProduct.id.desc())
         .all()
     )
@@ -2035,10 +2074,14 @@ async def list_archive_items(
     """
     Devuelve solo las líneas de producción HISTÓRICAS (entregadas).
     """
+    company_id = _get_company_id(current_user)
     products = (
         db.query(ProductionProduct)
         .join(ProductionQuote)
-        .filter(ProductionProduct.estatus == ProductionStatusEnum.ENTREGADO)
+        .filter(
+            ProductionProduct.company_id == company_id,
+            ProductionProduct.estatus == ProductionStatusEnum.ENTREGADO
+        )
         .order_by(ProductionQuote.fecha_ingreso.desc(), ProductionProduct.id.desc())
         .all()
     )
@@ -2060,7 +2103,11 @@ async def update_item(
     """
     Actualiza campos operativos de un ítem de producción.
     """
-    product = db.query(ProductionProduct).filter(ProductionProduct.id == product_id).one_or_none()
+    company_id = _get_company_id(current_user)
+    product = db.query(ProductionProduct).filter(
+        ProductionProduct.id == product_id,
+        ProductionProduct.company_id == company_id
+    ).one_or_none()
     if product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado.")
 
@@ -2107,6 +2154,7 @@ async def update_item(
         existing_manual_plan = (
             db.query(ProductionDailyPlan)
             .filter(
+                ProductionDailyPlan.company_id == company_id,
                 ProductionDailyPlan.producto_id == product_id,
                 ProductionDailyPlan.is_manually_edited == True
             )
@@ -2120,6 +2168,7 @@ async def update_item(
         else:
             # Solo limpiar planes automáticos (no manuales) si no hay plan manual
             db.query(ProductionDailyPlan).filter(
+                ProductionDailyPlan.company_id == company_id,
                 ProductionDailyPlan.producto_id == product_id,
                 ProductionDailyPlan.is_manually_edited == False
             ).delete()
@@ -2132,6 +2181,7 @@ async def update_item(
                 monto=pago_payload.monto,
                 fecha_pago=pago_payload.fecha_pago,
                 descripcion=pago_payload.descripcion,
+                company_id=company_id,
             )
         )
 
@@ -2148,10 +2198,14 @@ async def get_daily_production_plan(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DailyProductionPlanResponse:
+    company_id = _get_company_id(current_user)
     product = (
         db.query(ProductionProduct)
         .options(joinedload(ProductionProduct.plan_diario))
-        .filter(ProductionProduct.id == item_id)
+        .filter(
+            ProductionProduct.id == item_id,
+            ProductionProduct.company_id == company_id
+        )
         .first()
     )
     if product is None:
@@ -2180,10 +2234,14 @@ async def upsert_daily_production_plan(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DailyProductionPlanResponse:
+    company_id = _get_company_id(current_user)
     product = (
         db.query(ProductionProduct)
         .options(joinedload(ProductionProduct.plan_diario))
-        .filter(ProductionProduct.id == item_id)
+        .filter(
+            ProductionProduct.id == item_id,
+            ProductionProduct.company_id == company_id
+        )
         .first()
     )
     if product is None:
@@ -2275,6 +2333,7 @@ async def upsert_daily_production_plan(
                     unidades=unidades_value,
                     notas=entry.notas,
                     is_manually_edited=True,  # Marcar como editado manualmente
+                    company_id=company_id,
                 )
             )
 
@@ -2282,7 +2341,10 @@ async def upsert_daily_production_plan(
 
     refreshed_entries = (
         db.query(ProductionDailyPlan)
-        .filter(ProductionDailyPlan.producto_id == item_id)
+        .filter(
+            ProductionDailyPlan.producto_id == item_id,
+            ProductionDailyPlan.company_id == company_id
+        )
         .order_by(ProductionDailyPlan.fecha)
         .all()
     )
@@ -2304,6 +2366,7 @@ async def get_dashboard_schedule(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DailyScheduleResponse:
+    company_id = _get_company_id(current_user)
     today = date.today()
     max_future = today + timedelta(days=21)
     history_window_days = 31
@@ -2315,6 +2378,7 @@ async def get_dashboard_schedule(
         db.query(ProductionProduct)
         .options(joinedload(ProductionProduct.cotizacion))
         .filter(
+            ProductionProduct.company_id == company_id,
             ProductionProduct.estatus != ProductionStatusEnum.ENTREGADO,
             ProductionProduct.estatus != ProductionStatusEnum.EN_BODEGA
         )
@@ -2330,7 +2394,10 @@ async def get_dashboard_schedule(
     if active_items:
         plan_entries = (
             db.query(ProductionDailyPlan)
-            .filter(ProductionDailyPlan.producto_id.in_([item.id for item in active_items]))
+            .filter(
+                ProductionDailyPlan.company_id == company_id,
+                ProductionDailyPlan.producto_id.in_([item.id for item in active_items])
+            )
             .all()
         )
         for plan_entry in plan_entries:
@@ -2511,7 +2578,11 @@ async def delete_quote(
     """
     Elimina por completo una cotización (y sus productos/pagos asociados).
     """
-    quote = db.query(ProductionQuote).filter(ProductionQuote.id == quote_id).one_or_none()
+    company_id = _get_company_id(current_user)
+    quote = db.query(ProductionQuote).filter(
+        ProductionQuote.id == quote_id,
+        ProductionQuote.company_id == company_id
+    ).one_or_none()
 
     if quote is None:
         return {

@@ -15,6 +15,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from auth.dependencies import get_current_user, require_permission
+from auth.tenant_context import get_current_tenant
 from database.connection import get_db
 from models.balance import BalanceData, RawBalanceData, BalanceConfig
 from models.user import User
@@ -27,6 +28,17 @@ from services.balance_processor import (
 )
 
 router = APIRouter(prefix="/api/balance", tags=["Balance General"])
+
+
+def _get_company_id(current_user: User) -> int:
+    tenant_id = get_current_tenant()
+    company_id = tenant_id or getattr(current_user, "company_id", None)
+    if not company_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Usuario sin empresa asignada"
+        )
+    return int(company_id)
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +178,7 @@ def upload_balance_data(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    company_id = current_user.company_id or 1
+    company_id = _get_company_id(current_user)
 
     if payload.replace_existing:
         db.query(BalanceData).filter(
@@ -228,7 +240,7 @@ def get_balance_data(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    company_id = current_user.company_id or 1
+    company_id = _get_company_id(current_user)
 
     rows: List[BalanceData] = (
         db.query(BalanceData)
@@ -282,7 +294,7 @@ def get_balance_ratios(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    company_id = current_user.company_id or 1
+    company_id = _get_company_id(current_user)
 
     rows: List[BalanceData] = (
         db.query(BalanceData)
@@ -333,7 +345,7 @@ def get_balance_trends(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    company_id = current_user.company_id or 1
+    company_id = _get_company_id(current_user)
 
     points = aggregate_balance_trends(
         db=db,
@@ -353,7 +365,7 @@ def get_balance_summary(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    company_id = current_user.company_id or 1
+    company_id = _get_company_id(current_user)
 
     record_count = (
         db.query(func.count(BalanceData.id))
@@ -398,7 +410,7 @@ def get_balance_years(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    company_id = current_user.company_id or 1
+    company_id = _get_company_id(current_user)
 
     results = (
         db.query(func.distinct(BalanceData.period_year))
@@ -425,7 +437,7 @@ def save_balance_config(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    company_id = current_user.company_id or 1
+    company_id = _get_company_id(current_user)
 
     config = (
         db.query(BalanceConfig)
@@ -454,7 +466,7 @@ def delete_balance_data(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    company_id = current_user.company_id or 1
+    company_id = _get_company_id(current_user)
 
     deleted = (
         db.query(BalanceData)

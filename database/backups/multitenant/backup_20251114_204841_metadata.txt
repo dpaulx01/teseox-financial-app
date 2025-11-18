@@ -1,0 +1,49 @@
+BACKUP METADATA
+===============
+Fecha: Fri Nov 14 20:48:45 -05 2025
+Archivo: backup_pre_multitenant_20251114_204841.sql
+Tamaño original: 676K
+Tamaño comprimido: 116K
+Base de datos: artyco_financial_rbac
+Host: 127.0.0.1:3307
+Usuario: artyco_user
+
+Propósito: Backup pre-migración multitenant (Fase 0)
+
+Tablas incluidas:
+account_transactions
+audit_logs
+balance_config
+balance_data
+breakeven_data
+chart_of_accounts
+companies
+cotizaciones
+dashboard_configs
+data_audit_log
+file_uploads
+financial_data
+financial_scenarios
+pagos
+permissions
+plan_diario_produccion
+production_combined_data
+production_config
+production_data
+productos
+raw_account_data
+raw_balance_data
+role_permissions
+roles
+sales_alerts
+sales_kpis_cache
+sales_saved_filters
+sales_transactions
+user_configurations
+user_permissions_view
+user_roles
+user_sessions
+users
+v_financial_summary
+v_production_summary
+v_sales_summary

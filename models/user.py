@@ -25,7 +25,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     first_name = Column(String(100))
     last_name = Column(String(100))
-    company_id = Column(Integer, default=1, nullable=True, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id', ondelete='RESTRICT'), nullable=False, default=1, index=True)
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.current_timestamp())
@@ -43,6 +43,7 @@ class User(Base):
     sessions = relationship('UserSession', back_populates='user', cascade='all, delete-orphan', lazy='dynamic')
     audit_logs = relationship('AuditLog', back_populates='user', lazy='dynamic')
     financial_scenarios = relationship('FinancialScenario', back_populates='owner', cascade='all, delete-orphan', lazy='dynamic')
+    company = relationship('Company', foreign_keys=[company_id], back_populates='users')
     
     def has_permission(self, resource: str, action: str) -> bool:
         """Check if user has specific permission"""

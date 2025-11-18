@@ -4,12 +4,16 @@ Authentication routes
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel, EmailStr
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
+import re
+import secrets
 
 from database.connection import get_db
-from models import User, UserSession, AuditLog
+from models import User, UserSession, AuditLog, Company
 from auth.jwt_handler import JWTHandler
 from auth.password import PasswordHandler
 from auth.dependencies import get_current_user
@@ -27,6 +31,9 @@ class RegisterRequest(BaseModel):
     password: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    company_id: Optional[int] = None
+    company_name: Optional[str] = None
+    industry: Optional[str] = None
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -41,6 +48,24 @@ class RefreshRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+
+def _slugify_company_name(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug or f"company-{secrets.token_hex(4)}"
+
+
+def _generate_unique_slug(_: Session, base_name: str) -> str:
+    """
+    Generate a unique slug for a company name.
+    Uses random suffix to minimize collision probability.
+    Relies on UNIQUE constraint in DB for final validation.
+    """
+    base_slug = _slugify_company_name(base_name)
+    # Add random suffix to reduce collision probability
+    # DB UNIQUE constraint will catch any remaining collisions
+    random_suffix = secrets.token_hex(3)  # 6 hex chars
+    return f"{base_slug}-{random_suffix}"
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
@@ -78,15 +103,35 @@ async def login(
             detail="User account is disabled"
         )
     
+    if not user.company_id or not user.company:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is not associated with a company"
+        )
+    
+    if not user.company.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Company is disabled"
+        )
+    
+    if not user.company.is_subscription_active():
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Company subscription expired"
+        )
+    
     # Get user permissions
     permissions = [f"{p[0]}:{p[1]}" for p in user.get_permissions()]
+    company_id = user.company_id
     
     # Create tokens
     access_token = JWTHandler.create_access_token(
         user_id=user.id,
         username=user.username,
         email=user.email,
-        permissions=permissions
+        permissions=permissions,
+        company_id=company_id
     )
     
     refresh_token = JWTHandler.create_refresh_token(user.id)
@@ -123,6 +168,8 @@ async def login(
         expires_in=3600 * 24,  # 24 hours in seconds
         user={
             "id": user.id,
+            "company_id": company_id,
+            "company_name": user.company.name if user.company else None,
             "username": user.username,
             "email": user.email,
             "first_name": user.first_name,
@@ -153,7 +200,87 @@ async def register(
             detail=detail
         )
     
-    # Create new user
+    # Determine company assignment or creation
+    company: Optional[Company] = None
+    created_company = False
+
+    if request.company_id:
+        company = db.query(Company).filter(Company.id == request.company_id).first()
+        if not company:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Company not found"
+            )
+    elif request.company_name:
+        # Try up to 3 times to create company with unique slug
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                slug = _generate_unique_slug(db, request.company_name)
+                trial_expires = datetime.utcnow() + timedelta(days=30)
+                company = Company(
+                    name=request.company_name.strip(),
+                    slug=slug,
+                    industry=request.industry,
+                    subscription_tier="trial",
+                    subscription_expires_at=trial_expires,
+                    is_active=True,
+                )
+                db.add(company)
+                db.flush()
+                created_company = True
+                break  # Success
+            except IntegrityError as e:
+                db.rollback()
+                if attempt == max_retries - 1:
+                    # Last attempt failed
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Could not generate unique company slug. Please try a different company name."
+                    )
+                # Retry with new random suffix
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="company_id or company_name is required to register"
+        )
+
+    if not company.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Company is disabled"
+        )
+
+    if not company.is_subscription_active():
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Company subscription expired"
+        )
+
+    # Enforce max users per company with pessimistic lock to prevent race conditions
+    # Lock the company row to ensure atomic user count check + insert
+    company_locked = db.query(Company).filter(
+        Company.id == company.id
+    ).with_for_update().first()
+
+    if not company_locked:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Company not found"
+        )
+
+    # Count users while holding the lock
+    current_user_count = db.query(func.count(User.id)).filter(
+        User.company_id == company.id
+    ).scalar()
+
+    if company_locked.max_users and current_user_count >= company_locked.max_users:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Company user limit reached ({company_locked.max_users} users max)"
+        )
+
+    # Create new user (still holding lock, guarantees atomicity)
     hashed_password = PasswordHandler.hash_password(request.password)
     user = User(
         username=request.username,
@@ -161,7 +288,8 @@ async def register(
         password_hash=hashed_password,
         first_name=request.first_name,
         last_name=request.last_name,
-        is_active=True
+        is_active=True,
+        company_id=company.id
     )
     
     db.add(user)
@@ -172,6 +300,9 @@ async def register(
     default_role = db.query(Role).filter(Role.name == "viewer").first()
     if default_role:
         user.roles.append(default_role)
+
+    if created_company or company.created_by is None:
+        company.created_by = user.id
     
     # Log registration
     AuditLog.log_action(
@@ -192,7 +323,8 @@ async def register(
         user_id=user.id,
         username=user.username,
         email=user.email,
-        permissions=permissions
+        permissions=permissions,
+        company_id=user.company_id
     )
     
     refresh_token = JWTHandler.create_refresh_token(user.id)
@@ -208,6 +340,7 @@ async def register(
     )
     db.add(session)
     db.commit()
+    db.refresh(user)
     
     return TokenResponse(
         access_token=access_token,
@@ -215,6 +348,8 @@ async def register(
         expires_in=3600 * 24,
         user={
             "id": user.id,
+            "company_id": user.company_id,
+            "company_name": user.company.name if user.company else None,
             "username": user.username,
             "email": user.email,
             "first_name": user.first_name,
@@ -249,14 +384,22 @@ async def refresh_token(
             detail="User not found or inactive"
         )
     
+    if not user.company or not user.company.is_subscription_active():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Company inactive or subscription expired"
+        )
+    
     # Create new tokens
     permissions = [f"{p[0]}:{p[1]}" for p in user.get_permissions()]
+    company_id = user.company_id
     
     access_token = JWTHandler.create_access_token(
         user_id=user.id,
         username=user.username,
         email=user.email,
-        permissions=permissions
+        permissions=permissions,
+        company_id=company_id
     )
     
     new_refresh_token = JWTHandler.create_refresh_token(user.id)
@@ -279,6 +422,8 @@ async def refresh_token(
         expires_in=3600 * 24,
         user={
             "id": user.id,
+            "company_id": company_id,
+            "company_name": user.company.name if user.company else None,
             "username": user.username,
             "email": user.email,
             "first_name": user.first_name,

@@ -15,8 +15,17 @@ from database.connection import get_db
 from models.user import User
 from models.sales import SalesTransaction, SalesKPICache, SalesAlert, SalesSavedFilter
 from auth.dependencies import get_current_user, require_permission
+from auth.tenant_context import get_current_tenant
 
 router = APIRouter(prefix='/api/sales-bi', tags=['Sales BI'])
+
+
+def _get_company_id(current_user: User) -> int:
+    tenant_id = get_current_tenant()
+    company_id = tenant_id or getattr(current_user, "company_id", None)
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Usuario sin empresa asignada")
+    return int(company_id)
 
 
 def _resolve_years(year: Optional[int], years: Optional[List[int]]) -> List[int]:
@@ -83,6 +92,7 @@ async def get_dashboard_summary(
     """
     Resumen ejecutivo del dashboard con KPIs principales
     """
+    company_id = _get_company_id(current_user)
     # Construir query con filtros dinámicos
     query = db.query(
         func.sum(SalesTransaction.venta_neta).label('venta_neta_total'),
@@ -92,7 +102,7 @@ async def get_dashboard_summary(
         func.count(func.distinct(SalesTransaction.numero_factura)).label('num_facturas'),
         func.count(func.distinct(SalesTransaction.razon_social)).label('num_clientes'),
         func.sum(SalesTransaction.m2).label('metros_cuadrados')
-    ).filter(SalesTransaction.company_id == current_user.company_id)
+    ).filter(SalesTransaction.company_id == company_id)
 
     # Aplicar filtros dinámicos
     query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
@@ -152,6 +162,7 @@ async def get_commercial_analysis(
     """
     Análisis comercial con agrupación dinámica
     """
+    company_id = _get_company_id(current_user)
     # Mapeo de campos para group_by
     group_fields = {
         'categoria': SalesTransaction.categoria_producto,
@@ -169,7 +180,7 @@ async def get_commercial_analysis(
         func.sum(SalesTransaction.descuento).label('descuento'),
         func.count(func.distinct(SalesTransaction.numero_factura)).label('num_facturas'),
         func.sum(SalesTransaction.m2).label('metros_cuadrados')
-    ).filter(SalesTransaction.company_id == current_user.company_id)
+    ).filter(SalesTransaction.company_id == company_id)
 
     # Aplicar filtros dinámicos (solo si no se está agrupando por esa dimensión)
     query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
@@ -229,6 +240,7 @@ async def get_financial_analysis(
     """
     Análisis financiero con agrupación dinámica
     """
+    company_id = _get_company_id(current_user)
     group_fields = {
         'categoria': SalesTransaction.categoria_producto,
         'canal': SalesTransaction.canal_comercial,
@@ -245,7 +257,7 @@ async def get_financial_analysis(
         func.sum(SalesTransaction.costo_venta).label('costo_venta'),
         func.sum(SalesTransaction.rentabilidad).label('rentabilidad'),
         func.count(SalesTransaction.id).label('num_transacciones')
-    ).filter(SalesTransaction.company_id == current_user.company_id)
+    ).filter(SalesTransaction.company_id == company_id)
 
     # Aplicar filtros dinámicos (solo si no se está agrupando por esa dimensión)
     query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
@@ -303,6 +315,7 @@ async def get_monthly_trends(
     """
     Tendencias mensuales de ventas y rentabilidad
     """
+    company_id = _get_company_id(current_user)
     query = db.query(
         SalesTransaction.year,
         SalesTransaction.month,
@@ -310,7 +323,7 @@ async def get_monthly_trends(
         func.sum(SalesTransaction.rentabilidad).label('rentabilidad'),
         func.sum(SalesTransaction.costo_venta).label('costo_venta'),
         func.count(func.distinct(SalesTransaction.numero_factura)).label('num_facturas')
-    ).filter(SalesTransaction.company_id == current_user.company_id)
+    ).filter(SalesTransaction.company_id == company_id)
 
     query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
     if categoria:
@@ -361,7 +374,7 @@ async def get_filter_options(
     """
     Obtener todas las opciones disponibles para filtros dinámicos
     """
-    company_id = current_user.company_id
+    company_id = _get_company_id(current_user)
 
     # Años disponibles
     years = db.query(SalesTransaction.year).filter(
@@ -419,7 +432,7 @@ async def get_dynamic_filter_options(
     Obtener opciones de filtros dinámicos basadas en los filtros ya aplicados (cascada)
     Cada filtro devuelve solo las opciones disponibles según los filtros previos
     """
-    company_id = current_user.company_id
+    company_id = _get_company_id(current_user)
     resolved_years = _resolve_years(year, years)
     resolved_months = _resolve_months(month, months)
 
@@ -577,8 +590,9 @@ async def upload_sales_csv(
     """
     Cargar datos de ventas desde archivo CSV
     """
+    company_id = _get_company_id(current_user)
     print("--- Iniciando carga de CSV de ventas ---")
-    print(f"Usuario: {current_user.email}, Empresa: {current_user.company_id}")
+    print(f"Usuario: {current_user.email}, Empresa: {company_id}")
     print(f"Archivo: {file.filename}, Content-Type: {file.content_type}")
 
     if not file.filename.endswith('.csv'):
@@ -590,7 +604,7 @@ async def upload_sales_csv(
         if overwrite:
             print("Modo sobreescritura activo: eliminando registros previos de la empresa...")
             deleted_records = db.query(SalesTransaction).filter(
-                SalesTransaction.company_id == current_user.company_id
+                SalesTransaction.company_id == company_id
             ).delete(synchronize_session=False)
             db.commit()
             print(f"Registros eliminados: {deleted_records}")
@@ -622,7 +636,7 @@ async def upload_sales_csv(
                     SalesTransaction.cantidad_facturada,
                     SalesTransaction.venta_neta
                 ).filter(
-                    SalesTransaction.company_id == current_user.company_id,
+                    SalesTransaction.company_id == company_id,
                     SalesTransaction.numero_factura.in_(invoice_numbers)
                 ).all()
                 existing_keys = {
@@ -705,7 +719,7 @@ async def upload_sales_csv(
                     costo_venta=parse_decimal(row.get('Costo Venta $')),
                     costo_unitario=parse_decimal(row.get('Costo Uni.$')),
                     rentabilidad=parse_decimal(row.get('Rentabilidad $')),
-                    company_id=current_user.company_id
+                    company_id=company_id
                 )
                 transactions.append(transaction)
 
@@ -761,8 +775,9 @@ async def clear_sales_data(
     """
     Limpiar datos de ventas (con opción de filtrar por año)
     """
+    company_id = _get_company_id(current_user)
     query = db.query(SalesTransaction).filter(
-        SalesTransaction.company_id == current_user.company_id
+        SalesTransaction.company_id == company_id
     )
 
     if year:
@@ -792,8 +807,9 @@ async def get_active_alerts(
     """
     Obtener alertas activas
     """
+    company_id = _get_company_id(current_user)
     alerts = db.query(SalesAlert).filter(
-        SalesAlert.company_id == current_user.company_id,
+        SalesAlert.company_id == company_id,
         SalesAlert.status == 'active'
     ).order_by(
         case(
@@ -825,9 +841,10 @@ async def get_saved_filters(
     """
     Obtener filtros guardados del usuario
     """
+    company_id = _get_company_id(current_user)
     query = db.query(SalesSavedFilter).filter(
         SalesSavedFilter.user_id == current_user.id,
-        SalesSavedFilter.company_id == current_user.company_id
+        SalesSavedFilter.company_id == company_id
     )
 
     if filter_type:
@@ -855,9 +872,10 @@ async def save_filter(
     """
     Guardar configuración de filtro
     """
+    company_id = _get_company_id(current_user)
     saved_filter = SalesSavedFilter(
         user_id=current_user.id,
-        company_id=current_user.company_id,
+        company_id=company_id,
         filter_name=filter_name,
         filter_type=filter_type,
         filter_config=filter_config,
@@ -896,6 +914,7 @@ async def get_kpis_gerencial(
     """
     KPIs gerenciales enfocados en m² y eficiencia
     """
+    company_id = _get_company_id(current_user)
     query = db.query(
         func.sum(SalesTransaction.m2).label('total_m2'),
         func.sum(SalesTransaction.venta_neta).label('venta_neta_total'),
@@ -903,7 +922,7 @@ async def get_kpis_gerencial(
         func.sum(SalesTransaction.costo_venta).label('costo_venta_total'),
         func.sum(SalesTransaction.descuento).label('descuento_total'),
         func.sum(SalesTransaction.venta_bruta).label('venta_bruta_total')
-    ).filter(SalesTransaction.company_id == current_user.company_id)
+    ).filter(SalesTransaction.company_id == company_id)
 
     # Aplicar filtros
     query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
@@ -967,6 +986,7 @@ async def get_pareto_analysis(
     """
     Análisis Pareto 80/20 por ventas, volumen o rentabilidad
     """
+    company_id = _get_company_id(current_user)
     dimension_fields = {
         'producto': SalesTransaction.producto,
         'cliente': SalesTransaction.razon_social,
@@ -985,7 +1005,7 @@ async def get_pareto_analysis(
     query = db.query(
         dimension_field.label('name'),
         metric_field
-    ).filter(SalesTransaction.company_id == current_user.company_id)
+    ).filter(SalesTransaction.company_id == company_id)
 
     # Aplicar filtros
     query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)
@@ -1046,6 +1066,7 @@ async def get_evolution_analysis(
     """
     Evolución temporal de precio/m², descuento% o margen
     """
+    company_id = _get_company_id(current_user)
     # Campos base
     if group_by_period == 'year':
         period_field = SalesTransaction.year
@@ -1066,7 +1087,7 @@ async def get_evolution_analysis(
         func.sum(SalesTransaction.descuento).label('descuento'),
         func.sum(SalesTransaction.venta_bruta).label('venta_bruta'),
         func.sum(SalesTransaction.costo_venta).label('costo_venta')
-    ).filter(SalesTransaction.company_id == current_user.company_id)
+    ).filter(SalesTransaction.company_id == company_id)
 
     # Filtros
     month_arg = month if group_by_period != 'year' else None
@@ -1137,6 +1158,7 @@ async def get_ranking_analysis(
     """
     Rankings horizontales por diferentes dimensiones y métricas
     """
+    company_id = _get_company_id(current_user)
     dimension_fields = {
         'categoria': SalesTransaction.categoria_producto,
         'canal': SalesTransaction.canal_comercial,
@@ -1153,7 +1175,7 @@ async def get_ranking_analysis(
         func.sum(SalesTransaction.m2).label('total_m2'),
         func.sum(SalesTransaction.venta_neta).label('venta_neta'),
         func.sum(SalesTransaction.rentabilidad).label('rentabilidad')
-    ).filter(SalesTransaction.company_id == current_user.company_id)
+    ).filter(SalesTransaction.company_id == company_id)
 
     # Filtros
     query = _apply_temporal_filters(query, year=year, years=years, month=month, months=months)

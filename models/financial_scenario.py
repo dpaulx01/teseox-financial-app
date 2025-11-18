@@ -2,8 +2,13 @@
 Financial Scenario model for Balance Interno module
 """
 from sqlalchemy import Column, Integer, String, Text, JSON, TIMESTAMP, ForeignKey, Boolean, func
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, relationship
 from database.connection import Base
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from models.company import Company
+    from models.user import User
 
 class FinancialScenario(Base):
     __tablename__ = "financial_scenarios"
@@ -22,6 +27,7 @@ class FinancialScenario(Base):
     status = Column(String(50), default="draft")  # draft, active, archived
     
     # RBAC Integration
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False, default=1, index=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     is_shared = Column(Boolean, default=False)  # Compartir con otros usuarios
     shared_with = Column(JSON)  # Lista de user_ids con acceso
@@ -32,7 +38,8 @@ class FinancialScenario(Base):
     last_accessed = Column(TIMESTAMP)
     
     # Relationships
-    owner = relationship("User", back_populates="financial_scenarios")
+    owner: Mapped["User"] = relationship("User", back_populates="financial_scenarios")
+    company: Mapped["Company"] = relationship("Company", back_populates="financial_scenarios")
     
     def has_access(self, user_id: int) -> bool:
         """Verificar si un usuario tiene acceso al escenario"""

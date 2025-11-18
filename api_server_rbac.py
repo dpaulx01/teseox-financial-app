@@ -16,11 +16,13 @@ import uvicorn
 # Configuración
 from config import Config
 from database.connection import init_db
+from auth.tenant_context import TenantContextMiddleware
 
 # Routes RBAC
 from routes.auth import router as auth_router
 from routes.users import router as users_router
 from routes.admin import router as admin_router
+from routes.superadmin import router as superadmin_router
 from routes.financial_scenarios import router as scenarios_router
 from routes.financial_data import router as financial_router
 from routes.analysis_config import router as analysis_router
@@ -47,6 +49,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Ensure the tenant context is established per request
+app.add_middleware(TenantContextMiddleware)
+
 # Security
 security = HTTPBearer()
 
@@ -71,6 +76,7 @@ async def startup_event():
 app.include_router(auth_router, prefix="/api", tags=["Authentication"])
 app.include_router(users_router, prefix="/api", tags=["Users"])
 app.include_router(admin_router, prefix="/api", tags=["Admin"])
+app.include_router(superadmin_router, prefix="/api", tags=["Super Admin"])
 app.include_router(scenarios_router, tags=["Financial Scenarios"])
 app.include_router(financial_router, tags=["Financial Data"])
 app.include_router(analysis_router, tags=["Analysis Config"])

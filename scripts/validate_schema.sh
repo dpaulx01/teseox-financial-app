@@ -3,6 +3,7 @@
 # Ejecutar desde la raíz del proyecto: ./scripts/validate_schema.sh
 
 DB_HOST="${DB_HOST:-34.68.83.86}"
+DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-artycofinancial}"
 DB_PASS="${DB_PASS:-Artyco.2025}"
 DB_NAME="artyco_financial_rbac"
@@ -17,6 +18,7 @@ echo "========================================"
 echo "  VALIDACIÓN DE ESQUEMA"
 echo "========================================"
 echo "Host: $DB_HOST"
+echo "Port: $DB_PORT"
 echo "Database: $DB_NAME"
 echo ""
 
@@ -71,12 +73,12 @@ EXPECTED_PERMISSIONS=82
 
 # Get actual counts
 echo "Obteniendo métricas actuales..."
-ACTUAL_TABLES=$(MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='BASE TABLE';")
-ACTUAL_VIEWS=$(MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='VIEW';")
-ACTUAL_USERS=$(MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -N -e "SELECT COUNT(*) FROM users;")
-ACTUAL_ROLES=$(MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -N -e "SELECT COUNT(*) FROM roles;")
-ACTUAL_PERMISSIONS=$(MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -N -e "SELECT COUNT(*) FROM permissions;")
-ACTUAL_ROLE_PERMS=$(MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -N -e "SELECT COUNT(*) FROM role_permissions;")
+ACTUAL_TABLES=$(MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='BASE TABLE';")
+ACTUAL_VIEWS=$(MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='VIEW';")
+ACTUAL_USERS=$(MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -N -e "SELECT COUNT(*) FROM users;")
+ACTUAL_ROLES=$(MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -N -e "SELECT COUNT(*) FROM roles;")
+ACTUAL_PERMISSIONS=$(MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -N -e "SELECT COUNT(*) FROM permissions;")
+ACTUAL_ROLE_PERMS=$(MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -N -e "SELECT COUNT(*) FROM role_permissions;")
 
 echo ""
 echo "========================================"
@@ -126,7 +128,7 @@ echo "========================================"
 tmp_expected_tables=$(mktemp)
 tmp_actual_tables=$(mktemp)
 printf "%s\n" "$REQUIRED_TABLES" | sed '/^$/d' | sort > "$tmp_expected_tables"
-MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -N -e "
+MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -N -e "
 SELECT table_name FROM information_schema.tables
 WHERE table_schema='$DB_NAME' AND table_type='BASE TABLE'
 ORDER BY table_name;" > "$tmp_actual_tables"
@@ -151,7 +153,7 @@ echo "========================================"
 tmp_expected_views=$(mktemp)
 tmp_actual_views=$(mktemp)
 printf "%s\n" "$REQUIRED_VIEWS" | sed '/^$/d' | sort > "$tmp_expected_views"
-MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -N -e "
+MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -N -e "
 SELECT table_name FROM information_schema.tables
 WHERE table_schema='$DB_NAME' AND table_type='VIEW'
 ORDER BY table_name;" > "$tmp_actual_views"
@@ -174,7 +176,7 @@ echo "  VALIDACIÓN RBAC"
 echo "========================================"
 
 echo "Usuarios registrados:"
-MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -e "
+MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -e "
 SELECT
     id,
     username,
@@ -187,7 +189,7 @@ ORDER BY id;
 
 echo ""
 echo "Roles definidos:"
-MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -e "
+MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -e "
 SELECT
     r.id,
     r.name,
@@ -202,7 +204,7 @@ ORDER BY r.id;
 
 echo ""
 echo "Recursos con permisos:"
-MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -e "
+MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -e "
 SELECT
     resource,
     COUNT(*) as num_permisos,
@@ -218,7 +220,7 @@ echo "========================================"
 echo "  COMPLETITUD DE DATOS"
 echo "========================================"
 
-MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -e "
+MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME" -e "
 SELECT
     table_name,
     table_rows,

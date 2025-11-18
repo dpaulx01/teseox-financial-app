@@ -6,6 +6,10 @@
 -- - Agrega llaves foráneas hacia companies
 -- El script es idempotente y puede ejecutarse múltiples veces sin efectos secundarios.
 
+DROP PROCEDURE IF EXISTS add_fk_if_not_exists;
+DROP PROCEDURE IF EXISTS add_index_if_not_exists;
+DROP PROCEDURE IF EXISTS add_column_if_not_exists;
+
 DELIMITER $$
 
 CREATE PROCEDURE add_fk_if_not_exists(
@@ -67,17 +71,41 @@ BEGIN
     END IF;
 END$$
 
+CREATE PROCEDURE add_column_if_not_exists(
+    IN in_table VARCHAR(64),
+    IN in_column VARCHAR(64),
+    IN in_definition TEXT
+)
+BEGIN
+    DECLARE column_exists INT DEFAULT 0;
+
+    SELECT COUNT(*)
+      INTO column_exists
+      FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = in_table
+       AND COLUMN_NAME = in_column;
+
+    IF column_exists = 0 THEN
+        SET @ddl = CONCAT(
+            'ALTER TABLE `', in_table, '` ADD COLUMN `', in_column, '` ', in_definition
+        );
+        PREPARE stmt FROM @ddl;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END$$
+
 DELIMITER ;
 
 -- ---------------------------------------------------------------------------
 -- Extender tabla companies con campos SaaS claves
 -- ---------------------------------------------------------------------------
-ALTER TABLE `companies`
-    ADD COLUMN IF NOT EXISTS `slug` varchar(255) NULL AFTER `name`,
-    ADD COLUMN IF NOT EXISTS `is_active` tinyint(1) NOT NULL DEFAULT 1 AFTER `slug`,
-    ADD COLUMN IF NOT EXISTS `subscription_tier` varchar(50) NOT NULL DEFAULT 'trial' AFTER `is_active`,
-    ADD COLUMN IF NOT EXISTS `subscription_expires_at` datetime NULL AFTER `subscription_tier`,
-    ADD COLUMN IF NOT EXISTS `max_users` int NOT NULL DEFAULT 5 AFTER `subscription_expires_at`;
+CALL add_column_if_not_exists('companies', 'slug', 'varchar(255) NULL AFTER `name`');
+CALL add_column_if_not_exists('companies', 'is_active', 'tinyint(1) NOT NULL DEFAULT 1 AFTER `slug`');
+CALL add_column_if_not_exists('companies', 'subscription_tier', 'varchar(50) NOT NULL DEFAULT ''trial'' AFTER `is_active`');
+CALL add_column_if_not_exists('companies', 'subscription_expires_at', 'datetime NULL AFTER `subscription_tier`');
+CALL add_column_if_not_exists('companies', 'max_users', 'int NOT NULL DEFAULT 5 AFTER `subscription_expires_at`');
 
 UPDATE `companies`
    SET `slug` = IFNULL(`slug`, REPLACE(LOWER(`name`), ' ', '-'))
@@ -90,8 +118,7 @@ CALL add_index_if_not_exists('companies', 'idx_companies_subscription_tier', 0, 
 -- ---------------------------------------------------------------------------
 -- Tabla: cotizaciones
 -- ---------------------------------------------------------------------------
-ALTER TABLE `cotizaciones`
-    ADD COLUMN IF NOT EXISTS `company_id` int NULL AFTER `id`;
+CALL add_column_if_not_exists('cotizaciones', 'company_id', 'int NULL AFTER `id`');
 
 UPDATE `cotizaciones`
    SET `company_id` = COALESCE(`company_id`, 1);
@@ -115,8 +142,7 @@ CALL add_fk_if_not_exists(
 -- ---------------------------------------------------------------------------
 -- Tabla: productos
 -- ---------------------------------------------------------------------------
-ALTER TABLE `productos`
-    ADD COLUMN IF NOT EXISTS `company_id` int NULL AFTER `id`;
+CALL add_column_if_not_exists('productos', 'company_id', 'int NULL AFTER `id`');
 
 UPDATE `productos` p
 JOIN `cotizaciones` c ON c.id = p.cotizacion_id
@@ -140,8 +166,7 @@ CALL add_fk_if_not_exists(
 -- ---------------------------------------------------------------------------
 -- Tabla: plan_diario_produccion
 -- ---------------------------------------------------------------------------
-ALTER TABLE `plan_diario_produccion`
-    ADD COLUMN IF NOT EXISTS `company_id` int NULL AFTER `id`;
+CALL add_column_if_not_exists('plan_diario_produccion', 'company_id', 'int NULL AFTER `id`');
 
 UPDATE `plan_diario_produccion` p
 JOIN `productos` prod ON prod.id = p.producto_id
@@ -164,8 +189,7 @@ CALL add_fk_if_not_exists(
 -- ---------------------------------------------------------------------------
 -- Tabla: pagos
 -- ---------------------------------------------------------------------------
-ALTER TABLE `pagos`
-    ADD COLUMN IF NOT EXISTS `company_id` int NULL AFTER `cotizacion_id`;
+CALL add_column_if_not_exists('pagos', 'company_id', 'int NULL AFTER `cotizacion_id`');
 
 UPDATE `pagos` p
 JOIN `cotizaciones` c ON c.id = p.cotizacion_id
@@ -188,8 +212,7 @@ CALL add_fk_if_not_exists(
 -- ---------------------------------------------------------------------------
 -- Tabla: financial_scenarios
 -- ---------------------------------------------------------------------------
-ALTER TABLE `financial_scenarios`
-    ADD COLUMN IF NOT EXISTS `company_id` int NULL AFTER `id`;
+CALL add_column_if_not_exists('financial_scenarios', 'company_id', 'int NULL AFTER `id`');
 
 UPDATE `financial_scenarios`
    SET `company_id` = COALESCE(`company_id`, 1);
@@ -211,8 +234,7 @@ CALL add_fk_if_not_exists(
 -- ---------------------------------------------------------------------------
 -- Tabla: dashboard_configs
 -- ---------------------------------------------------------------------------
-ALTER TABLE `dashboard_configs`
-    ADD COLUMN IF NOT EXISTS `company_id` int NULL AFTER `id`;
+CALL add_column_if_not_exists('dashboard_configs', 'company_id', 'int NULL AFTER `id`');
 
 UPDATE `dashboard_configs` d
 LEFT JOIN `users` u ON u.id = d.user_id

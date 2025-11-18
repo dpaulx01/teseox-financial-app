@@ -6,7 +6,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime, date
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -25,6 +25,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 
 from database.connection import Base
+
+if TYPE_CHECKING:
+    from models.company import Company
 
 
 class ProductionStatusEnum(str, enum.Enum):
@@ -46,6 +49,13 @@ class ProductionQuote(Base):
     __tablename__ = "cotizaciones"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("companies.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        index=True,
+    )
     numero_cotizacion: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     tipo_produccion: Mapped[ProductionTypeEnum] = mapped_column(
         Enum(ProductionTypeEnum),
@@ -79,6 +89,7 @@ class ProductionQuote(Base):
         back_populates="cotizacion",
         cascade="all, delete-orphan",
     )
+    company: Mapped["Company"] = relationship("Company", back_populates="production_quotes")
 
     def __repr__(self) -> str:
         return f"<ProductionQuote numero_cotizacion={self.numero_cotizacion}>"
@@ -88,6 +99,13 @@ class ProductionProduct(Base):
     __tablename__ = "productos"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("companies.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        index=True,
+    )
     cotizacion_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("cotizaciones.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -109,6 +127,7 @@ class ProductionProduct(Base):
         back_populates="producto",
         cascade="all, delete-orphan",
     )
+    company: Mapped["Company"] = relationship("Company")
 
     def __repr__(self) -> str:
         return f"<ProductionProduct descripcion={self.descripcion[:20]!r}>"
@@ -121,6 +140,13 @@ class ProductionDailyPlan(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("companies.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        index=True,
+    )
     producto_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("productos.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -136,6 +162,7 @@ class ProductionDailyPlan(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     producto: Mapped[ProductionProduct] = relationship("ProductionProduct", back_populates="plan_diario")
+    company: Mapped["Company"] = relationship("Company")
 
     def __repr__(self) -> str:
         return f"<ProductionDailyPlan producto_id={self.producto_id} fecha={self.fecha}>"
@@ -145,6 +172,13 @@ class ProductionPayment(Base):
     __tablename__ = "pagos"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("companies.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        index=True,
+    )
     cotizacion_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("cotizaciones.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -154,6 +188,7 @@ class ProductionPayment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     cotizacion: Mapped[ProductionQuote] = relationship("ProductionQuote", back_populates="pagos")
+    company: Mapped["Company"] = relationship("Company")
 
     def __repr__(self) -> str:
         return f"<ProductionPayment monto={self.monto}>"
@@ -167,7 +202,13 @@ class ProductionMonthlyData(Base):
     __tablename__ = "production_data"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    company_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    company_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("companies.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        index=True,
+    )
     year: Mapped[Optional[int]] = mapped_column(Integer, index=True)
     month: Mapped[Optional[int]] = mapped_column(Integer)
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -179,6 +220,8 @@ class ProductionMonthlyData(Base):
     capacidad_instalada: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    company: Mapped["Company"] = relationship("Company")
 
     def __repr__(self) -> str:
         return f"<ProductionMonthlyData year={self.year or self.period_year} month={self.month or self.period_month}>"
@@ -195,13 +238,20 @@ class ProductionConfigModel(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    company_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1, index=True)
+    company_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("companies.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        index=True,
+    )
     year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     capacidad_maxima_mensual: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"), nullable=False)
     costo_fijo_produccion: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"), nullable=False)
     meta_precio_promedio: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"), nullable=False)
     meta_margen_minimo: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
     last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    company: Mapped["Company"] = relationship("Company")
 
     def __repr__(self) -> str:
         return f"<ProductionConfig company_id={self.company_id} year={self.year}>"
@@ -218,10 +268,17 @@ class ProductionCombinedData(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    company_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1, index=True)
+    company_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("companies.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        index=True,
+    )
     year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     data: Mapped[dict] = mapped_column(JSON, nullable=False)
     last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    company: Mapped["Company"] = relationship("Company")
 
     def __repr__(self) -> str:
         return f"<ProductionCombinedData company_id={self.company_id} year={self.year}>"

@@ -15,6 +15,7 @@ class JWTHandler:
         username: str,
         email: str,
         permissions: list = None,
+        company_id: Optional[int] = None,
         expires_delta: Optional[timedelta] = None
     ) -> str:
         """Create a new JWT access token"""
@@ -32,6 +33,8 @@ class JWTHandler:
             "iat": datetime.utcnow(),
             "type": "access"
         }
+        if company_id is not None:
+            payload["company_id"] = company_id
         
         return jwt.encode(
             payload,

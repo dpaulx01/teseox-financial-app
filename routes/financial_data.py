@@ -11,37 +11,17 @@ import re
 
 from database.connection import get_db
 from models.user import User
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import jwt
-import os
+from auth.dependencies import get_current_user
+from auth.tenant_context import get_current_tenant
 
-# Same JWT config as main API
-JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-super-secret-jwt-key-change-this-in-production')
-JWT_ALGORITHM = 'HS256'
-security = HTTPBearer()
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
-    """Same authentication logic as main API"""
-    from fastapi import HTTPException, status
-    
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
-    try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        user_id: int = payload.get("user_id")  # Cambio de "sub" a "user_id"
-        if user_id is None:
-            raise credentials_exception
-    except jwt.PyJWTError:
-        raise credentials_exception
-    
-    user = db.query(User).filter(User.id == user_id).first()
-    if user is None:
-        raise credentials_exception
-    return user
+def _resolve_company_id(current_user: User) -> int:
+    """Helper to resolve the tenant/company id for the current user."""
+    tenant_id = get_current_tenant()
+    company_id = tenant_id or getattr(current_user, "company_id", None)
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Usuario sin empresa asignada")
+    return int(company_id)
 
 router = APIRouter(prefix="/api/financial", tags=["Financial Data"])
 
@@ -60,7 +40,7 @@ async def upload_csv(
             if not csv.filename.endswith('.csv'):
                 raise HTTPException(status_code=400, detail="Error al cargar el archivo")
         
-        company_id = 1  # Como en el original
+        company_id = _resolve_company_id(current_user)
         
         # Leer contenido del archivo
         content = await csv.read()
@@ -378,7 +358,7 @@ async def get_financial_data(
     Obtener datos financieros con datos raw incluidos
     """
     try:
-        company_id = 1
+        company_id = _resolve_company_id(current_user)
 
         def getval(row, key, default=None):
             try:
@@ -532,7 +512,7 @@ async def save_production_data(
     Guardar datos de producción
     """
     try:
-        company_id = 1
+        company_id = _resolve_company_id(current_user)
         
         # Detectar columnas disponibles para soportar esquemas antiguos/nuevos
         columns = set()
@@ -592,7 +572,7 @@ async def get_production_data(
     Obtener datos de producción (basado en production_data_v1.php)
     """
     try:
-        company_id = 1
+        company_id = _resolve_company_id(current_user)
         
         # Obtener datos de producción
         prod_query = "SELECT * FROM production_data WHERE company_id = :company_id"
@@ -713,7 +693,7 @@ async def save_financial_data(
     Guardar datos financieros procesados en MySQL
     """
     try:
-        company_id = 1
+        company_id = _resolve_company_id(current_user)
         
         # Aquí se puede implementar lógica adicional para guardar
         # datos procesados si es necesario
@@ -750,7 +730,7 @@ async def clear_financial_data(
     Limpiar datos financieros de MySQL - todos o por año específico
     """
     try:
-        company_id = 1
+        company_id = _resolve_company_id(current_user)
         
         if year:
             # Limpiar datos de un año específico
@@ -840,7 +820,7 @@ async def get_available_years(
     Obtener años disponibles con estadísticas para selector multi-año
     """
     try:
-        company_id = 1
+        company_id = _resolve_company_id(current_user)
         
         inspector = inspect(db.bind)
         if not inspector.has_table("raw_account_data"):

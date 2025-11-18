@@ -11,8 +11,21 @@ from database.connection import get_db
 from models import User, Role, AuditLog
 from auth.dependencies import require_permission, require_superuser, get_current_user
 from auth.password import PasswordHandler
+from auth.tenant_context import get_current_tenant
 
 router = APIRouter(prefix="/users", tags=["User Management"])
+
+
+def _get_company_id(current_user: User) -> int:
+    """Get company_id from tenant context or current user"""
+    tenant_id = get_current_tenant()
+    company_id = tenant_id or getattr(current_user, "company_id", None)
+    if not company_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Usuario sin empresa asignada"
+        )
+    return int(company_id)
 
 # Pydantic models
 class UserCreate(BaseModel):
@@ -54,10 +67,13 @@ async def list_users(
     current_user: User = Depends(require_permission("users", "read")),
     db: Session = Depends(get_db)
 ):
-    """List all users (requires users:read permission)"""
-    
-    query = db.query(User)
-    
+    """List users from current company (requires users:read permission)"""
+
+    # Only list users from the same company (unless superuser)
+    company_id = _get_company_id(current_user)
+
+    query = db.query(User).filter(User.company_id == company_id)
+
     if search:
         query = query.filter(
             (User.username.contains(search)) |
@@ -65,7 +81,7 @@ async def list_users(
             (User.first_name.contains(search)) |
             (User.last_name.contains(search))
         )
-    
+
     users = query.offset(skip).limit(limit).all()
     
     return [
@@ -90,9 +106,14 @@ async def get_user(
     current_user: User = Depends(require_permission("users", "read")),
     db: Session = Depends(get_db)
 ):
-    """Get user by ID"""
-    
-    user = db.query(User).filter(User.id == user_id).first()
+    """Get user by ID (only from same company)"""
+
+    company_id = _get_company_id(current_user)
+
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.company_id == company_id  # Enforce tenant isolation
+    ).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -133,7 +154,9 @@ async def create_user(
             detail=detail
         )
     
-    # Create user
+    # Create user with company_id from current user
+    company_id = _get_company_id(current_user)
+
     hashed_password = PasswordHandler.hash_password(user_data.password)
     user = User(
         username=user_data.username,
@@ -141,7 +164,8 @@ async def create_user(
         password_hash=hashed_password,
         first_name=user_data.first_name,
         last_name=user_data.last_name,
-        is_active=user_data.is_active
+        is_active=user_data.is_active,
+        company_id=company_id  # Assign to same company
     )
     
     db.add(user)
@@ -184,9 +208,14 @@ async def update_user(
     current_user: User = Depends(require_permission("users", "write")),
     db: Session = Depends(get_db)
 ):
-    """Update user (requires users:write permission)"""
-    
-    user = db.query(User).filter(User.id == user_id).first()
+    """Update user (requires users:write permission, same company only)"""
+
+    company_id = _get_company_id(current_user)
+
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.company_id == company_id  # Enforce tenant isolation
+    ).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -246,15 +275,20 @@ async def delete_user(
     current_user: User = Depends(require_permission("users", "delete")),
     db: Session = Depends(get_db)
 ):
-    """Delete user (requires users:delete permission)"""
-    
+    """Delete user (requires users:delete permission, same company only)"""
+
     if user_id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete your own account"
         )
-    
-    user = db.query(User).filter(User.id == user_id).first()
+
+    company_id = _get_company_id(current_user)
+
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.company_id == company_id  # Enforce tenant isolation
+    ).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -283,9 +317,14 @@ async def assign_roles(
     current_user: User = Depends(require_permission("roles", "assign")),
     db: Session = Depends(get_db)
 ):
-    """Assign roles to user (requires roles:assign permission)"""
-    
-    user = db.query(User).filter(User.id == user_id).first()
+    """Assign roles to user (requires roles:assign permission, same company only)"""
+
+    company_id = _get_company_id(current_user)
+
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.company_id == company_id  # Enforce tenant isolation
+    ).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -327,9 +366,14 @@ async def get_user_permissions(
     current_user: User = Depends(require_permission("users", "read")),
     db: Session = Depends(get_db)
 ):
-    """Get user permissions"""
-    
-    user = db.query(User).filter(User.id == user_id).first()
+    """Get user permissions (same company only)"""
+
+    company_id = _get_company_id(current_user)
+
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.company_id == company_id  # Enforce tenant isolation
+    ).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -351,15 +395,20 @@ async def deactivate_user(
     current_user: User = Depends(require_permission("users", "write")),
     db: Session = Depends(get_db)
 ):
-    """Deactivate user account"""
-    
+    """Deactivate user account (same company only)"""
+
     if user_id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot deactivate your own account"
         )
-    
-    user = db.query(User).filter(User.id == user_id).first()
+
+    company_id = _get_company_id(current_user)
+
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.company_id == company_id  # Enforce tenant isolation
+    ).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -398,9 +447,14 @@ async def activate_user(
     current_user: User = Depends(require_permission("users", "write")),
     db: Session = Depends(get_db)
 ):
-    """Activate user account"""
-    
-    user = db.query(User).filter(User.id == user_id).first()
+    """Activate user account (same company only)"""
+
+    company_id = _get_company_id(current_user)
+
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.company_id == company_id  # Enforce tenant isolation
+    ).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

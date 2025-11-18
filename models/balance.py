@@ -13,16 +13,24 @@ from sqlalchemy import (
     SmallInteger,
     DateTime,
     JSON,
+    ForeignKey,
 )
+from sqlalchemy.orm import Mapped, relationship
 
 from database.connection import Base
+
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from models.company import Company
 
 
 class BalanceData(Base):
     __tablename__ = "balance_data"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    company_id = Column(Integer, nullable=False, default=1, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False, default=1, index=True)
     period_year = Column(Integer, nullable=False, index=True)
     period_month = Column(Integer, nullable=True, index=True)
     account_code = Column(String(50), nullable=False, index=True)
@@ -37,6 +45,7 @@ class BalanceData(Base):
         onupdate=datetime.utcnow,
         nullable=False,
     )
+    company: Mapped["Company"] = relationship("Company")
 
     def to_dict(self) -> dict:
         return {
@@ -58,7 +67,7 @@ class RawBalanceData(Base):
     __tablename__ = "raw_balance_data"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    company_id = Column(Integer, nullable=False, default=1, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False, default=1, index=True)
     period_year = Column(Integer, nullable=False, index=True)
     period_month = Column(Integer, nullable=True, index=True)
     row_index = Column(Integer, nullable=False)
@@ -67,13 +76,14 @@ class RawBalanceData(Base):
     balance = Column(Numeric(15, 2), nullable=True)
     extra = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    company: Mapped["Company"] = relationship("Company")
 
 
 class BalanceConfig(Base):
     __tablename__ = "balance_config"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    company_id = Column(Integer, nullable=False, default=1, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False, default=1, index=True)
     year = Column(Integer, nullable=False, index=True)
     working_capital_target = Column(Numeric(15, 2), nullable=True)
     liquidity_target = Column(Numeric(7, 2), nullable=True)
@@ -86,3 +96,4 @@ class BalanceConfig(Base):
         onupdate=datetime.utcnow,
         nullable=False,
     )
+    company: Mapped["Company"] = relationship("Company")
