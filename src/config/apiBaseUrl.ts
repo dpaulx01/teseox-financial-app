@@ -14,7 +14,7 @@ const resolveApiBaseUrl = (): string => {
   }
 
   // Auto-detect API URL in production based on frontend URL
-  if (typeof window !== 'undefined' && window.location.hostname.includes('teseox-frontend')) {
+  if (typeof window !== 'undefined' && window.location.hostname.includes('run.app')) {
     return 'https://teseox-api-jrmpkqareq-uc.a.run.app';
   }
 

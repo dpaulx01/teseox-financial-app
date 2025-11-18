@@ -691,10 +691,16 @@ FRONTEND_URL=$(gcloud run services describe teseox-frontend \
   --region us-central1 --format="value(status.url)")
 echo "Frontend: $FRONTEND_URL"
 
-# Formato típico:
-# API: https://teseox-api-[HASH]-uc.a.run.app
-# Frontend: https://teseox-frontend-[HASH]-uc.a.run.app
+# URLs REALES del deployment:
+# API:      https://teseox-api-jrmpkqareq-uc.a.run.app
+# Frontend: https://teseox-frontend-jrmpkqareq-uc.a.run.app
 ```
+
+**⚠️ IMPORTANTE:** Cloud Run genera DOS URLs por servicio:
+1. **URL corta** (usar esta): `https://SERVICE-HASH-REGION.a.run.app`
+2. **URL larga** (NO usar): `https://SERVICE-PROJECT_NUMBER.REGION.run.app`
+
+Siempre usa la URL corta que se obtiene con el comando `gcloud run services describe`.
 
 ---
 
@@ -971,26 +977,39 @@ curl -X GET $API_URL/api/auth/me \
 
 ### 9.4 Test Frontend (Navegador)
 
-```bash
-# Obtener URL
-echo $FRONTEND_URL
+**⚠️ IMPORTANTE - URLs CORRECTAS:**
 
-# O abrir directamente
+Cloud Run genera DOS URLs por servicio. **SIEMPRE usa la URL CORTA:**
+
+```bash
+# Obtener URL CORRECTA
 gcloud run services describe teseox-frontend \
   --region us-central1 \
-  --format="value(status.url)" | xargs -I {} echo "Abrir: {}"
+  --format="value(status.url)"
+
+# URLs CORRECTAS (formato: https://SERVICE-HASH-REGION.a.run.app):
+# API:      https://teseox-api-jrmpkqareq-uc.a.run.app
+# Frontend: https://teseox-frontend-jrmpkqareq-uc.a.run.app
+
+# URLs INCORRECTAS (NO usar - formato: https://SERVICE-NUMBER.REGION.run.app):
+# API:      https://teseox-api-480871471520.us-central1.run.app (404 Not Found)
+# Frontend: https://teseox-frontend-480871471520.us-central1.run.app (405 Method Not Allowed)
 ```
 
 **En el navegador:**
 
-1. Abrir URL del frontend
-2. Debería aparecer pantalla de login Teseo X
-3. Ingresar:
+1. Abrir **URL CORRECTA** del frontend: https://teseox-frontend-jrmpkqareq-uc.a.run.app
+2. Si ves error 405, presiona **Ctrl + Shift + R** (Windows/Linux) o **Cmd + Shift + R** (Mac) para limpiar caché
+3. Ingresar credenciales:
    - Username: `admin`
    - Password: `admin123`
 4. Verificar que cargue el dashboard
 5. Probar navegación a diferentes módulos
 6. Si eres superuser, probar Super Admin panel
+
+**Troubleshooting:**
+- Si sigue error 405: Abre ventana de incógnito y prueba nuevamente
+- Si error 404: Verifica que estás usando la URL CORTA (termina en `.a.run.app`)
 
 ### 9.5 Ver Logs
 
