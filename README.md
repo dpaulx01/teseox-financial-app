@@ -1,6 +1,6 @@
-# 🏢 Artyco Financial App - RBAC System
+# 🏢 Teseox Financial App - RBAC System
 
-A comprehensive financial management platform with advanced analytics, production tracking, and role-based access control (RBAC).
+A comprehensive financial management platform (rebranded as Teseox) with advanced analytics, production tracking, and role-based access control (RBAC).
 
 ## 🌟 Features
 

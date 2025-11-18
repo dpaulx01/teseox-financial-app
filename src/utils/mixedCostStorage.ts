@@ -1,8 +1,9 @@
 import { MixedCost, BreakEvenClassification } from '../types';
+import TenantStorage from './tenantStorage';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
-const MIXED_COSTS_KEY = 'artyco-mixed-costs-global';
-const CLASSIFICATIONS_KEY = 'artyco-custom-classifications-global';
+const MIXED_COSTS_KEY = 'mixed-costs';  // Will be namespaced by TenantStorage
+const CLASSIFICATIONS_KEY = 'custom-classifications';  // Will be namespaced by TenantStorage
 
 // === MIXED COSTS STORAGE ===
 
@@ -22,16 +23,16 @@ export const saveMixedCosts = async (mixedCosts: MixedCost[]): Promise<void> => 
       if (response.ok) {
         const result = await response.json();
         if (result.success) {
-          // También guardar en localStorage como cache
-          localStorage.setItem(MIXED_COSTS_KEY, JSON.stringify(mixedCosts));
+          // También guardar en TenantStorage como cache (namespaced por company)
+          TenantStorage.setItem(MIXED_COSTS_KEY, JSON.stringify(mixedCosts));
           return;
         }
       }
     } catch (apiError) {
     }
     
-    // 2. Fallback: Guardar en localStorage
-    localStorage.setItem(MIXED_COSTS_KEY, JSON.stringify(mixedCosts));
+    // 2. Fallback: Guardar en TenantStorage
+    TenantStorage.setItem(MIXED_COSTS_KEY, JSON.stringify(mixedCosts));
     
   } catch (error) {
     throw error;
@@ -46,16 +47,16 @@ export const loadMixedCosts = async (): Promise<MixedCost[]> => {
       if (response.ok) {
         const data = await response.json();
         if (data && data.mixedCosts) {
-          // También guardar en localStorage como cache
-          localStorage.setItem(MIXED_COSTS_KEY, JSON.stringify(data.mixedCosts));
+          // También guardar en TenantStorage como cache
+          TenantStorage.setItem(MIXED_COSTS_KEY, JSON.stringify(data.mixedCosts));
           return data.mixedCosts;
         }
       }
     } catch (apiError) {
     }
     
-    // 2. Fallback a localStorage
-    const stored = localStorage.getItem(MIXED_COSTS_KEY);
+    // 2. Fallback a TenantStorage
+    const stored = TenantStorage.getItem(MIXED_COSTS_KEY);
     if (stored) {
       const mixedCosts = JSON.parse(stored);
       return mixedCosts;
@@ -69,11 +70,11 @@ export const loadMixedCosts = async (): Promise<MixedCost[]> => {
 
 export const clearMixedCosts = async (): Promise<void> => {
   try {
-    // Limpiar localStorage
-    localStorage.removeItem(MIXED_COSTS_KEY);
-    
+    // Limpiar TenantStorage
+    TenantStorage.removeItem(MIXED_COSTS_KEY);
+
     // TODO: Implementar limpieza en MySQL si es necesario
-    
+
   } catch (error) {
     throw error;
   }
@@ -83,9 +84,9 @@ export const clearMixedCosts = async (): Promise<void> => {
 
 export const saveCustomClassifications = async (classifications: Record<string, BreakEvenClassification>): Promise<void> => {
   try {
-    // Por ahora solo localStorage (implementar API después si es necesario)
-    localStorage.setItem(CLASSIFICATIONS_KEY, JSON.stringify(classifications));
-    
+    // Por ahora solo TenantStorage (implementar API después si es necesario)
+    TenantStorage.setItem(CLASSIFICATIONS_KEY, JSON.stringify(classifications));
+
   } catch (error) {
     throw error;
   }
@@ -93,7 +94,7 @@ export const saveCustomClassifications = async (classifications: Record<string, 
 
 export const loadCustomClassifications = async (): Promise<Record<string, BreakEvenClassification>> => {
   try {
-    const stored = localStorage.getItem(CLASSIFICATIONS_KEY);
+    const stored = TenantStorage.getItem(CLASSIFICATIONS_KEY);
     if (stored) {
       const classifications = JSON.parse(stored);
       return classifications;
@@ -107,8 +108,8 @@ export const loadCustomClassifications = async (): Promise<Record<string, BreakE
 
 export const clearCustomClassifications = async (): Promise<void> => {
   try {
-    localStorage.removeItem(CLASSIFICATIONS_KEY);
-    
+    TenantStorage.removeItem(CLASSIFICATIONS_KEY);
+
   } catch (error) {
     throw error;
   }

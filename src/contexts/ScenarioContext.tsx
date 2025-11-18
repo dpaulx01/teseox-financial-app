@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { FinancialData } from '../types';
 import { apiPath } from '../config/apiBaseUrl';
+import TenantStorage from '../utils/tenantStorage';
 
 // Tipos específicos para escenarios
 interface ScenarioMetadata {
@@ -95,7 +96,7 @@ export const ScenarioProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   // Función para obtener token de autenticación
   const getAuthToken = () => {
-    const token = localStorage.getItem('access_token');
+    const token = TenantStorage.getItem('access_token');
     if (!token) {
       throw new Error('No authentication token found');
     }
@@ -309,7 +310,7 @@ export const ScenarioProvider: React.FC<{ children: ReactNode }> = ({ children }
       }
     };
 
-    const token = localStorage.getItem('access_token');
+    const token = TenantStorage.getItem('access_token');
     if (token) {
       initializeData();
     }

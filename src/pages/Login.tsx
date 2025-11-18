@@ -5,6 +5,7 @@ import AnimatedBackground from '../components/ui/AnimatedBackground';
 import ThemeToggle from '../components/ui/ThemeToggle';
 import { useTheme } from '../contexts/ThemeContext';
 import { apiPath } from '../config/apiBaseUrl';
+import TenantStorage from '../utils/tenantStorage';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -42,11 +43,19 @@ export default function Login() {
 
         if (userResponse.ok) {
           const userData = await userResponse.json();
-          localStorage.setItem('user', JSON.stringify(userData));
+          // Prefer company info from /me, but also keep anything returned in login response
+          const mergedUser = {
+            ...(data.user || {}),
+            ...userData,
+          };
+          localStorage.setItem('user', JSON.stringify(mergedUser));
         }
 
-        // Reset active tab to 'home' on every login
-        localStorage.setItem('artyco-active-tab', 'home');
+        // Reset active tab to 'home' on every login (tenant-specific)
+        TenantStorage.setItem('teseo-x-active-tab', 'home');
+
+        // Run migration for existing data
+        TenantStorage.migrateExistingData();
 
         navigate('/dashboard');
       } else {
@@ -82,23 +91,13 @@ export default function Login() {
         }`}>
           {/* Logo and Title */}
           <div className="text-center mb-8">
-            <div className={`inline-flex items-center justify-center w-20 h-20 rounded-3xl mb-4 relative ${
-              theme === 'dark'
-                ? 'bg-gradient-to-br from-cyan-500 to-blue-500'
-                : 'bg-gradient-to-br from-blue-600 to-indigo-600'
-            }`}>
-              {theme === 'dark' && (
-                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-3xl animate-pulse opacity-50" />
-              )}
-              <span className="text-3xl font-bold text-white relative z-10">AF</span>
+            <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl mb-4 relative bg-dark-card/70 border border-border shadow-glow-sm overflow-hidden">
+              <img
+                src="/logo-teseox.png"
+                alt="Teseox"
+                className="w-full h-full object-contain p-2"
+              />
             </div>
-            <h1 className={`text-4xl font-bold mb-2 ${
-              theme === 'dark'
-                ? 'bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent'
-                : 'text-gray-800'
-            }`}>
-              ARTYCO FINANCIAL
-            </h1>
             <p className={`font-mono text-sm ${
               theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
             }`}>

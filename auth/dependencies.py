@@ -110,24 +110,30 @@ async def get_optional_current_user(
         return None
 
 def require_permissions(required_permissions: List[Tuple[str, str]], require_all: bool = True):
-    """Dependency factory for permission checking"""
-    async def check_permissions(current_user: User = Depends(get_current_user)) -> User:
-        user_permissions = current_user.get_permissions()
-        
-        has_access = PermissionChecker.check_multiple_permissions(
-            user_permissions, 
-            required_permissions, 
-            require_all
+    """Dependency factory for permission checking with policy engine support"""
+    async def check_permissions(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+    ) -> User:
+        # Use Policy Engine for advanced permission evaluation
+        from auth.policy_engine import PolicyEngine
+
+        has_access = PolicyEngine.check_multiple_permissions(
+            current_user,
+            required_permissions,
+            db,
+            require_all,
+            current_user.company_id
         )
-        
+
         if not has_access:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions"
             )
-        
+
         return current_user
-    
+
     return check_permissions
 
 def require_permission(resource: str, action: str):

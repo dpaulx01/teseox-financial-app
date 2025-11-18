@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { apiPath } from '../config/apiBaseUrl';
+import TenantStorage from '../utils/tenantStorage';
 
 // Tipos para el contexto de año
 export interface YearInfo {
@@ -52,7 +53,7 @@ export const YearProvider: React.FC<YearProviderProps> = ({ children }) => {
     setError(null);
     
     try {
-      const token = localStorage.getItem('access_token');
+      const token = TenantStorage.getItem('access_token');
       if (!token) {
         throw new Error('No authentication token found');
       }
@@ -150,11 +151,11 @@ export const YearProvider: React.FC<YearProviderProps> = ({ children }) => {
   const setSelectedYear = (year: number | null): void => {
     setSelectedYearState(year);
     
-    // Guardar en localStorage para persistencia
+    // Guardar en TenantStorage para persistencia (namespaced por company_id)
     if (year) {
-      localStorage.setItem('selected_year', year.toString());
+      TenantStorage.setItem('selected_year', year.toString());
     } else {
-      localStorage.removeItem('selected_year');
+      TenantStorage.removeItem('selected_year');
     }
   };
 
@@ -163,9 +164,9 @@ export const YearProvider: React.FC<YearProviderProps> = ({ children }) => {
     setSelectedYear(null);
   };
 
-  // Cargar año guardado al inicializar
+  // Cargar año guardado al inicializar (desde TenantStorage)
   useEffect(() => {
-    const savedYear = localStorage.getItem('selected_year');
+    const savedYear = TenantStorage.getItem('selected_year');
     if (savedYear) {
       const yearNumber = parseInt(savedYear);
       if (!isNaN(yearNumber)) {

@@ -5,9 +5,13 @@ Requiere is_superuser=True
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, validator
 from typing import List, Optional
 from datetime import datetime, timedelta
+import re
+import asyncio
+import time
+from collections import defaultdict, deque
 
 from database.connection import get_db
 from models import User, Company, AuditLog, Role
@@ -15,6 +19,49 @@ from auth.dependencies import require_superuser, get_current_user
 from auth.password import PasswordHandler
 
 router = APIRouter(prefix="/superadmin", tags=["Super Admin"])
+
+# Rate limiting (in-memory) for superadmin routes
+SUPERADMIN_RATE_LIMIT = 100  # requests per window
+SUPERADMIN_WINDOW_SECONDS = 60
+_rate_limit_store = defaultdict(deque)
+_rate_limit_lock = asyncio.Lock()
+
+
+async def superadmin_rate_limit(current_user: User = Depends(require_superuser())):
+    """
+    Apply a simple per-user rate limit for superadmin endpoints.
+    """
+    now = time.time()
+    async with _rate_limit_lock:
+        dq = _rate_limit_store[current_user.id]
+        # drop old requests
+        while dq and dq[0] <= now - SUPERADMIN_WINDOW_SECONDS:
+            dq.popleft()
+        if len(dq) >= SUPERADMIN_RATE_LIMIT:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Límite de {SUPERADMIN_RATE_LIMIT} solicitudes por minuto para superadmin alcanzado"
+            )
+        dq.append(now)
+    return current_user
+
+# ===========================================================================
+# VALIDATION HELPERS
+# ===========================================================================
+
+def validate_slug(slug: str) -> str:
+    """
+    Validate slug contains only lowercase letters, numbers, and hyphens
+    """
+    if not slug:
+        return slug
+    if not re.match(r'^[a-z0-9-]+$', slug):
+        raise ValueError("Slug solo puede contener letras minúsculas, números y guiones")
+    if slug.startswith('-') or slug.endswith('-'):
+        raise ValueError("Slug no puede comenzar o terminar con guión")
+    if '--' in slug:
+        raise ValueError("Slug no puede contener guiones consecutivos")
+    return slug
 
 # ===========================================================================
 # PYDANTIC MODELS
@@ -26,6 +73,28 @@ class CompanyCreate(BaseModel):
     industry: Optional[str] = None
     subscription_tier: str = "trial"  # trial/professional/enterprise
     max_users: int = 5
+
+    @validator('slug')
+    def validate_slug_format(cls, v):
+        if v:
+            return validate_slug(v)
+        return v
+
+    @validator('name')
+    def validate_name(cls, v):
+        if not v or not v.strip():
+            raise ValueError("El nombre de la empresa es requerido")
+        if len(v.strip()) < 2:
+            raise ValueError("El nombre debe tener al menos 2 caracteres")
+        return v.strip()
+
+    @validator('max_users')
+    def validate_max_users(cls, v):
+        if v < 1:
+            raise ValueError("max_users debe ser al menos 1")
+        if v > 10000:
+            raise ValueError("max_users no puede exceder 10000")
+        return v
 
 class CompanyUpdate(BaseModel):
     name: Optional[str] = None
@@ -61,6 +130,56 @@ class SuperAdminUserCreate(BaseModel):
     last_name: Optional[str] = None
     is_superuser: bool = False
 
+    @validator('username')
+    def validate_username(cls, v):
+        if not v or not v.strip():
+            raise ValueError("El username es requerido")
+        if len(v.strip()) < 3:
+            raise ValueError("El username debe tener al menos 3 caracteres")
+        if not re.match(r'^[a-zA-Z0-9_-]+$', v):
+            raise ValueError("El username solo puede contener letras, números, guiones y guiones bajos")
+        return v.strip()
+
+    @validator('password')
+    def validate_password(cls, v):
+        if not v:
+            raise ValueError("El password es requerido")
+        if len(v) < 6:
+            raise ValueError("El password debe tener al menos 6 caracteres")
+        return v
+
+class SuperAdminUserUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_superuser: Optional[bool] = None
+
+    @validator('username')
+    def validate_username(cls, v):
+        if v is not None and v:
+            if len(v.strip()) < 3:
+                raise ValueError("El username debe tener al menos 3 caracteres")
+            if not re.match(r'^[a-zA-Z0-9_-]+$', v):
+                raise ValueError("El username solo puede contener letras, números, guiones y guiones bajos")
+            return v.strip()
+        return v
+
+    @validator('password')
+    def validate_password(cls, v):
+        if v is not None and v:
+            if len(v) < 6:
+                raise ValueError("El password debe tener al menos 6 caracteres")
+        return v
+
+class RoleInfo(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    is_system_role: bool
+
 class UserResponse(BaseModel):
     id: int
     username: str
@@ -72,6 +191,10 @@ class UserResponse(BaseModel):
     is_active: bool
     is_superuser: bool
     created_at: datetime
+    roles: List[RoleInfo] = []
+
+class AssignRolesRequest(BaseModel):
+    role_ids: List[int]
 
 # ===========================================================================
 # COMPANIES MANAGEMENT
@@ -83,7 +206,7 @@ async def list_all_companies(
     limit: int = Query(100, ge=1, le=500),
     tier: Optional[str] = None,
     active_only: bool = False,
-    current_user: User = Depends(require_superuser()),
+    current_user: User = Depends(superadmin_rate_limit),
     db: Session = Depends(get_db)
 ):
     """
@@ -132,7 +255,7 @@ async def list_all_companies(
 @router.post("/companies", response_model=CompanyResponse, status_code=status.HTTP_201_CREATED)
 async def create_company(
     data: CompanyCreate,
-    current_user: User = Depends(require_superuser()),
+    current_user: User = Depends(superadmin_rate_limit),
     db: Session = Depends(get_db)
 ):
     """
@@ -206,7 +329,7 @@ async def create_company(
 async def update_company(
     company_id: int,
     data: CompanyUpdate,
-    current_user: User = Depends(require_superuser()),
+    current_user: User = Depends(superadmin_rate_limit),
     db: Session = Depends(get_db)
 ):
     """
@@ -252,7 +375,7 @@ async def update_company(
 @router.post("/companies/{company_id}/deactivate")
 async def deactivate_company(
     company_id: int,
-    current_user: User = Depends(require_superuser()),
+    current_user: User = Depends(superadmin_rate_limit),
     db: Session = Depends(get_db)
 ):
     """
@@ -286,7 +409,7 @@ async def deactivate_company(
 @router.post("/companies/{company_id}/activate")
 async def activate_company(
     company_id: int,
-    current_user: User = Depends(require_superuser()),
+    current_user: User = Depends(superadmin_rate_limit),
     db: Session = Depends(get_db)
 ):
     """
@@ -321,13 +444,32 @@ async def activate_company(
 # CROSS-TENANT USER MANAGEMENT
 # ===========================================================================
 
+@router.get("/roles", response_model=List[RoleInfo])
+async def list_roles(
+    current_user: User = Depends(superadmin_rate_limit),
+    db: Session = Depends(get_db)
+):
+    """
+    List all roles (super admin only)
+    """
+    roles = db.query(Role).all()
+    return [
+        RoleInfo(
+            id=role.id,
+            name=role.name,
+            description=role.description,
+            is_system_role=role.is_system_role
+        )
+        for role in roles
+    ]
+
 @router.get("/users", response_model=List[UserResponse])
 async def list_all_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     company_id: Optional[int] = None,
     active_only: bool = False,
-    current_user: User = Depends(require_superuser()),
+    current_user: User = Depends(superadmin_rate_limit),
     db: Session = Depends(get_db)
 ):
     """
@@ -353,7 +495,16 @@ async def list_all_users(
             company_name=user.company.name if user.company else "N/A",
             is_active=user.is_active,
             is_superuser=user.is_superuser,
-            created_at=user.created_at
+            created_at=user.created_at,
+            roles=[
+                RoleInfo(
+                    id=role.id,
+                    name=role.name,
+                    description=role.description,
+                    is_system_role=role.is_system_role
+                )
+                for role in user.roles
+            ]
         )
         for user in users
     ]
@@ -361,99 +512,121 @@ async def list_all_users(
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user_for_company(
     data: SuperAdminUserCreate,
-    current_user: User = Depends(require_superuser()),
+    current_user: User = Depends(superadmin_rate_limit),
     db: Session = Depends(get_db)
 ):
     """
     Create user for any company (super admin only)
     """
-    # Verify company exists
-    company = db.query(Company).filter(Company.id == data.company_id).first()
-    if not company:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Company {data.company_id} not found"
+    try:
+        # Verify company exists
+        company = db.query(Company).filter(Company.id == data.company_id).first()
+        if not company:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Company {data.company_id} not found"
+            )
+
+        # Check max_users with lock
+        company_locked = db.query(Company).filter(
+            Company.id == data.company_id
+        ).with_for_update().first()
+
+        current_user_count = db.query(func.count(User.id)).filter(
+            User.company_id == data.company_id
+        ).scalar()
+
+        if company_locked.max_users and current_user_count >= company_locked.max_users:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Company reached max users ({company_locked.max_users})"
+            )
+
+        # Check username/email unique
+        existing = db.query(User).filter(
+            (User.username == data.username) | (User.email == data.email)
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username or email already exists"
+            )
+
+        # Create user
+        user = User(
+            username=data.username,
+            email=data.email,
+            password_hash=PasswordHandler.hash_password(data.password),
+            first_name=data.first_name,
+            last_name=data.last_name,
+            company_id=data.company_id,
+            is_active=True,
+            is_superuser=data.is_superuser
         )
 
-    # Check max_users with lock
-    company_locked = db.query(Company).filter(
-        Company.id == data.company_id
-    ).with_for_update().first()
+        db.add(user)
+        db.flush()
 
-    current_user_count = db.query(func.count(User.id)).filter(
-        User.company_id == data.company_id
-    ).scalar()
+        # Assign default viewer role
+        default_role = db.query(Role).filter(Role.name == "viewer").first()
+        if default_role:
+            user.roles.append(default_role)
 
-    if company_locked.max_users and current_user_count >= company_locked.max_users:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Company reached max users ({company_locked.max_users})"
+        AuditLog.log_action(
+            db,
+            user_id=current_user.id,
+            action="user_created_by_superadmin",
+            resource="users",
+            resource_id=str(user.id),
+            details={
+                "username": data.username,
+                "company_id": data.company_id,
+                "company_name": company.name
+            }
         )
 
-    # Check username/email unique
-    existing = db.query(User).filter(
-        (User.username == data.username) | (User.email == data.email)
-    ).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username or email already exists"
+        db.commit()
+        db.refresh(user)
+
+        return UserResponse(
+            id=user.id,
+            username=user.username,
+            email=user.email,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            company_id=user.company_id,
+            company_name=company.name,
+            is_active=user.is_active,
+            is_superuser=user.is_superuser,
+            created_at=user.created_at,
+            roles=[
+                RoleInfo(
+                    id=role.id,
+                    name=role.name,
+                    description=role.description,
+                    is_system_role=role.is_system_role
+                )
+                for role in user.roles
+            ]
         )
-
-    # Create user
-    user = User(
-        username=data.username,
-        email=data.email,
-        password_hash=PasswordHandler.hash_password(data.password),
-        first_name=data.first_name,
-        last_name=data.last_name,
-        company_id=data.company_id,
-        is_active=True,
-        is_superuser=data.is_superuser
-    )
-
-    db.add(user)
-    db.flush()
-
-    # Assign default viewer role
-    default_role = db.query(Role).filter(Role.name == "viewer").first()
-    if default_role:
-        user.roles.append(default_role)
-
-    AuditLog.log_action(
-        db,
-        user_id=current_user.id,
-        action="user_created_by_superadmin",
-        resource="users",
-        resource_id=str(user.id),
-        details={
-            "username": data.username,
-            "company_id": data.company_id,
-            "company_name": company.name
-        }
-    )
-
-    db.commit()
-    db.refresh(user)
-
-    return UserResponse(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        company_id=user.company_id,
-        company_name=company.name,
-        is_active=user.is_active,
-        is_superuser=user.is_superuser,
-        created_at=user.created_at
-    )
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error creating user: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating user: {str(e)}"
+        )
 
 @router.put("/users/{user_id}/change-company")
 async def change_user_company(
     user_id: int,
     new_company_id: int,
-    current_user: User = Depends(require_superuser()),
+    current_user: User = Depends(superadmin_rate_limit),
     db: Session = Depends(get_db)
 ):
     """
@@ -498,13 +671,141 @@ async def change_user_company(
         "new_company_id": new_company_id
     }
 
+@router.post("/users/{user_id}/roles")
+async def assign_roles_superadmin(
+    user_id: int,
+    request: AssignRolesRequest,
+    current_user: User = Depends(superadmin_rate_limit),
+    db: Session = Depends(get_db)
+):
+    """
+    Assign roles to any user (super admin only)
+    """
+    from models.user import user_roles
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    roles = db.query(Role).filter(Role.id.in_(request.role_ids)).all()
+    if len(roles) != len(request.role_ids):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="One or more roles not found"
+        )
+
+    # Manually delete existing role assignments because user_roles table has extra columns
+    db.execute(user_roles.delete().where(user_roles.c.user_id == user_id))
+
+    # Insert new role assignments
+    for role in roles:
+        db.execute(
+            user_roles.insert().values(
+                user_id=user_id,
+                role_id=role.id,
+                assigned_by=current_user.id
+            )
+        )
+
+    AuditLog.log_action(
+        db,
+        user_id=current_user.id,
+        action="roles_assigned_by_superadmin",
+        resource="users",
+        resource_id=str(user_id),
+        details={"role_ids": request.role_ids, "role_names": [r.name for r in roles]}
+    )
+
+    db.commit()
+
+    return {
+        "message": "Roles assigned successfully",
+        "roles": [{"id": r.id, "name": r.name} for r in roles]
+    }
+
+@router.put("/users/{user_id}", response_model=UserResponse)
+async def update_user_superadmin(
+    user_id: int,
+    data: SuperAdminUserUpdate,
+    current_user: User = Depends(superadmin_rate_limit),
+    db: Session = Depends(get_db)
+):
+    """
+    Update user fields (super admin only)
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if data.username:
+        existing = db.query(User).filter(User.username == data.username, User.id != user_id).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exists")
+        user.username = data.username
+    if data.email:
+        existing_email = db.query(User).filter(User.email == data.email, User.id != user_id).first()
+        if existing_email:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already exists")
+        user.email = data.email
+    if data.first_name is not None:
+        user.first_name = data.first_name
+    if data.last_name is not None:
+        user.last_name = data.last_name
+    if data.password:
+        user.password_hash = PasswordHandler.hash_password(data.password)
+    if data.is_active is not None:
+        user.is_active = data.is_active
+    if data.is_superuser is not None:
+        user.is_superuser = data.is_superuser
+
+    AuditLog.log_action(
+        db,
+        user_id=current_user.id,
+        action="user_updated_by_superadmin",
+        resource="users",
+        resource_id=str(user.id),
+        details={
+            "username": user.username,
+            "is_active": user.is_active,
+            "is_superuser": user.is_superuser,
+        }
+    )
+
+    db.commit()
+    db.refresh(user)
+
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        company_id=user.company_id,
+        company_name=user.company.name if user.company else "N/A",
+        is_active=user.is_active,
+        is_superuser=user.is_superuser,
+        created_at=user.created_at,
+        roles=[
+            RoleInfo(
+                id=role.id,
+                name=role.name,
+                description=role.description,
+                is_system_role=role.is_system_role
+            )
+            for role in user.roles
+        ]
+    )
+
 # ===========================================================================
 # ANALYTICS DASHBOARD
 # ===========================================================================
 
 @router.get("/analytics/overview")
 async def get_analytics_overview(
-    current_user: User = Depends(require_superuser()),
+    current_user: User = Depends(superadmin_rate_limit),
     db: Session = Depends(get_db)
 ):
     """

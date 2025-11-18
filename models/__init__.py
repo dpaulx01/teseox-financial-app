@@ -16,6 +16,8 @@ from .production import (
     ProductionPayment,
     ProductionStatusEnum,
 )
+from .rbac_overrides import RolePermissionOverride, UserRoleOverride
+from .sales import SalesTransaction, SalesKPICache, SalesAlert
 
 __all__ = [
     'User',
@@ -32,4 +34,9 @@ __all__ = [
     'ProductionPayment',
     'ProductionDailyPlan',
     'ProductionStatusEnum',
+    'RolePermissionOverride',
+    'UserRoleOverride',
+    'SalesTransaction',
+    'SalesKPICache',
+    'SalesAlert',
 ]

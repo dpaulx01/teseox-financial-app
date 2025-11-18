@@ -1106,28 +1106,43 @@ gcloud run services update teseox-api \
 
 ### CORS Errors en Frontend
 
-**Error: "blocked by CORS policy"**
+**Error: "blocked by CORS policy" o "405 Method Not Allowed"**
 
-Actualizar CORS en `api_server_rbac.py`:
+El API usa la variable de entorno `CORS_ORIGINS` (definida en config.py) para configurar los orígenes permitidos.
 
-```python
+**Solución rápida (sin rebuild):**
+
+```bash
 # Obtener URL del frontend
 FRONTEND_URL=$(gcloud run services describe teseox-frontend \
   --region us-central1 --format="value(status.url)")
 
-# Editar api_server_rbac.py
-origins = [
-    "https://teseox-frontend-[HASH]-uc.a.run.app",  # Tu URL real
-    "http://localhost:3001",
-]
+# Crear archivo de env vars
+cat > api-env.yaml <<EOF
+DB_HOST: "/cloudsql/teseo-x:us-central1:teseox-db"
+DB_NAME: "teseox_db"
+DB_USER: "teseox_user"
+DB_PORT: "3306"
+ENVIRONMENT: "production"
+CORS_ORIGINS: "$FRONTEND_URL,http://localhost:5173,http://localhost:3001"
+EOF
+
+# Actualizar solo env vars (no rebuild)
+gcloud run services update teseox-api \
+  --region us-central1 \
+  --env-vars-file api-env.yaml
+
+rm -f api-env.yaml
+
+# Verificar que CORS funciona
+curl -s -X POST "https://teseox-api-480871471520.us-central1.run.app/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -H "Origin: $FRONTEND_URL" \
+  -i \
+  -d '{"username":"admin","password":"admin123"}' | grep -i "access-control"
 ```
 
-Luego rebuild y redeploy:
-
-```bash
-gcloud builds submit --config=cloudbuild.yaml .
-./deploy-cloud-run.sh
-```
+**Nota:** El script `deploy-cloud-run.sh` ahora configura CORS automáticamente usando el método de YAML file para evitar problemas de escape con las URLs.
 
 ### Base de Datos No Inicializa
 

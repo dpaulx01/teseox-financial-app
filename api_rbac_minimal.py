@@ -203,7 +203,10 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
         first_name=current_user.first_name,
         last_name=current_user.last_name,
         is_active=current_user.is_active,
-        is_superuser=current_user.is_superuser
+        is_superuser=current_user.is_superuser,
+        company_id=current_user.company_id,
+        # company relationship may not be lazy-loaded; guard with getattr
+        company_name=getattr(current_user, "company", None).name if getattr(current_user, "company", None) else None,
     )
 
 @app.get("/api/users", response_model=list[UserResponse])

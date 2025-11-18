@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { User, Clock } from 'lucide-react';
+import { getTenantBrand } from '../../utils/tenantBrand';
 
 const WelcomeBanner: React.FC = () => {
   const user = useMemo(() => {
@@ -9,6 +10,7 @@ const WelcomeBanner: React.FC = () => {
       return {};
     }
   }, []);
+  const brand = getTenantBrand();
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -56,7 +58,7 @@ const WelcomeBanner: React.FC = () => {
                 {greeting}, {user.username || 'Usuario'}
               </h1>
               <p className="text-sm text-text-muted">
-                Bienvenido al sistema financiero de ARTYCO
+                Bienvenido a {brand.displayName}, tu plataforma financiera multitenant
               </p>
             </div>
           </div>

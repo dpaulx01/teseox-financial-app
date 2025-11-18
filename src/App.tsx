@@ -27,6 +27,7 @@ import SalesBIDashboard from './pages/SalesBIDashboard';
 import PygContainer from './components/pyg/PygContainer';
 import Login from './pages/Login';
 import UserManagement from './pages/UserManagement';
+import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import ScenarioManagement from './pages/ScenarioManagement';  
 import SimulationBanner from './components/scenario/SimulationBanner';
 import EditablePygMatrix from './components/pyg/EditablePygMatrix';
@@ -170,7 +171,7 @@ const MainAppContent: React.FC = () => {
       case 'scenarios':
         return <ScenarioManagement />;
       case 'rbac':
-        return <UserManagement />;
+        return <SuperAdminDashboard />;
       default:
         return <DashboardKPIs />;
     }

@@ -12,17 +12,27 @@ class Config:
     IS_SITEGROUND = os.path.exists('/home/customer/www') or os.getenv('SITEGROUND', 'false').lower() == 'true'
     
     # Database configuration
-    if IS_SITEGROUND:
-        # SiteGround MySQL configuration
-        DB_HOST = os.getenv('DB_HOST', 'localhost')
-        DB_PORT = int(os.getenv('DB_PORT', '3306'))
-        DB_NAME = os.getenv('DB_NAME', 'customer_artyco_rbac')
-        DB_USER = os.getenv('DB_USER', 'customer_artyco')
-        DB_PASSWORD = os.getenv('DB_PASSWORD', '')
-        
-        DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    # Check if explicit DB config is provided (Cloud Run, SiteGround, etc.)
+    DB_HOST = os.getenv('DB_HOST')
+    DB_PORT = os.getenv('DB_PORT')
+    DB_NAME = os.getenv('DB_NAME')
+    DB_USER = os.getenv('DB_USER')
+    DB_PASSWORD = os.getenv('DB_PASSWORD')
+
+    if DB_HOST and DB_NAME and DB_USER and DB_PASSWORD:
+        # Cloud Run, SiteGround, or custom config
+        # DB_HOST can be:
+        # - Unix socket path: /cloudsql/project:region:instance (Cloud Run)
+        # - TCP host: localhost, IP address (SiteGround, local)
+        if DB_HOST.startswith('/cloudsql/'):
+            # Cloud SQL via Unix socket (Cloud Run)
+            DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@/{DB_NAME}?unix_socket={DB_HOST}"
+        else:
+            # TCP connection
+            port = DB_PORT or '3306'
+            DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{port}/{DB_NAME}"
     else:
-        # Local/Docker configuration
+        # Local/Docker fallback
         DATABASE_URL = os.getenv(
             'DATABASE_URL',
             'mysql+pymysql://artyco_user:artyco_password123@localhost:3307/artyco_financial_rbac'

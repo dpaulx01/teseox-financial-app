@@ -40,13 +40,15 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS middleware
+# CORS middleware - DEBE ir ANTES que otros middlewares
 app.add_middleware(
     CORSMiddleware,
     allow_origins=Config.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 # Ensure the tenant context is established per request

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { getTenantBrand } from '../../../utils/tenantBrand';
 import {
   AlertCircle,
   ArrowUpDown,
@@ -1333,12 +1334,13 @@ const StatusTable: React.FC<StatusTableProps> = ({
     doc.text(fecha.charAt(0).toUpperCase() + fecha.slice(1), 14, 28);
 
     // Logo/marca placeholder en la derecha
+    const brandName = getTenantBrand().displayName;
     doc.setFontSize(24);
     doc.setFont('helvetica', 'bold');
-    doc.text('ARTYCO', pageWidth - 14, 18, { align: 'right' });
+    doc.text(brandName, pageWidth - 14, 18, { align: 'right' });
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text('Control de Producción', pageWidth - 14, 24, { align: 'right' });
+    doc.text('Control de Producción multitenant', pageWidth - 14, 24, { align: 'right' });
 
     const formatDateForPdf = (value: string | null | undefined) => {
       const label = formatDateLabel(value);
@@ -1658,7 +1660,8 @@ const StatusTable: React.FC<StatusTableProps> = ({
 
       // Info adicional en footer
       doc.setFontSize(7);
-      doc.text('Artyco - Sistema de Control de Producción', 14, pageHeight - 8);
+      const brandName = getTenantBrand().displayName;
+      doc.text(`${brandName} - Sistema de Control de Producción multitenant`, 14, pageHeight - 8);
       doc.text(
         `Generado: ${new Date().toLocaleString('es-CO')}`,
         pageWidth - 14,
@@ -1752,12 +1755,14 @@ const StatusTable: React.FC<StatusTableProps> = ({
     doc.setFontSize(9);
     doc.text(fecha.charAt(0).toUpperCase() + fecha.slice(1), 14, 28);
 
+    const brandName = getTenantBrand().displayName;
+
     doc.setFontSize(24);
     doc.setFont('helvetica', 'bold');
-    doc.text('ARTYCO', pageWidth - 14, 18, { align: 'right' });
+    doc.text(brandName, pageWidth - 14, 18, { align: 'right' });
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text('Control de Producción', pageWidth - 14, 24, { align: 'right' });
+    doc.text('Control de Producción multitenant', pageWidth - 14, 24, { align: 'right' });
 
     let cursor = 42;
 
@@ -1895,7 +1900,8 @@ const StatusTable: React.FC<StatusTableProps> = ({
       doc.setFont('helvetica', 'normal');
       doc.text(`Página ${i} de ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
       doc.setFontSize(7);
-      doc.text('Artyco - Sistema de Control de Producción', 14, pageHeight - 8);
+      const brandName = getTenantBrand().displayName;
+      doc.text(`${brandName} - Sistema de Control de Producción multitenant`, 14, pageHeight - 8);
       doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, pageWidth - 14, pageHeight - 8, { align: 'right' });
     }
 
@@ -1954,12 +1960,14 @@ const StatusTable: React.FC<StatusTableProps> = ({
     doc.setFontSize(9);
     doc.text(fecha.charAt(0).toUpperCase() + fecha.slice(1), 14, 28);
 
+    const brandName = getTenantBrand().displayName;
+
     doc.setFontSize(24);
     doc.setFont('helvetica', 'bold');
-    doc.text('ARTYCO', pageWidth - 14, 18, { align: 'right' });
+    doc.text(brandName, pageWidth - 14, 18, { align: 'right' });
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text('Control de Producción', pageWidth - 14, 24, { align: 'right' });
+    doc.text('Control de Producción multitenant', pageWidth - 14, 24, { align: 'right' });
 
     let cursor = 42;
 
@@ -2089,7 +2097,8 @@ const StatusTable: React.FC<StatusTableProps> = ({
       doc.setFont('helvetica', 'normal');
       doc.text(`Página ${i} de ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
       doc.setFontSize(7);
-      doc.text('Artyco - Sistema de Control de Producción', 14, pageHeight - 8);
+      const brandName = getTenantBrand().displayName;
+      doc.text(`${brandName} - Sistema de Control de Producción multitenant`, 14, pageHeight - 8);
       doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, pageWidth - 14, pageHeight - 8, { align: 'right' });
     }
 
@@ -2145,12 +2154,14 @@ const StatusTable: React.FC<StatusTableProps> = ({
     doc.setFontSize(9);
     doc.text(fecha.charAt(0).toUpperCase() + fecha.slice(1), 14, 28);
 
+    const brandName = getTenantBrand().displayName;
+
     doc.setFontSize(24);
     doc.setFont('helvetica', 'bold');
-    doc.text('ARTYCO', pageWidth - 14, 18, { align: 'right' });
+    doc.text(brandName, pageWidth - 14, 18, { align: 'right' });
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text('Control de Producción', pageWidth - 14, 24, { align: 'right' });
+    doc.text('Control de Producción multitenant', pageWidth - 14, 24, { align: 'right' });
 
     let cursor = 42;
 
@@ -2294,7 +2305,8 @@ const StatusTable: React.FC<StatusTableProps> = ({
       doc.setFont('helvetica', 'normal');
       doc.text(`Página ${i} de ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
       doc.setFontSize(7);
-      doc.text('Artyco - Sistema de Control de Producción', 14, pageHeight - 8);
+      const brandName = getTenantBrand().displayName;
+      doc.text(`${brandName} - Sistema de Control de Producción multitenant`, 14, pageHeight - 8);
       doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, pageWidth - 14, pageHeight - 8, { align: 'right' });
     }
 

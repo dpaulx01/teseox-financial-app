@@ -12,6 +12,7 @@ import BreakEvenAnalysis from './pages/BreakEvenAnalysis';
 import DataConfiguration from './pages/DataConfiguration';
 import OperationalAnalysis from './pages/OperationalAnalysis';
 import StatusProduccion from './pages/StatusProduccion';
+import SuperAdminDashboard from './pages/SuperAdminDashboard';
 
 const AppContent: React.FC = () => {
   const { financialData } = useFinancialData();
@@ -27,6 +28,10 @@ const AppContent: React.FC = () => {
 
     if (activeTab === 'status') {
       return <StatusProduccion />;
+    }
+
+    if (activeTab === 'rbac') {
+      return <SuperAdminDashboard />;
     }
 
     if (!financialData && tabsRequiringFinancialData.has(activeTab)) {

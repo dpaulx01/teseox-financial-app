@@ -16,6 +16,9 @@ if TYPE_CHECKING:
     from models.production import ProductionQuote
     from models.sales import SalesTransaction
     from models.financial_scenario import FinancialScenario
+    from models.session import UserSession
+    from models.audit import AuditLog
+    from models.rbac_overrides import RolePermissionOverride, UserRoleOverride
 
 
 class Company(Base):
@@ -39,11 +42,17 @@ class Company(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-    # Relaciones
+    # Relaciones principales
     users: Mapped[List["User"]] = relationship("User", foreign_keys="[User.company_id]", back_populates="company")
     production_quotes: Mapped[List["ProductionQuote"]] = relationship("ProductionQuote", back_populates="company")
     sales_transactions: Mapped[List["SalesTransaction"]] = relationship("SalesTransaction", back_populates="company")
     financial_scenarios: Mapped[List["FinancialScenario"]] = relationship("FinancialScenario", back_populates="company")
+
+    # Relaciones RBAC multitenant (Fase 5)
+    sessions: Mapped[List["UserSession"]] = relationship("UserSession", cascade="all, delete-orphan", overlaps="company")
+    audit_logs: Mapped[List["AuditLog"]] = relationship("AuditLog", cascade="all, delete-orphan", overlaps="company")
+    role_permission_overrides: Mapped[List["RolePermissionOverride"]] = relationship("RolePermissionOverride", cascade="all, delete-orphan", overlaps="company")
+    user_role_overrides: Mapped[List["UserRoleOverride"]] = relationship("UserRoleOverride", cascade="all, delete-orphan", overlaps="company")
 
     def __repr__(self):
         return f"<Company(id={self.id}, name={self.name}, active={self.is_active})>"

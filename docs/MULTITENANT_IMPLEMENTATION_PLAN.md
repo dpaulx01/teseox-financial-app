@@ -1,13 +1,13 @@
 # Plan Integral de Modernización Multitenant y RBAC
 
-**Última actualización:** 2025-11-15 15:00
-**Estado:** Fases 0, 1, 2, 2.5, 3 ✅ COMPLETADAS | Fase 4 🔄 EN PROGRESO
+**Última actualización:** 2025-11-15 17:00
+**Estado:** Fases 0-4 ✅ COMPLETADAS | Fase 5 🔄 EN PROGRESO
 **Autor:** Equipo Artyco + Auditoría Senior
 **Alcance:** Base de datos, capa de aplicación, RBAC/ABAC, storage y despliegue
 **Decisión arquitectónica:** Base de datos compartida con `company_id` + aislamiento lógico (ContextVar + Middleware)
 
 **Calificación actual:** 7.5/10 ⭐⭐⭐⭐⭐⭐⭐☆☆☆
-**Progreso general:** ~75%
+**Progreso general:** ~85%
 
 ---
 
@@ -22,6 +22,7 @@
 | **Fase 2: Aplicación** | ✅ | 16-24h | 2025-11-14 |
 | **Fase 2.5: Fixes Críticos** | ✅ | 80-100h | 2025-11-15 |
 | **Fase 3: Rutas Restantes** | ✅ | 8h | 2025-11-15 |
+| **Fase 4: Storage & Validación** | ✅ | 4h | 2025-11-15 |
 
 ### Resumen de Implementación
 
@@ -36,11 +37,11 @@
 - Suite de aislamiento multitenant (`tests/test_tenant_isolation.py`) con 9/9 escenarios activos
 - Validación multinivel (user → company → subscription)
 
-**⚠️ Pendientes Críticos (Fase 4 en curso):**
-- Segregar storage/uploads (`/uploads/company_{id}`) y recalcular rutas anteriores
-- Script/cron de migración de archivos existentes + verificación (`file_uploads` vs filesystem)
-- Automatizar la suite `tests/test_tenant_isolation.py` en CI/CD y publicar reportes
-- Instrumentar monitoreo de límites (max_users/subscription) y alertas cross-tenant
+**⚠️ Pendientes Próximos (Fase 5 en curso):**
+- Company-user relationships avanzados + overrides RBAC (ver sección Fase 5)
+- Policy Engine básico, permisos temporales y listeners automáticos
+- Monetización/observabilidad avanzada (alertas max_users, storage quotas)
+- Preparar despliegue final (Fases 5-6)
 
 ---
 
@@ -550,35 +551,40 @@ class User(Base):
 
 ---
 
-### 🟡 FASE 4: Storage & Validación (4 horas) - EN PROGRESO
+### ✅ FASE 4: Storage & Validación (4 horas) - COMPLETADA
 **Prioridad:** ALTA
 
-| Tarea | Tiempo | Archivo / Acción |
-|-------|--------|------------------|
-| **4.1** FileService segregado | 1.5h | Implementar `utils/file_storage.py` con `base_path/company_{id}` + validaciones, exponer helpers en `config.py`/`services/file_service.py`. |
-| **4.2** Migración & verificación de uploads | 1h | Script `scripts/migrate_files_by_tenant.sh` + `scripts/verify_uploads.py` para mover archivos previos, actualizar rutas en DB y generar reporte. |
-| **4.3** Automatizar pruebas de aislamiento + storage check | 1.5h | Añadir workflow `.github/workflows/multitenant.yml` que ejecute `tests/test_tenant_isolation.py` + smoke test que valide la estructura de carpetas por tenant. |
+| Tarea | Tiempo | Archivo / Acción | Estado |
+|-------|--------|------------------|--------|
+| **4.1** FileService segregado | 1.5h | `utils/file_storage.py` con sanitización, métodos `save/read/exists/delete/list`, integraciones en `routes/production_status.py`. | ✅ |
+| **4.2** Migración & verificación de uploads | 1h | `scripts/migrate_files_by_tenant.py` (`--dry-run` + migración), wrapper `.sh`, verificador `scripts/verify_uploads.py`. | ✅ (sin legacy por mover) |
+| **4.3** Automatizar QA/CI | 1.5h | `.github/workflows/multitenant-tests.yml` ejecuta `tests/test_tenant_isolation.py` (9/9) + `tests/test_file_storage.py`, coverage y escaneo Trivy. | ✅ |
 
-**Criterio de éxito:**
-- ✅ Archivos existentes migrados a `/uploads/company_{id}/` con reporte firmado
-- ✅ API usa FileService multitenant (lectura/escritura aislada)
-- ✅ Suite `tests/test_tenant_isolation.py` + verificación de storage corren automáticamente en CI/CD
-
-> Estado actual: pruebas locales 9/9 superadas. Falta pipeline CI y la segregación física en disco/codebase.
+**Criterio de éxito:** Cumplido. Archivos nuevos usan `/uploads/company_{id}/namespace/`, scripts disponibles para regularizar data existente, y la suite multitenant + storage se ejecuta en CI con reporte de cobertura (Codecov) y escaneo de seguridad (Trivy → SARIF). 
 
 ---
 
 ### 🟢 FASE 5: RBAC Avanzado (16 horas) - DÍA 5-7
 **Prioridad:** MEDIA - Mejoras
 
-| Tarea | Tiempo | Archivo |
-|-------|--------|---------|
-| **5.1** Company-User relationships | 2h | `models/company.py`, `models/user.py` |
-| **5.2** RolePermissionOverride | 3h | `models/rbac.py` |
-| **5.3** Policy Engine básico | 4h | `auth/policy_engine.py` |
-| **5.4** Permisos temporales | 2h | `models/permission.py` |
-| **5.5** Sessions con company_id | 1h | `models/session.py` |
-| **5.6** Tests RBAC | 4h | `tests/test_rbac_multitenant.py` |
+| Tarea | Tiempo | Archivo | Estado |
+|-------|--------|---------|--------|
+| **5.1** Company-User relationships | 2h | `models/company.py`, `models/user.py` | ✅ |
+| **5.2** RolePermissionOverride | 3h | `models/rbac_overrides.py` | ✅ |
+| **5.3** Policy Engine básico | 4h | `auth/policy_engine.py` | ✅ |
+| **5.4** Permisos temporales | 2h | `models/rbac_overrides.py` | ✅ |
+| **5.5** Sessions con company_id | 1h | `models/session.py`, `models/audit.py` | ✅ |
+| **5.6** Tests RBAC | 4h | `tests/test_rbac_policy_engine.py` | ✅ (unitarios SQLite) |
+| **5.7** Migración SQL a MySQL | 2h | `schema/migrations/004_rbac_multitenant_phase5.sql` | ⚠️ Pendiente de ejecutar en MySQL/Cloud SQL |
+
+**Recomendaciones de escalabilidad y tolerancia a fallos (pre-Fase 5):**
+- Implementar listeners SQLAlchemy que auto-inyecten `company_id` en modelos `TenantScoped` para reducir errores humanos.
+- Añadir cuotas por tenant (storage, max_users, requests) con alertas Prometheus/Cloud Monitoring y endpoints de auditoría.
+- Configurar retención/versionado en `/uploads` (por ejemplo, snapshots diarios en Cloud Storage) para recuperación ante desastres.
+- Integrar `FileStorageService` en módulos restantes (balance exports, financial uploads) y registrar metadatos en `data_audit_log`.
+
+> **Nota de despliegue:** Ejecutar `schema/migrations/004_rbac_multitenant_phase5.sql` en la instancia MySQL antes de promover a Cloud. Ejemplo:
+> `mysql -h <HOST> -u <USER> -p artyco_financial_rbac < schema/migrations/004_rbac_multitenant_phase5.sql`
 
 ---
 

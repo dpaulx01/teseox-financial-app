@@ -1,5 +1,6 @@
 // Sistema híbrido de almacenamiento: localStorage + Servidor
 // Compatible con SiteGround hosting compartido
+import TenantStorage from './tenantStorage';
 
 interface ServerResponse<T> {
   success: boolean;
@@ -265,7 +266,7 @@ class HybridStorage {
   private saveToLocal<T>(type: string, data: T): void {
     try {
       const key = this.getLocalStorageKey(type);
-      localStorage.setItem(key, JSON.stringify(data));
+      TenantStorage.setItem(key, JSON.stringify(data));
       // console.log(`💾 ${type} guardado en localStorage`);
     } catch (error) {
       // console.error(`❌ Error guardando ${type} en localStorage:`, error);
@@ -275,7 +276,7 @@ class HybridStorage {
   private loadFromLocal<T>(type: string): T | null {
     try {
       const key = this.getLocalStorageKey(type);
-      const stored = localStorage.getItem(key);
+      const stored = TenantStorage.getItem(key);
       
       if (stored) {
         const data = JSON.parse(stored);
@@ -311,7 +312,7 @@ class HybridStorage {
       'artyco-combined-data'
     ];
     
-    keys.forEach(key => localStorage.removeItem(key));
+    keys.forEach(key => TenantStorage.removeItem(key));
     // console.log('🗑️ localStorage limpiado');
   }
 

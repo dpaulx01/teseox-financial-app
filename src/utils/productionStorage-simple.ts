@@ -1,4 +1,5 @@
 import { ProductionData, OperationalMetrics, ProductionConfig, CombinedData } from '../types';
+import TenantStorage from './tenantStorage';
 
 // Claves para localStorage
 const PRODUCTION_DATA_KEY = 'artyco-production-data';
@@ -9,7 +10,7 @@ const COMBINED_DATA_KEY = 'artyco-combined-data';
 
 export function saveProductionData(data: ProductionData[]): void {
   try {
-    localStorage.setItem(PRODUCTION_DATA_KEY, JSON.stringify(data));
+    TenantStorage.setItem(PRODUCTION_DATA_KEY, JSON.stringify(data));
     // console.log('✅ Datos de producción guardados:', data.length, 'registros');
   } catch (error) {
     // console.error('❌ Error guardando datos de producción:', error);
@@ -18,7 +19,7 @@ export function saveProductionData(data: ProductionData[]): void {
 
 export function loadProductionData(): ProductionData[] {
   try {
-    const stored = localStorage.getItem(PRODUCTION_DATA_KEY);
+    const stored = TenantStorage.getItem(PRODUCTION_DATA_KEY);
     if (stored) {
       const data = JSON.parse(stored);
       // console.log('📁 Datos de producción cargados:', data.length, 'registros');
@@ -32,7 +33,7 @@ export function loadProductionData(): ProductionData[] {
 
 export function saveProductionConfig(config: ProductionConfig): void {
   try {
-    localStorage.setItem(PRODUCTION_CONFIG_KEY, JSON.stringify(config));
+    TenantStorage.setItem(PRODUCTION_CONFIG_KEY, JSON.stringify(config));
     // console.log('✅ Configuración de producción guardada');
   } catch (error) {
     // console.error('❌ Error guardando configuración:', error);
@@ -41,7 +42,7 @@ export function saveProductionConfig(config: ProductionConfig): void {
 
 export function loadProductionConfig(): ProductionConfig | null {
   try {
-    const stored = localStorage.getItem(PRODUCTION_CONFIG_KEY);
+    const stored = TenantStorage.getItem(PRODUCTION_CONFIG_KEY);
     if (stored) {
       return JSON.parse(stored);
     }
@@ -57,7 +58,7 @@ export function saveCombinedData(data: CombinedData): void {
       ...data,
       lastUpdated: new Date().toISOString()
     };
-    localStorage.setItem(COMBINED_DATA_KEY, JSON.stringify(dataToSave));
+    TenantStorage.setItem(COMBINED_DATA_KEY, JSON.stringify(dataToSave));
     // console.log('✅ Datos combinados guardados');
   } catch (error) {
     // console.error('❌ Error guardando datos combinados:', error);
@@ -66,7 +67,7 @@ export function saveCombinedData(data: CombinedData): void {
 
 export function loadCombinedData(): CombinedData | null {
   try {
-    const stored = localStorage.getItem(COMBINED_DATA_KEY);
+    const stored = TenantStorage.getItem(COMBINED_DATA_KEY);
     if (stored) {
       return JSON.parse(stored);
     }
@@ -201,12 +202,19 @@ export function exportProductionData(data: CombinedData): string {
   return JSON.stringify(exportData, null, 2);
 }
 
+// Cleanup helper for tenant data
+export function clearProductionStorage(): void {
+  TenantStorage.removeItem(PRODUCTION_DATA_KEY);
+  TenantStorage.removeItem(PRODUCTION_CONFIG_KEY);
+  TenantStorage.removeItem(COMBINED_DATA_KEY);
+}
+
 // === FUNCIONES DE LIMPIEZA ===
 
 export function clearAllProductionData(): void {
-  localStorage.removeItem(PRODUCTION_DATA_KEY);
-  localStorage.removeItem(PRODUCTION_CONFIG_KEY);
-  localStorage.removeItem(COMBINED_DATA_KEY);
+  TenantStorage.removeItem(PRODUCTION_DATA_KEY);
+  TenantStorage.removeItem(PRODUCTION_CONFIG_KEY);
+  TenantStorage.removeItem(COMBINED_DATA_KEY);
   // console.log('🗑️ Todos los datos de producción eliminados');
 }
 

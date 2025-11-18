@@ -10,7 +10,8 @@ from collections import defaultdict
 from pathlib import Path
 
 from database.connection import SessionLocal
-from models.production import ProductionQuote
+from models import ProductionQuote, Company, User  # Import all related models to resolve relationships
+from models.sales import SalesTransaction  # Import explicitly for relationship resolution
 from utils.file_storage import FileStorageService
 from config import Config
 

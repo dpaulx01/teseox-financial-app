@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { MixedCost, BreakEvenClassification } from '../types';
+import TenantStorage from '../utils/tenantStorage';
 
 interface MixedCostContextType {
   mixedCosts: MixedCost[];
@@ -20,8 +21,8 @@ export const MixedCostProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Cargar datos guardados al iniciar
   useEffect(() => {
     try {
-      const savedMixedCosts = localStorage.getItem('artyco-mixed-costs-global');
-      const savedClassifications = localStorage.getItem('artyco-custom-classifications-global');
+      const savedMixedCosts = TenantStorage.getItem('artyco-mixed-costs-global');
+      const savedClassifications = TenantStorage.getItem('artyco-custom-classifications-global');
       
       if (savedMixedCosts) {
         const parsed = JSON.parse(savedMixedCosts);
@@ -69,7 +70,7 @@ export const MixedCostProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     
     // Guardar en localStorage
     try {
-      localStorage.setItem('artyco-custom-classifications-global', JSON.stringify(classifications));
+      TenantStorage.setItem('artyco-custom-classifications-global', JSON.stringify(classifications));
     } catch (error) {
       // Error saving custom classifications
     }
@@ -82,8 +83,8 @@ export const MixedCostProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setLastUpdated(null);
     
     try {
-      localStorage.removeItem('artyco-mixed-costs-global');
-      localStorage.removeItem('artyco-custom-classifications-global');
+      TenantStorage.removeItem('artyco-mixed-costs-global');
+      TenantStorage.removeItem('artyco-custom-classifications-global');
     } catch (error) {
       // Error clearing mixed cost data
     }

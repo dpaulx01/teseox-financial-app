@@ -1,0 +1,102 @@
+name: Multitenant Isolation Tests
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main, develop ]
+  workflow_dispatch:
+
+jobs:
+  test-tenant-isolation:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test_password
+          MYSQL_DATABASE: artyco_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov pytest-asyncio
+        pip install fastapi sqlalchemy pydantic passlib PyJWT python-multipart
+        pip install mysql-connector-python
+
+    - name: Wait for MySQL
+      run: |
+        for i in {1..30}; do
+          if mysqladmin ping -h"127.0.0.1" -P3306 -uroot -ptest_password --silent; then
+            echo "MySQL is ready"
+            break
+          fi
+          echo "Waiting for MySQL..."
+          sleep 2
+        done
+
+    - name: Setup test database
+      env:
+        DATABASE_URL: mysql+mysqlconnector://root:test_password@127.0.0.1:3306/artyco_test
+      run: |
+        mysql -h 127.0.0.1 -P 3306 -uroot -ptest_password -e "CREATE DATABASE IF NOT EXISTS artyco_test;"
+        mysql -h 127.0.0.1 -P 3306 -uroot -ptest_password artyco_test < database/init/01-create-tables.sql || true
+
+    - name: Run tenant isolation tests
+      env:
+        DATABASE_URL: mysql+mysqlconnector://root:test_password@127.0.0.1:3306/artyco_test
+        JWT_SECRET_KEY: test_secret_key_for_ci
+        JWT_ALGORITHM: HS256
+        JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      run: |
+        pytest tests/test_tenant_isolation.py -v --cov=routes --cov=auth --cov-report=term-missing
+
+    - name: Run file storage tests
+      run: |
+        pytest tests/test_file_storage.py -v
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v4
+      if: always()
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+        token: ${{ secrets.CODECOV_TOKEN }}
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'

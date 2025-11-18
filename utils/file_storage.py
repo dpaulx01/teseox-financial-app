@@ -75,8 +75,76 @@ class FileStorageService:
         target.write_bytes(content)
         return target
 
+    def read_bytes(self, company_id: int, filename: str) -> bytes:
+        """
+        Read raw bytes for a tenant file. Raises FileNotFoundError if missing.
+        """
+        path = self.resolve(company_id, filename)
+        return path.read_bytes()
+
+    def exists(self, company_id: int, filename: str) -> bool:
+        """
+        Check if a tenant-specific file exists.
+        """
+        path = self.resolve(company_id, filename)
+        return path.exists()
+
+    def delete_file(self, company_id: int, filename: str) -> None:
+        """
+        Delete a tenant file if present.
+        """
+        path = self.resolve(company_id, filename)
+        if path.exists():
+            path.unlink()
+
+    def list_files(self, company_id: int, pattern: str = "*") -> list[Path]:
+        """
+        List files inside a tenant namespace using glob patterns.
+        """
+        root = self._company_root(company_id, ensure=False)
+        if not root.exists():
+            return []
+        return sorted(root.glob(pattern))
+
     def resolve(self, company_id: int, filename: str) -> Path:
         """
         Return the absolute path for the given tenant file without touching disk.
         """
         return self.build_path(company_id, filename, ensure_parent=False)
+
+    def read_bytes(self, company_id: int, filename: str) -> bytes:
+        """
+        Read file content from tenant directory.
+        Raises FileNotFoundError if file doesn't exist.
+        """
+        path = self.resolve(company_id, filename)
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {filename} (company {company_id})")
+        return path.read_bytes()
+
+    def exists(self, company_id: int, filename: str) -> bool:
+        """
+        Check if file exists in tenant directory.
+        """
+        return self.resolve(company_id, filename).exists()
+
+    def delete_file(self, company_id: int, filename: str) -> bool:
+        """
+        Delete file from tenant directory.
+        Returns True if file was deleted, False if it didn't exist.
+        """
+        path = self.resolve(company_id, filename)
+        if path.exists():
+            path.unlink()
+            return True
+        return False
+
+    def list_files(self, company_id: int, pattern: str = "*") -> list[Path]:
+        """
+        List files in tenant directory matching pattern.
+        Returns list of Path objects relative to company root.
+        """
+        root = self._company_root(company_id, ensure=False)
+        if not root.exists():
+            return []
+        return sorted(root.glob(pattern))

@@ -1,6 +1,7 @@
 import { ProductionData, OperationalMetrics, ProductionConfig, CombinedData } from '../types';
 import { log } from './logger';
 import { apiPath } from '../config/apiBaseUrl';
+import TenantStorage from './tenantStorage';
 
 const productionPath = (suffix: string) => apiPath(`/api/production${suffix}`);
 
@@ -15,7 +16,7 @@ const getMonthNumber = (monthName: string): number => {
 const getMonthName = (monthNumber: number): string => MONTHS[monthNumber - 1] || 'Enero';
 
 const authHeaders = () => {
-  const token = localStorage.getItem('access_token');
+  const token = TenantStorage.getItem('access_token');
   if (!token) {
     throw new Error('No authentication token found');
   }

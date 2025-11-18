@@ -38,5 +38,5 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["python", "api_server.py"]
+# Run the RBAC multitenant application
+CMD ["python", "api_server_rbac.py"]

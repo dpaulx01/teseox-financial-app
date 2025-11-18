@@ -45,27 +45,56 @@ class User(Base):
     financial_scenarios = relationship('FinancialScenario', back_populates='owner', cascade='all, delete-orphan', lazy='dynamic')
     company = relationship('Company', foreign_keys=[company_id], back_populates='users')
     
-    def has_permission(self, resource: str, action: str) -> bool:
-        """Check if user has specific permission"""
+    def has_permission(self, resource: str, action: str, db=None) -> bool:
+        """Check if user has specific permission
+
+        Args:
+            resource: Resource name (e.g., "users", "sales")
+            action: Action name (e.g., "read", "write")
+            db: Database session (optional, enables tenant overrides and temporal permissions)
+
+        Returns:
+            True if user has the permission
+        """
+        # Fast path for superusers
         if self.is_superuser:
             return True
-            
+
+        # Use Policy Engine if db session provided (includes overrides and temporal)
+        if db is not None:
+            from auth.policy_engine import PolicyEngine
+            return PolicyEngine.has_permission(self, resource, action, db, self.company_id)
+
+        # Fallback to basic role-based check (no overrides, no temporal)
         for role in self.roles:
             for permission in role.permissions:
                 if permission.resource == resource and permission.action == action:
                     return True
         return False
-    
+
     def has_role(self, role_name: str) -> bool:
         """Check if user has specific role"""
         return any(role.name == role_name for role in self.roles)
-    
-    def get_permissions(self) -> set:
-        """Get all user permissions as a set of tuples (resource, action)"""
+
+    def get_permissions(self, db=None) -> set:
+        """Get all user permissions as a set of tuples (resource, action)
+
+        Args:
+            db: Database session (optional, enables tenant overrides and temporal permissions)
+
+        Returns:
+            Set of (resource, action) tuples
+        """
+        # Fast path for superusers
         if self.is_superuser:
-            # Return a special indicator for superuser
             return {('*', '*')}
-            
+
+        # Use Policy Engine if db session provided (includes overrides and temporal)
+        if db is not None:
+            from auth.policy_engine import PolicyEngine
+            return PolicyEngine.evaluate_user_permissions(self, db, self.company_id)
+
+        # Fallback to basic role-based permissions (no overrides, no temporal)
         permissions = set()
         for role in self.roles:
             for permission in role.permissions:

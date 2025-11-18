@@ -417,13 +417,14 @@ async def deactivate_user(
     
     user.is_active = False
     
-    # Revoke all active sessions
+    # Revoke all active sessions (enforce tenant isolation)
     from models import UserSession
     active_sessions = db.query(UserSession).filter(
         UserSession.user_id == user_id,
+        UserSession.company_id == company_id,
         UserSession.revoked_at.is_(None)
     ).all()
-    
+
     for session in active_sessions:
         session.revoke()
     

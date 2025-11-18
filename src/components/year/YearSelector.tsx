@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useYear, YearInfo } from '../../contexts/YearContext';
 import CSVUploaderYearAware from '../upload/CSVUploaderYearAware';
+import { getTenantBrand } from '../../utils/tenantBrand';
 
 interface YearSelectorProps {
   onYearSelect?: (year: number) => void;
@@ -21,6 +22,7 @@ export const YearSelector: React.FC<YearSelectorProps> = ({
     setSelectedYear,
     refreshYears 
   } = useYear();
+  const brand = getTenantBrand();
   
   const [showUploadForm, setShowUploadForm] = useState(false);
 
@@ -88,10 +90,10 @@ export const YearSelector: React.FC<YearSelectorProps> = ({
         <div className="text-center mb-8">
           <div className="text-cyan-400 text-6xl mb-4">📊</div>
           <h1 className="text-3xl font-bold text-white mb-2 font-mono">
-            ARTYCO FINANCIAL APP
+            {brand.displayName}
           </h1>
           <p className="text-gray-300 font-mono">
-            Seleccione el año fiscal para continuar
+            Seleccione el año fiscal para continuar en la plataforma financiera multitenant
           </p>
         </div>
 

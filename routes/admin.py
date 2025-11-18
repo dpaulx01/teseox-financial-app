@@ -388,32 +388,47 @@ async def get_system_stats(
     current_user: User = Depends(require_permission("system", "admin")),
     db: Session = Depends(get_db)
 ):
-    """Get system statistics (requires system:admin permission)"""
-    
-    # Count users
-    total_users = db.query(User).count()
-    active_users = db.query(User).filter(User.is_active == True).count()
-    superusers = db.query(User).filter(User.is_superuser == True).count()
-    
-    # Count roles
+    """Get system statistics (requires system:admin permission)
+
+    Superusers see global stats, regular admins see only their tenant's stats.
+    """
+
+    # Determine scope: global for superusers, tenant-specific for admins
+    company_id = None if current_user.is_superuser else current_user.company_id
+
+    # Count users (tenant-aware)
+    user_query = db.query(User)
+    if company_id:
+        user_query = user_query.filter(User.company_id == company_id)
+    total_users = user_query.count()
+    active_users = user_query.filter(User.is_active == True).count()
+    superusers = user_query.filter(User.is_superuser == True).count()
+
+    # Count roles (global - roles are shared across tenants)
     total_roles = db.query(Role).count()
     system_roles = db.query(Role).filter(Role.is_system_role == True).count()
-    
-    # Count permissions
+
+    # Count permissions (global - permissions are shared across tenants)
     total_permissions = db.query(Permission).count()
-    
-    # Active sessions
+
+    # Active sessions (tenant-aware)
     from models import UserSession
     from datetime import datetime
-    active_sessions = db.query(UserSession).filter(
+    session_query = db.query(UserSession).filter(
         UserSession.revoked_at.is_(None),
         UserSession.expires_at > datetime.utcnow()
-    ).count()
-    
-    # Recent activity
-    recent_logins = db.query(AuditLog).filter(
+    )
+    if company_id:
+        session_query = session_query.filter(UserSession.company_id == company_id)
+    active_sessions = session_query.count()
+
+    # Recent activity (tenant-aware)
+    audit_query = db.query(AuditLog).filter(
         AuditLog.action == "login_success"
-    ).order_by(AuditLog.created_at.desc()).limit(10).count()
+    )
+    if company_id:
+        audit_query = audit_query.filter(AuditLog.company_id == company_id)
+    recent_logins = audit_query.order_by(AuditLog.created_at.desc()).limit(10).count()
     
     return {
         "users": {

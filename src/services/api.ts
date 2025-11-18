@@ -138,6 +138,81 @@ class FinancialAPIService {
     return response.data;
   }
 
+  // ===============================
+  // SUPER ADMIN (cross-tenant)
+  // ===============================
+
+  async saListCompanies(params?: { limit?: number; active_only?: boolean }): Promise<any[]> {
+    const response = await this.api.get('/api/superadmin/companies', { params });
+    return response.data;
+  }
+
+  async saListRoles(): Promise<any[]> {
+    const response = await this.api.get('/api/superadmin/roles');
+    return response.data;
+  }
+
+  async saCreateCompany(payload: {
+    name: string;
+    subscription_tier: string;
+    max_users?: number;
+    industry?: string | null;
+    description?: string | null;
+  }): Promise<any> {
+    const response = await this.api.post('/api/superadmin/companies', payload);
+    return response.data;
+  }
+
+  async saUpdateCompany(companyId: number, payload: any): Promise<any> {
+    const response = await this.api.put(`/api/superadmin/companies/${companyId}`, payload);
+    return response.data;
+  }
+
+  async saListUsers(params?: { limit?: number; active_only?: boolean; company_id?: number }): Promise<any[]> {
+    const response = await this.api.get('/api/superadmin/users', { params });
+    return response.data;
+  }
+
+  async saCreateUser(payload: {
+    username: string;
+    email: string;
+    password: string;
+    first_name?: string;
+    last_name?: string;
+    company_id: number;
+    is_superuser?: boolean;
+  }): Promise<any> {
+    const response = await this.api.post('/api/superadmin/users', payload);
+    return response.data;
+  }
+
+  async saUpdateUser(userId: number, payload: Partial<{
+    username: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    password: string;
+    is_active: boolean;
+    is_superuser: boolean;
+  }>): Promise<any> {
+    const response = await this.api.put(`/api/superadmin/users/${userId}`, payload);
+    return response.data;
+  }
+
+  async saChangeUserCompany(userId: number, newCompanyId: number): Promise<any> {
+    const response = await this.api.put(`/api/superadmin/users/${userId}/change-company`, null, {
+      params: { new_company_id: newCompanyId },
+    });
+    return response.data;
+  }
+
+  async saAssignRoles(userId: number, roleIds: number[]): Promise<any> {
+    const response = await this.api.post(`/api/superadmin/users/${userId}/roles`, {
+      role_ids: roleIds,
+    });
+    return response.data;
+  }
+
   async analyzePortfolio(investments: any[], analysisType: string = 'return'): Promise<PortfolioAnalysis> {
     const response: AxiosResponse<ApiResponse<PortfolioAnalysis>> = await this.api.post(
       '/api/portfolio/analyze',

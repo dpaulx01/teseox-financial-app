@@ -8,18 +8,20 @@ from database.connection import Base
 
 class UserSession(Base):
     __tablename__ = 'user_sessions'
-    
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    company_id = Column(Integer, ForeignKey('companies.id', ondelete='CASCADE'), nullable=False, default=1, index=True)
     token_hash = Column(String(255), unique=True, nullable=False, index=True)
     ip_address = Column(String(45))
     user_agent = Column(Text)
     expires_at = Column(DateTime, nullable=False, index=True)
     created_at = Column(DateTime, server_default=func.current_timestamp())
     revoked_at = Column(DateTime, nullable=True)
-    
+
     # Relationships
     user = relationship('User', back_populates='sessions')
+    company = relationship('Company')
     
     @property
     def is_active(self) -> bool:

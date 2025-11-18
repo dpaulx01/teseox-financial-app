@@ -122,7 +122,7 @@ async def login(
         )
     
     # Get user permissions
-    permissions = [f"{p[0]}:{p[1]}" for p in user.get_permissions()]
+    permissions = [f"{p[0]}:{p[1]}" for p in user.get_permissions(db)]
     company_id = user.company_id
     
     # Create tokens
@@ -140,6 +140,7 @@ async def login(
     token_hash = JWTHandler.get_token_hash(access_token)
     session = UserSession(
         user_id=user.id,
+        company_id=company_id,
         token_hash=token_hash,
         ip_address=http_request.client.host if http_request.client else None,
         user_agent=http_request.headers.get("user-agent"),
@@ -317,7 +318,7 @@ async def register(
     db.commit()
     
     # Auto-login after registration
-    permissions = [f"{p[0]}:{p[1]}" for p in user.get_permissions()]
+    permissions = [f"{p[0]}:{p[1]}" for p in user.get_permissions(db)]
     
     access_token = JWTHandler.create_access_token(
         user_id=user.id,
@@ -333,6 +334,7 @@ async def register(
     token_hash = JWTHandler.get_token_hash(access_token)
     session = UserSession(
         user_id=user.id,
+        company_id=user.company_id,
         token_hash=token_hash,
         ip_address=http_request.client.host if http_request.client else None,
         user_agent=http_request.headers.get("user-agent"),
@@ -391,7 +393,7 @@ async def refresh_token(
         )
     
     # Create new tokens
-    permissions = [f"{p[0]}:{p[1]}" for p in user.get_permissions()]
+    permissions = [f"{p[0]}:{p[1]}" for p in user.get_permissions(db)]
     company_id = user.company_id
     
     access_token = JWTHandler.create_access_token(
@@ -408,6 +410,7 @@ async def refresh_token(
     token_hash = JWTHandler.get_token_hash(access_token)
     session = UserSession(
         user_id=user.id,
+        company_id=company_id,
         token_hash=token_hash,
         ip_address=http_request.client.host if http_request.client else None,
         user_agent=http_request.headers.get("user-agent"),
@@ -448,12 +451,13 @@ async def logout(
         token = auth_header.split(" ")[1]
         token_hash = JWTHandler.get_token_hash(token)
         
-        # Revoke session
+        # Revoke session (ensure tenant isolation)
         session = db.query(UserSession).filter(
             UserSession.token_hash == token_hash,
-            UserSession.user_id == current_user.id
+            UserSession.user_id == current_user.id,
+            UserSession.company_id == current_user.company_id
         ).first()
-        
+
         if session:
             session.revoke()
     
@@ -471,10 +475,13 @@ async def logout(
     return {"message": "Successfully logged out"}
 
 @router.get("/me")
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
-    """Get current user information"""
-    permissions = [f"{p[0]}:{p[1]}" for p in current_user.get_permissions()]
-    
+async def get_current_user_info(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get current user information (tenant-aware)"""
+    permissions = [f"{p[0]}:{p[1]}" for p in current_user.get_permissions(db)]
+
     return {
         "id": current_user.id,
         "username": current_user.username,
@@ -485,6 +492,8 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         "is_superuser": current_user.is_superuser,
         "created_at": current_user.created_at,
         "last_login": current_user.last_login,
+        "company_id": current_user.company_id,
+        "company_name": current_user.company.name if current_user.company else None,
         "roles": [{"id": role.id, "name": role.name, "description": role.description} for role in current_user.roles],
         "permissions": permissions
     }

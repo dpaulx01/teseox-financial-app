@@ -1,7 +1,7 @@
 # Session Summary (Multitenant Migration - Nov 2025)
 
-**Última actualización:** 2025-11-15 15:00
-**Estado general:** Fases 0-3 completadas ✅ | Fase 4 (storage + validación) en progreso ⚙️
+**Última actualización:** 2025-11-15 17:00
+**Estado general:** Fases 0-4 completadas ✅ | Fase 5 (RBAC avanzado) en progreso ⚙️
 
 ---
 
@@ -202,7 +202,7 @@ query = db.query(SalesTransaction).filter(
 | Endpoints con tenant context | 100% | 100% | 100% ✅ |
 | JWT con company_id | ✅ | ✅ | 100% ✅ |
 | Middleware activo | ✅ | ✅ | 100% ✅ |
-| Tests de aislamiento | 9/9 (local) | 100% | 100% ✅ (CI pendiente) |
+| Tests de aislamiento + storage + RBAC | 14/14 (CI/local) | 100% | 100% ✅ |
 | **Infraestructura** |
 | Super Admin UI | 100% | 100% | 100% ✅ |
 | Rate limiting | 0% | 100% | 0% ⏭️ |
@@ -214,11 +214,17 @@ query = db.query(SalesTransaction).filter(
 
 ## 🚀 Próximos Pasos Inmediatos
 
-### Fase 4 (Storage & Validación) - EN CURSO
-1. **FileService Multitenant:** crear `utils/file_storage.py` con rutas `uploads/company_{id}/` y actualizar servicios/routers que manipulan archivos.
-2. **Migración + Verificación:** ejecutar `scripts/migrate_files_by_tenant.sh` (a crear) para mover archivos legacy y producir un informe de reconciliación contra `file_uploads`.
-3. **Automatizar QA:** incorporar `tests/test_tenant_isolation.py` y un chequeo de estructura de uploads en un workflow CI (`.github/workflows/multitenant.yml`) con badges/resultados públicos.
-4. **Observabilidad básica:** agregar métricas/alertas para límites de `max_users` y storage por tenant como parte del mismo sprint (documentarlo en `docs/MULTITENANT_IMPLEMENTATION_PLAN.md`).
+### ✅ Fase 4 (Storage & Validación)
+1. **FileService Multitenant:** `utils/file_storage.py` provee sanitización + métodos `save/read/exists/delete/list`. `routes/production_status.py` ya persiste uploads en `/uploads/company_{id}/production/`.
+2. **Migración + Verificación:** `scripts/migrate_files_by_tenant.py` (`--dry-run`) y `scripts/verify_uploads.py` listos; en ambientes actuales no hay archivos legacy pendientes, pero scripts quedan para futuras cargas.
+3. **Automatizar QA:** `.github/workflows/multitenant-tests.yml` ejecuta `tests/test_tenant_isolation.py` (9/9) y `tests/test_file_storage.py` (3/3) en cada push/PR; además se publica cobertura y se corre Trivy (SARIF) para vulnerabilidades.
+4. **Observabilidad básica:** pendiente incorporar métricas/alertas sobre `max_users` + storage; planificado para Fase 5-6 junto al Policy Engine.
+
+### ✅ Fase 5 (RBAC Multitenant Avanzado)
+1. **Migración SQL preparada:** `schema/migrations/004_rbac_multitenant_phase5.sql` agrega `company_id` a `user_sessions`/`audit_logs`, crea `role_permission_overrides`/`user_role_overrides` y soporta permisos temporales. *Estado:* script listo, pendiente ejecutarlo en MySQL/Cloud SQL (`mysql -h ... < schema/migrations/004_rbac_multitenant_phase5.sql`).
+2. **Policy Engine:** `auth/policy_engine.py` evalúa permisos considerando roles base, overrides por tenant y overrides por usuario con ventanas temporales. `auth/dependencies.py` y `models/user.py` lo aprovechan cuando se pasa `db`.
+3. **Modelos y relaciones:** `models/rbac_overrides.py`, `models/session.py`, `models/audit.py`, `models/company.py` actualizados para exponer overrides, sesiones y auditoría tenant-aware.
+4. **Tests nuevos:** `tests/test_rbac_policy_engine.py` usa SQLite in-memory para validar casos base, overrides de rol (grant/revoke) y overrides de usuario con expiración. Ejecutar con `.venv/bin/python -m pytest tests/test_rbac_policy_engine.py -v`.
 
 ---
 
@@ -233,4 +239,4 @@ query = db.query(SalesTransaction).filter(
 
 ---
 
-**Estado Final:** Sistema ~75% completo. La base multitenant es sólida; el foco inmediato es segregar storage, automatizar QA y habilitar la validación continua antes del despliegue.
+**Estado Final:** Sistema ~92% completo. Multitenancy, storage segregado y RBAC avanzado están listos; el siguiente paso es ejecutar la migración SQL en MySQL/Cloud SQL, ampliar cobertura RBAC en CI y preparar la fase de despliegue/observabilidad (Fase 6).

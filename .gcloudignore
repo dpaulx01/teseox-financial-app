@@ -20,6 +20,7 @@ __pycache__/
 # Logs y temporales
 *.log
 .DS_Store
+api-env.yaml
 
 # Editor config
 .vscode/

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { NavigationProps } from '../../types';
 import ThemeToggle from '../ui/ThemeToggle';
+import { getTenantBrand } from '../../utils/tenantBrand';
 
 const iconMap = {
   Home,
@@ -37,9 +38,11 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isHovering, setIsHovering] = useState(false);
+  const logoSrc = '/logo-teseox.png';
   
   // Get user from localStorage to check if admin
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const brand = getTenantBrand();
   const isAdmin = user.is_superuser || false;
   
   const navItems = [
@@ -108,29 +111,39 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
         {/* Header */}
         <div className="p-4 border-b border-border relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-accent/10 animate-hologram" />
-          <div className="flex items-center justify-between relative z-10">
+          <div className="relative z-10">
             {shouldShowExpanded ? (
-              <div className="text-center flex-1">
-                <h1 className="text-2xl font-display text-primary neon-text animate-pulse-glow">ARTYCO</h1>
-                <p className="text-xs text-text-muted font-mono">// Inteligencia Financiera</p>
+              <div className="flex items-center justify-between">
+                <div className="flex-1 flex flex-col items-center gap-2">
+                  <div className="w-14 h-14 rounded-2xl overflow-hidden bg-glass border border-border shadow-glow-sm">
+                    <img src={logoSrc} alt="Teseox" className="w-full h-full object-contain p-2" />
+                  </div>
+                  <div className="text-center">
+                    <h1 className="text-xl font-display text-primary neon-text animate-pulse-glow">{brand.displayName}</h1>
+                    <p className="text-xs text-text-muted font-mono">// Powered by Teseo X</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsCollapsed(!isCollapsed)}
+                  className="p-1 hover:bg-glass rounded transition-colors text-text-muted hover:text-primary"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
               </div>
             ) : (
-              <div className="w-8 h-8 flex items-center justify-center text-primary font-display text-xl neon-text">
-                A
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-10 h-10 flex items-center justify-center text-primary font-display text-xl neon-text rounded-lg overflow-hidden bg-glass border border-border">
+                  <img src={logoSrc} alt="Teseox" className="w-full h-full object-contain p-1.5" />
+                </div>
+                <button
+                  onClick={() => setIsCollapsed(false)}
+                  className="p-1 hover:bg-glass rounded transition-colors text-text-muted hover:text-primary"
+                  title="Expandir menú"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
             )}
-            
-            {/* Toggle button */}
-            <button
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="p-1 hover:bg-glass rounded transition-colors text-text-muted hover:text-primary"
-            >
-              {shouldShowExpanded ? (
-                <ChevronLeft className="w-4 h-4" />
-              ) : (
-                <ChevronRight className="w-4 h-4" />
-              )}
-            </button>
           </div>
         </div>
 
@@ -176,12 +189,12 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
         {/* Footer */}
         {shouldShowExpanded && (
           <div className="p-4 border-t border-border relative">
-            <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent" />
-            <p className="text-xs text-text-dim text-center font-mono relative z-10">
-              &copy; 2025 ARTYCO | <span className="text-primary">v2.0</span>
-            </p>
-          </div>
-        )}
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent" />
+          <p className="text-xs text-text-dim text-center font-mono relative z-10">
+            &copy; 2025 {brand.displayName} | <span className="text-primary">v2.0</span>
+          </p>
+        </div>
+      )}
       </aside>
 
       {/* Mobile Sidebar */}
@@ -189,12 +202,17 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
         lg:hidden w-64 glass-panel text-text-secondary flex flex-col flex-shrink-0 shadow-hologram
         fixed inset-y-0 left-0 z-40 transform
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
-        transition-all duration-500 ease-in-out backdrop-blur-xl
-      `}>
+    transition-all duration-500 ease-in-out backdrop-blur-xl
+  `}>
         <div className="p-6 text-center border-b border-border relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-accent/10 animate-hologram" />
-          <h1 className="text-3xl font-display text-primary neon-text relative z-10 animate-pulse-glow">ARTYCO</h1>
-          <p className="text-sm text-text-muted relative z-10 font-mono">// Inteligencia Financiera</p>
+          <div className="flex flex-col items-center gap-3 relative z-10">
+            <div className="w-12 h-12 rounded-xl overflow-hidden bg-glass border border-border shadow-glow-sm">
+              <img src={logoSrc} alt="Teseox" className="w-full h-full object-contain p-1.5" />
+            </div>
+            <h1 className="text-3xl font-display text-primary neon-text animate-pulse-glow">{brand.displayName}</h1>
+            <p className="text-sm text-text-muted font-mono">// Powered by Teseo X</p>
+          </div>
         </div>
         <nav className="flex-1 px-4 py-6">
           {navItems.map(item => {
@@ -226,7 +244,7 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab }) => {
         <div className="p-4 border-t border-border relative">
           <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent" />
           <p className="text-xs text-text-dim text-center font-mono relative z-10">
-            &copy; 2025 ARTYCO | <span className="text-primary">v2.0</span>
+            &copy; 2025 {brand.displayName} | <span className="text-primary">v2.0</span>
           </p>
         </div>
       </aside>

@@ -2,6 +2,7 @@ import { FinancialData } from '../types';
 import { hybridStorage } from './serverStorage';
 import { processFinancialData } from './financialDataProcessor';
 import { apiPath } from '../config/apiBaseUrl';
+import TenantStorage from './tenantStorage';
 
 const FINANCIAL_DATA_KEY = 'artyco-financial-data-persistent';
 const financialPath = (suffix: string) => apiPath(`/api/financial${suffix}`);
@@ -11,7 +12,7 @@ const financialPath = (suffix: string) => apiPath(`/api/financial${suffix}`);
 export const saveFinancialData = async (data: FinancialData): Promise<void> => {
   try {
     // SOLO GUARDAR EN MYSQL - NUNCA EN LOCALSTORAGE
-    const token = localStorage.getItem('access_token');
+    const token = TenantStorage.getItem('access_token');
     if (!token) {
       throw new Error('No authentication token found');
     }
@@ -37,7 +38,7 @@ export const saveFinancialData = async (data: FinancialData): Promise<void> => {
       if (result.success) {
         console.log('✅ Financial data saved to MySQL database');
         // NO guardar en localStorage - todo desde MySQL
-        localStorage.removeItem(FINANCIAL_DATA_KEY);
+        TenantStorage.removeItem(FINANCIAL_DATA_KEY);
         return;
       }
     }
@@ -52,7 +53,7 @@ export const saveFinancialData = async (data: FinancialData): Promise<void> => {
 export const loadFinancialData = async (year?: number): Promise<FinancialData | null> => {
   try {
     // SOLO CARGAR DESDE MYSQL - NUNCA DE LOCALSTORAGE
-    const token = localStorage.getItem('access_token');
+    const token = TenantStorage.getItem('access_token');
     if (!token) {
       console.warn('No authentication token found');
       return null;
@@ -105,7 +106,7 @@ export const loadFinancialData = async (year?: number): Promise<FinancialData | 
 export const clearFinancialData = async (): Promise<void> => {
   try {
     // LIMPIAR SOLO DE MYSQL - NO LOCALSTORAGE
-    const token = localStorage.getItem('access_token');
+    const token = TenantStorage.getItem('access_token');
     if (!token) {
       throw new Error('No authentication token found');
     }
@@ -121,9 +122,9 @@ export const clearFinancialData = async (): Promise<void> => {
     if (response.ok) {
       console.log('✅ Financial data cleared from MySQL database');
       // Limpiar cualquier residuo de localStorage
-      localStorage.removeItem('artyco-financial-data-persistent');
-      localStorage.removeItem(FINANCIAL_DATA_KEY);
-      localStorage.removeItem('artyco-financial-data');
+      TenantStorage.removeItem('artyco-financial-data-persistent');
+      TenantStorage.removeItem(FINANCIAL_DATA_KEY);
+      TenantStorage.removeItem('artyco-financial-data');
     } else {
       throw new Error('Failed to clear data from MySQL');
     }
@@ -150,7 +151,7 @@ export const getFinancialDataInfo = async (): Promise<any> => {
 
 export const syncFinancialDataToServer = async (): Promise<boolean> => {
   try {
-    const localData = localStorage.getItem('artyco-financial-data-persistent');
+    const localData = TenantStorage.getItem('artyco-financial-data-persistent');
     if (!localData) return false;
     
     const data = JSON.parse(localData);

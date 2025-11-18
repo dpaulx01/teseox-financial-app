@@ -28,6 +28,7 @@ import {
  } from 'lucide-react';
 import { Calendar } from 'lucide-react';
 import { useFinancialData } from '../contexts/DataContext';
+import { getTenantBrand } from '../utils/tenantBrand';
 import { 
   ProductionData, 
   ProductionConfig, 
@@ -82,6 +83,7 @@ const DataConfiguration: React.FC = () => {
   
   // Usar contexto global de año
   const { selectedYear, setSelectedYear, availableYears, refreshYears } = useYear();
+  const brand = getTenantBrand();
   const [productionData, setProductionData] = useState<ProductionData[]>([]);
   const [productionConfig, setProductionConfig] = useState<ProductionConfig>({
     capacidadMaximaMensual: 1000,
@@ -403,7 +405,8 @@ const DataConfiguration: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `artyco-datos-completos-${new Date().toISOString().split('T')[0]}.json`;
+      const brandSlug = brand.displayName.toLowerCase().replace(/\\s+/g, '-');
+      a.download = `${brandSlug}-datos-completos-${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

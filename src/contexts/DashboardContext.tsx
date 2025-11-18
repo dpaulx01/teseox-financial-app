@@ -1,6 +1,7 @@
 // Context para el dashboard personalizable
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { DashboardLayout, WidgetConfig, DashboardPreset, DashboardTheme } from '../types/dashboard';
+import TenantStorage from '../utils/tenantStorage';
 
 interface DashboardContextType {
   // Layout Management
@@ -241,11 +242,11 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     margin: [16, 16] as [number, number],
   });
 
-  // Load saved layouts from localStorage
+  // Load saved layouts from tenant-scoped storage
   useEffect(() => {
-    const savedLayouts = localStorage.getItem('pnl-dashboard-layouts');
-    const savedTheme = localStorage.getItem('pnl-dashboard-theme');
-    const savedGrid = localStorage.getItem('pnl-dashboard-grid');
+    const savedLayouts = TenantStorage.getItem('pnl-dashboard-layouts');
+    const savedTheme = TenantStorage.getItem('pnl-dashboard-theme');
+    const savedGrid = TenantStorage.getItem('pnl-dashboard-grid');
     
     if (savedLayouts) {
       try {
@@ -276,19 +277,19 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   }, []);
 
-  // Save to localStorage when layouts change
+  // Save to tenant storage when layouts change
   useEffect(() => {
     if (layouts.length > 0) {
-      localStorage.setItem('pnl-dashboard-layouts', JSON.stringify(layouts));
+      TenantStorage.setItem('pnl-dashboard-layouts', JSON.stringify(layouts));
     }
   }, [layouts]);
 
   useEffect(() => {
-    localStorage.setItem('pnl-dashboard-theme', JSON.stringify(currentTheme));
+    TenantStorage.setItem('pnl-dashboard-theme', JSON.stringify(currentTheme));
   }, [currentTheme]);
 
   useEffect(() => {
-    localStorage.setItem('pnl-dashboard-grid', JSON.stringify(gridSettings));
+    TenantStorage.setItem('pnl-dashboard-grid', JSON.stringify(gridSettings));
   }, [gridSettings]);
 
   const generateId = () => `widget_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

@@ -8,11 +8,12 @@ import {
   BalanceUploadRow,
 } from '../types';
 import { apiPath } from '../config/apiBaseUrl';
+import TenantStorage from './tenantStorage';
 
 const balancePath = (suffix: string) => apiPath(`/api/balance${suffix}`);
 
 const authHeaders = () => {
-  const token = localStorage.getItem('access_token');
+  const token = TenantStorage.getItem('access_token');
   if (!token) {
     throw new Error('No authentication token found');
   }
