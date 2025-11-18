@@ -2,6 +2,10 @@
 # Stage 1: Build React app
 FROM node:18-alpine AS builder
 
+# Build argument for API URL
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
 WORKDIR /app
 
 # Copy package files
@@ -18,7 +22,7 @@ COPY vite.config.js ./
 COPY tailwind.config.js ./
 COPY postcss.config.js ./
 
-# Build the app
+# Build the app with API URL baked in
 RUN npm run build
 
 # Stage 2: Serve with nginx

@@ -796,7 +796,16 @@ Datos Financieros:
 - `cotizaciones`
 - `pagos`
 - `plan_diario_produccion`
-- Otras ~10 tablas
+- Otras ~10 tablas (account_transactions, breakeven_data, dashboard_configs, data_audit_log, file_uploads, raw_* datos, vistas v_* si ya se importaron)
+
+**Acceso directo con SDK (mysql CLI):**
+```
+# Como usuario de aplicación
+mysql -h 136.111.57.179 -u teseox_user -pTeseoX2025User! teseox_db
+
+# Como root para tareas administrativas
+mysql -h 136.111.57.179 -u root -pTeseoX2025SecureRoot!
+```
 
 ### 8.4 Importar Datos de Base de Datos Local (Opcional)
 
@@ -885,6 +894,20 @@ Deberías ver:
 ```
 GRANT ALL PRIVILEGES ON `teseox_db`.* TO `teseox_user`@`%`
 ```
+
+### 8.6 Estado actual (post-import completo)
+
+- Se importó el dump local completo directamente a `teseox_db` vía SDK/CLI:
+  ```
+  docker exec artyco-mysql-rbac mysqldump -u artyco_user -partyco_password123 \
+    --single-transaction --routines --triggers \
+    --no-create-db --skip-add-drop-database artyco_financial_rbac \
+    | mysql -h 136.111.57.179 -u root -pTeseoX2025SecureRoot! teseox_db
+  ```
+- Resultado verificado en Cloud SQL:
+  - Tablas/vistas presentes: 37 (incluye account_transactions, breakeven_data, chart_of_accounts, dashboard_configs, data_audit_log, file_uploads, user_configurations, vistas v_financial_summary/v_production_summary/v_sales_summary, etc.).
+  - Conteos clave: `audit_logs=175`, `users=5`, `sales_transactions=1019`, `raw_account_data=1639`, `financial_data=21`.
+- Base extra `artyco_financial_rbac` eliminada (solo queda `teseox_db`).
 
 ---
 

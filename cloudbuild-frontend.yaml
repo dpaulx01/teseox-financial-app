@@ -1,0 +1,21 @@
+steps:
+  # Build Frontend image with API URL
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-frontend'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'VITE_API_BASE_URL=${_API_URL}'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/teseox-repo/teseox-frontend:$BUILD_ID'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/teseox-repo/teseox-frontend:latest'
+      - '-f'
+      - 'Dockerfile.frontend.prod'
+      - '.'
+
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/teseox-repo/teseox-frontend:$BUILD_ID'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/teseox-repo/teseox-frontend:latest'
+
+timeout: '1200s'
