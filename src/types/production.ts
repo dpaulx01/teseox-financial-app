@@ -77,6 +77,7 @@ export interface ProductionUpdatePayload {
   fechaVencimiento: string | null;
   valorTotal: number | null;
   pagos: ProductionPaymentPayload[];
+  odc?: string | null;
 }
 
 export interface DailyProductionPlanEntry {

@@ -101,6 +101,7 @@ interface DeliveryPromptState {
 
 interface QuoteRowFormState {
   fechaIngreso: string;
+  odc: string;
   factura: string;
   fechaVencimiento: string;
   pagos: PaymentForm[];
@@ -116,6 +117,8 @@ interface QuoteGroup {
   contacto: string | null;
   proyecto: string | null;
   fechaIngreso: string | null;
+  fechaEntregaPrincipal: string | null;
+  fechaDespachoPrincipal: string | null;
   archivoOriginal: string | null;
   bodega: string | null;
   responsable: string | null;
@@ -130,6 +133,7 @@ interface QuoteGroup {
   pagos: PaymentForm[];
   metadataNotes: string[];
   items: ProductionItem[];
+  primaryStatus: string | null;
 }
 
 interface ProductViewRowModel {
@@ -458,6 +462,24 @@ function formatDateLabel(dateIso: string | null | undefined): string {
   const day = `${parsed.getDate()}`.padStart(2, '0');
   const month = `${parsed.getMonth() + 1}`.padStart(2, '0');
   return `${day}/${month}/${parsed.getFullYear()}`;
+}
+
+function pickEarliestDate(current: string | null, candidate: string | null | undefined): string | null {
+  if (!candidate) {
+    return current;
+  }
+  if (!current) {
+    return candidate;
+  }
+  const currentTs = parseDateValue(current);
+  const candidateTs = parseDateValue(candidate);
+  if (candidateTs === null) {
+    return current;
+  }
+  if (currentTs === null || candidateTs < currentTs) {
+    return candidate;
+  }
+  return current;
 }
 
 function compareValues<T>(aValue: T, bValue: T): number {
@@ -1680,32 +1702,9 @@ const StatusTable: React.FC<StatusTableProps> = ({
       return;
     }
 
-    const quotesForPdf = sortedQuotes.filter((group) => {
-      if (group.items.length === 0) {
-        return true;
-      }
-      const allDelivered = group.items.every(
-        (item) => normalizeText(resolveStatusFromDelivery(item.estatus, item.fechaEntrega)) === 'entregado',
-      );
-      if (!allDelivered) {
-        return true;
-      }
-
-      const saldo = typeof group.saldoPendiente === 'number' ? group.saldoPendiente : null;
-      if (saldo !== null) {
-        return saldo > SETTLED_TOLERANCE;
-      }
-
-      const total = group.totalCotizacion ?? null;
-      if (total === null) {
-        return true;
-      }
-      const abonado = group.totalAbonado ?? 0;
-      return total - abonado > SETTLED_TOLERANCE;
-    });
-
+    const quotesForPdf = sortedQuotes;
     if (quotesForPdf.length === 0) {
-      window.alert('Todas las cotizaciones visibles están entregadas y saldadas. No hay nada para exportar.');
+      window.alert('No hay cotizaciones visibles para exportar con los filtros actuales.');
       return;
     }
 
@@ -1837,23 +1836,32 @@ const StatusTable: React.FC<StatusTableProps> = ({
 
     const tableHeaders = [
       'Cotización',
+      'ODC',
       'Cliente / Destino',
       'Ingreso',
       'Productos',
       'Valor',
       'Saldo',
       'Estatus',
+      'F. Entrega',
+      'F. Despacho',
     ];
 
-    const tableData = quotesForPdf.map((group) => [
-      group.numeroCotizacion,
-      group.cliente || group.bodega || '—',
-      group.fechaIngreso ? formatDateLabel(group.fechaIngreso) : '—',
-      formatNumberWithDash(group.items.length),
-      group.totalCotizacion !== null ? formatCurrency(group.totalCotizacion) : '—',
-      group.saldoPendiente !== null ? formatCurrency(group.saldoPendiente) : '—',
-      group.estatusSummary.length > 0 ? group.estatusSummary.join(', ') : '—',
-    ]);
+    const tableData = quotesForPdf.map((group) => {
+      const displayStatus = group.primaryStatus || group.estatusSummary[0] || '—';
+      return [
+        group.numeroCotizacion,
+        group.odc || '—',
+        group.cliente || group.bodega || '—',
+        group.fechaIngreso ? formatDateLabel(group.fechaIngreso) : '—',
+        formatNumberWithDash(group.items.length),
+        group.totalCotizacion !== null ? formatCurrency(group.totalCotizacion) : '—',
+        group.saldoPendiente !== null ? formatCurrency(group.saldoPendiente) : '—',
+        displayStatus,
+        group.fechaEntregaPrincipal ? formatDateLabel(group.fechaEntregaPrincipal) : '—',
+        group.fechaDespachoPrincipal ? formatDateLabel(group.fechaDespachoPrincipal) : '—',
+      ];
+    });
 
     autoTable(doc, {
       startY: cursor,
@@ -1880,11 +1888,14 @@ const StatusTable: React.FC<StatusTableProps> = ({
       columnStyles: {
         0: { halign: 'left' },
         1: { halign: 'left' },
-        2: { halign: 'center' },
+        2: { halign: 'left' },
         3: { halign: 'center' },
-        4: { halign: 'right' },
+        4: { halign: 'center' },
         5: { halign: 'right' },
-        6: { halign: 'left' },
+        6: { halign: 'right' },
+        7: { halign: 'left' },
+        8: { halign: 'center' },
+        9: { halign: 'center' },
       },
       margin: { left: 14, right: 14 },
     });
@@ -2412,6 +2423,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
       number,
       QuoteGroup & {
         estatusSet: Set<string>;
+        estatusCounts: Map<string, number>;
         totalAbonadoRaw: number;
         facturaSet: Set<string>;
         metadataSet: Set<string>;
@@ -2437,8 +2449,10 @@ const StatusTable: React.FC<StatusTableProps> = ({
       if (!group) {
         const estatusSet = new Set<string>();
         const initialStatus = resolveStatusFromDelivery(item.estatus, item.fechaEntrega);
+        const estatusCounts = new Map<string, number>();
         if (initialStatus) {
           estatusSet.add(initialStatus);
+          estatusCounts.set(initialStatus, 1);
         }
 
         const totalAbonado = Number.isFinite(totalAbonadoFromItem) ? totalAbonadoFromItem : 0;
@@ -2457,6 +2471,8 @@ const StatusTable: React.FC<StatusTableProps> = ({
           contacto: item.contacto,
           proyecto: item.proyecto,
           fechaIngreso: item.fechaIngreso,
+          fechaEntregaPrincipal: item.fechaEntrega ?? null,
+          fechaDespachoPrincipal: item.fechaDespacho ?? null,
           archivoOriginal: item.archivoOriginal,
           bodega: item.bodega ?? null,
           responsable: item.responsable ?? null,
@@ -2471,7 +2487,9 @@ const StatusTable: React.FC<StatusTableProps> = ({
           pagos: normalizedPayments,
           metadataNotes: [],
           items: [],
+          primaryStatus: null,
           estatusSet,
+          estatusCounts,
           totalAbonadoRaw: totalAbonado,
           facturaSet: new Set(facturaValue ? [facturaValue] : []),
           metadataSet: new Set<string>(),
@@ -2495,6 +2513,8 @@ const StatusTable: React.FC<StatusTableProps> = ({
       }
 
       group.items.push(item);
+      group.fechaEntregaPrincipal = pickEarliestDate(group.fechaEntregaPrincipal, item.fechaEntrega);
+      group.fechaDespachoPrincipal = pickEarliestDate(group.fechaDespachoPrincipal, item.fechaDespacho);
       if (!group.numeroPedidoStock && item.numeroPedidoStock) {
         group.numeroPedidoStock = item.numeroPedidoStock;
       }
@@ -2518,6 +2538,7 @@ const StatusTable: React.FC<StatusTableProps> = ({
       const derivedStatus = resolveStatusFromDelivery(item.estatus, item.fechaEntrega);
       if (derivedStatus) {
         group.estatusSet.add(derivedStatus);
+        group.estatusCounts.set(derivedStatus, (group.estatusCounts.get(derivedStatus) ?? 0) + 1);
       }
 
       if (!group.fechaVencimiento && item.fechaVencimiento) {
@@ -2553,12 +2574,31 @@ const StatusTable: React.FC<StatusTableProps> = ({
       groups.set(item.cotizacionId, group);
     }
 
-    return Array.from(groups.values()).map(({ estatusSet, totalAbonadoRaw, facturaSet, metadataSet, ...group }) => ({
-      ...group,
-      estatusSummary: Array.from(estatusSet),
-      facturas: Array.from(facturaSet),
-      metadataNotes: Array.from(metadataSet),
-    }));
+    return Array.from(groups.values()).map(
+      ({ estatusSet, estatusCounts, totalAbonadoRaw, facturaSet, metadataSet, ...group }) => {
+        const statusEntries = Array.from(estatusCounts.entries());
+        const primaryStatus =
+          statusEntries.length > 0
+            ? statusEntries
+                .sort((a, b) => {
+                  if (b[1] !== a[1]) {
+                    return b[1] - a[1];
+                  }
+                  const orderA = STATUS_ORDER_MAP[a[0]] ?? Number.MIN_SAFE_INTEGER;
+                  const orderB = STATUS_ORDER_MAP[b[0]] ?? Number.MIN_SAFE_INTEGER;
+                  return orderB - orderA;
+                })[0][0]
+            : null;
+
+        return {
+          ...group,
+          primaryStatus,
+          estatusSummary: Array.from(estatusSet),
+          facturas: Array.from(facturaSet),
+          metadataNotes: Array.from(metadataSet),
+        };
+      },
+    );
   }, [filteredItems, quoteTotals]);
 
   const quoteGroupMap = useMemo(() => {
@@ -3572,6 +3612,7 @@ const QuoteRow: React.FC<{
   const fileUrl = buildQuoteFileUrl(group.archivoOriginal);
   const [quoteForm, setQuoteForm] = useState<QuoteRowFormState>(() => ({
     fechaIngreso: group.fechaIngreso ? group.fechaIngreso.substring(0, 10) : '',
+    odc: group.odc ?? '',
     factura: group.facturas[0] ?? '',
     fechaVencimiento: group.fechaVencimiento ?? '',
     pagos: normalizePaymentsToForm(group.pagos),
@@ -3632,12 +3673,15 @@ const QuoteRow: React.FC<{
   }, [expanded]);
 
   useEffect(() => {
-    setQuoteForm({
+    setQuoteForm((prev) => ({
+      ...prev,
+      fechaIngreso: group.fechaIngreso ? group.fechaIngreso.substring(0, 10) : prev.fechaIngreso || '',
+      odc: group.odc ?? prev.odc ?? '',
       factura: group.facturas[0] ?? '',
       fechaVencimiento: group.fechaVencimiento ?? '',
       pagos: normalizePaymentsToForm(group.pagos),
-    });
-  }, [group.facturas, group.fechaVencimiento, group.pagos, group.cotizacionId]);
+    }));
+  }, [group.cotizacionId, group.facturas, group.fechaVencimiento, group.pagos, group.fechaIngreso, group.odc]);
 
   const overallProgress = useMemo(() => {
     const progressEntries = group.items
@@ -3746,6 +3790,19 @@ const QuoteRow: React.FC<{
     window.open(fileUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const orderedStatuses = useMemo(() => {
+    const uniqueStatuses = Array.from(new Set(group.estatusSummary));
+    uniqueStatuses.sort((a, b) => {
+      const orderA = STATUS_ORDER_MAP[a] ?? Number.MAX_SAFE_INTEGER;
+      const orderB = STATUS_ORDER_MAP[b] ?? Number.MAX_SAFE_INTEGER;
+      return orderA - orderB;
+    });
+    if (group.primaryStatus) {
+      return [group.primaryStatus, ...uniqueStatuses.filter((status) => status !== group.primaryStatus)];
+    }
+    return uniqueStatuses;
+  }, [group.estatusSummary, group.primaryStatus]);
+
   const handleDeleteQuote = async () => {
     const confirmed = window.confirm(
       `¿Eliminar la cotización ${group.numeroCotizacion} y todos sus productos asociados? Esta acción no se puede deshacer.`,
@@ -3823,9 +3880,6 @@ const QuoteRow: React.FC<{
   };
 
   const updateQuotePayment = (index: number, field: keyof PaymentForm, value: string) => {
-    if (quoteReadOnly) {
-      return;
-    }
     setQuoteForm((prev) => ({
       ...prev,
       pagos: prev.pagos.map((pago, idx) => (idx === index ? { ...pago, [field]: value } : pago)),
@@ -3833,9 +3887,6 @@ const QuoteRow: React.FC<{
   };
 
   const addQuotePayment = () => {
-    if (quoteReadOnly) {
-      return;
-    }
     setQuoteForm((prev) => ({
       ...prev,
       pagos: [...prev.pagos, { monto: '', fecha_pago: '', descripcion: '' }],
@@ -3843,9 +3894,6 @@ const QuoteRow: React.FC<{
   };
 
   const removeQuotePayment = (index: number) => {
-    if (quoteReadOnly) {
-      return;
-    }
     setQuoteForm((prev) => ({
       ...prev,
       pagos: prev.pagos.filter((_, idx) => idx !== index),
@@ -3853,11 +3901,9 @@ const QuoteRow: React.FC<{
   };
 
   const isAnyItemSaving = useMemo(() => group.items.some((item) => isSaving(item.id)), [group.items, isSaving]);
+  const financialFieldsDisabled = isSavingQuote || isAnyItemSaving;
 
   const handleQuoteSave = async () => {
-    if (quoteReadOnly) {
-      return;
-    }
     const pagos = quoteForm.pagos
       .map((pago) => ({
         monto: Number.parseFloat(pago.monto),
@@ -3867,6 +3913,7 @@ const QuoteRow: React.FC<{
       .filter((pago) => Number.isFinite(pago.monto) && pago.monto > 0);
 
     const facturaValue = quoteForm.factura.trim();
+    const odcValue = quoteForm.odc.trim();
     const fechaVenc = quoteForm.fechaVencimiento ? quoteForm.fechaVencimiento : null;
     const fechaIng = quoteForm.fechaIngreso ? quoteForm.fechaIngreso : null;
 
@@ -3885,6 +3932,7 @@ const QuoteRow: React.FC<{
             fechaVencimiento: fechaVenc,
             valorTotal: group.totalCotizacion,
             pagos,
+            odc: odcValue ? odcValue : null,
           }),
         ),
       );
@@ -3894,7 +3942,7 @@ const QuoteRow: React.FC<{
     }
   };
 
-  const canSave = !isSavingQuote && !isAnyItemSaving && !quoteReadOnly;
+  const canSave = !isSavingQuote && !isAnyItemSaving;
 
   return (
     <>
@@ -3946,17 +3994,29 @@ const QuoteRow: React.FC<{
                 {group.numeroPedidoStock || 'Sin número'}
               </span>
             </div>
-          ) : group.odc ? (
-            <button
-              type="button"
-              onClick={openQuoteFile}
-              className="text-sm font-medium text-primary hover:underline disabled:text-text-muted"
-              disabled={!fileUrl}
-            >
-              {group.odc}
-            </button>
           ) : (
-            <span className="text-sm text-text-muted">—</span>
+            <div className="flex flex-col gap-2">
+              <label className="text-xs uppercase tracking-wide text-text-muted">ODC / Pedido</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={quoteForm.odc}
+                  onChange={(event) => updateQuoteField('odc', event.target.value)}
+                  disabled={financialFieldsDisabled || quoteReadOnly}
+                  placeholder="Ingresar ODC"
+                  className="w-full rounded-lg border border-border bg-dark-card/40 px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none disabled:opacity-60"
+                />
+                <button
+                  type="button"
+                  onClick={handleQuoteSave}
+                  disabled={!canSave || quoteReadOnly}
+                  className="inline-flex items-center justify-center rounded-lg border border-border/60 px-2 py-1 text-text-secondary hover:text-primary hover:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Guardar ODC"
+                >
+                  {isSavingQuote ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
           )}
         </td>
         <td className="align-top px-4 py-3">
@@ -4121,21 +4181,21 @@ const QuoteRow: React.FC<{
                 <span className="text-xs text-text-muted">Sin progreso registrado</span>
               )}
             </div>
-            {group.estatusSummary.length > 0 ? (
+            {orderedStatuses.length > 0 ? (
               <div className="flex flex-wrap gap-2">
-                {group.estatusSummary.slice(0, 3).map((status) => (
+                {orderedStatuses.slice(0, 3).map((status, index) => (
                   <span
                     key={status}
                     className={`inline-flex items-center gap-2 text-[11px] font-semibold px-3 py-1 rounded-full ${
                       statusBadgeVariants[status] || 'bg-primary/15 text-primary border border-primary/30'
-                    }`}
+                    } ${index === 0 ? 'ring-1 ring-primary/50' : ''}`}
                   >
                     <CheckCircle2 className="w-3 h-3" />
                     {status}
                   </span>
                 ))}
-                {group.estatusSummary.length > 3 && (
-                  <span className="text-[11px] text-text-muted">+{group.estatusSummary.length - 3} más</span>
+                {orderedStatuses.length > 3 && (
+                  <span className="text-[11px] text-text-muted">+{orderedStatuses.length - 3} más</span>
                 )}
               </div>
             ) : (
@@ -4253,27 +4313,27 @@ const QuoteRow: React.FC<{
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="flex flex-col gap-2 text-xs text-text-muted">
                     Factura
-                    <input
-                      type="text"
-                      className="bg-dark-card/70 border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
-                      placeholder="Asignar factura"
-                      value={quoteForm.factura}
-                      onChange={(event) => updateQuoteField('factura', event.target.value)}
-                      disabled={quoteReadOnly}
-                    />
-                  </label>
-                <label className="flex flex-col gap-2 text-xs text-text-muted">
-                  Fecha de vencimiento
                   <input
-                    type="date"
-                    className={`bg-dark-card/70 border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed dark:[color-scheme:dark] ${dueDateBorderClass}`}
-                    value={quoteForm.fechaVencimiento}
-                    onChange={(event) => updateQuoteField('fechaVencimiento', event.target.value)}
-                    disabled={quoteReadOnly}
+                    type="text"
+                    className="bg-dark-card/70 border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                    placeholder="Asignar factura"
+                    value={quoteForm.factura}
+                    onChange={(event) => updateQuoteField('factura', event.target.value)}
+                    disabled={financialFieldsDisabled}
                   />
-                  <span className={`text-[11px] ${dueDateHintClass}`}>{dueDateStatus.message}</span>
                 </label>
-              </div>
+              <label className="flex flex-col gap-2 text-xs text-text-muted">
+                Fecha de vencimiento
+                <input
+                  type="date"
+                  className={`bg-dark-card/70 border rounded-lg px-3 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed dark:[color-scheme:dark] ${dueDateBorderClass}`}
+                  value={quoteForm.fechaVencimiento}
+                  onChange={(event) => updateQuoteField('fechaVencimiento', event.target.value)}
+                  disabled={financialFieldsDisabled}
+                />
+                <span className={`text-[11px] ${dueDateHintClass}`}>{dueDateStatus.message}</span>
+              </label>
+            </div>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
                     <h4 className="text-sm font-semibold text-text-primary">Pagos registrados</h4>
@@ -4281,7 +4341,7 @@ const QuoteRow: React.FC<{
                       type="button"
                       onClick={addQuotePayment}
                       className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-text-secondary hover:text-primary hover:border-primary transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                      disabled={quoteReadOnly}
+                      disabled={financialFieldsDisabled}
                     >
                       <Plus className="w-3 h-3" />
                       Añadir pago
@@ -4301,7 +4361,7 @@ const QuoteRow: React.FC<{
                               type="button"
                               onClick={() => removeQuotePayment(index)}
                               className="text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                              disabled={quoteReadOnly}
+                              disabled={financialFieldsDisabled}
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
@@ -4313,14 +4373,14 @@ const QuoteRow: React.FC<{
                               className="bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                               value={pago.monto}
                               onChange={(event) => updateQuotePayment(index, 'monto', event.target.value)}
-                              disabled={quoteReadOnly}
+                              disabled={financialFieldsDisabled}
                             />
                             <input
                               type="date"
                               className="bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed dark:[color-scheme:dark]"
                               value={pago.fecha_pago}
                               onChange={(event) => updateQuotePayment(index, 'fecha_pago', event.target.value)}
-                              disabled={quoteReadOnly}
+                              disabled={financialFieldsDisabled}
                             />
                             <input
                               type="text"
@@ -4328,7 +4388,7 @@ const QuoteRow: React.FC<{
                               className="bg-dark-card/70 border border-border rounded-lg px-2 py-2 text-sm text-text-primary focus:border-primary outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                               value={pago.descripcion}
                               onChange={(event) => updateQuotePayment(index, 'descripcion', event.target.value)}
-                              disabled={quoteReadOnly}
+                              disabled={financialFieldsDisabled}
                             />
                           </div>
                         </div>

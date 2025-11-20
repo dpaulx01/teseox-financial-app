@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field, validator
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 try:
@@ -186,6 +186,40 @@ class DailyScheduleDay(BaseModel):
 
 class DailyScheduleResponse(BaseModel):
     days: List[DailyScheduleDay]
+
+
+class AccountStatusItem(BaseModel):
+    """Modelo para un item del reporte de Estado de Cuenta."""
+    id: int
+    fecha_ingreso: Optional[date] = None  # Fecha de ingreso de la cotización
+    numero_cotizacion: str  # Número de cotización
+    tipo_produccion: Optional[str] = None
+    odc: Optional[str] = None  # Orden de Compra
+    cliente: Optional[str] = None
+    facturas: List[str] = []  # Facturas únicas de todos los productos
+    status_general: str  # Status calculado de los productos
+    valor_total: float  # Valor total de la cotización
+    total_pagado: float  # Suma de pagos realizados
+    saldo_pendiente: float  # valor_total - total_pagado
+    estado_vencimiento: str  # "Al día", "Por vencer", "Vencido"
+    dias_vencimiento: Optional[int] = None  # Días hasta/desde vencimiento
+    fecha_vencimiento: Optional[date] = None
+    fecha_entrega: Optional[date] = None  # Primera fecha de entrega
+    fecha_despacho: Optional[date] = None  # Primera fecha de despacho (para entregados)
+    is_pagado: bool = False
+    entregado_completo: bool = False
+    tiene_factura: bool = False
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AccountStatusResponse(BaseModel):
+    """Respuesta del endpoint de Estado de Cuenta."""
+    items: List[AccountStatusItem]
+    summary: Dict[str, Any]  # Resumen con totales
+    filters_applied: Dict[str, Any]  # Filtros aplicados
 
 
 def _get_company_id(current_user: User) -> int:
@@ -874,6 +908,7 @@ from utils.file_storage import FileStorageService, sanitize_filename
 file_storage = FileStorageService(namespace="production")
 
 STATUS_CHOICES = {status.value for status in ProductionStatusEnum}
+SETTLED_TOLERANCE = Decimal("0.01")
 
 _METADATA_KEYWORDS = (
     "TIEMPO DE PRODUCCION",
@@ -1704,6 +1739,7 @@ class ProductionUpdatePayload(BaseModel):
     fechaVencimiento: Optional[date] = None
     valorTotal: Optional[Decimal] = None
     pagos: List[PaymentPayload] = Field(default_factory=list)
+    odc: Optional[str] = Field(default=None, max_length=128)
 
     @validator("estatus")
     def validate_status(cls, value: Optional[str]) -> Optional[str]:
@@ -2059,7 +2095,20 @@ async def list_active_items(
         for product in products
         if product.estatus != ProductionStatusEnum.EN_BODEGA
     ]
-    active_items = [item for item in serialized if not item.get("esServicio")]
+    active_items: List[dict] = []
+    delivered_value = ProductionStatusEnum.ENTREGADO.value.lower()
+    for item in serialized:
+        if item.get("esServicio"):
+            continue
+        estatus = (item.get("estatus") or "").strip().lower()
+        saldo = item.get("saldoPendiente")
+        if (
+            estatus == delivered_value
+            and saldo is not None
+            and float(saldo) <= float(SETTLED_TOLERANCE)
+        ):
+            continue
+        active_items.append(item)
     return {
         "items": active_items,
         "statusOptions": sorted(list(STATUS_CHOICES)),
@@ -2142,6 +2191,9 @@ async def update_item(
         quote.fecha_vencimiento = payload.fechaVencimiento
     if payload.valorTotal is not None:
         quote.valor_total = payload.valorTotal
+    if payload.odc is not None:
+        cleaned_odc = payload.odc.strip() if payload.odc else ""
+        quote.odc = cleaned_odc or None
 
     # LÓGICA CRÍTICA: Si cambió la fecha de entrega o fecha de ingreso, validar plan manual
     date_changed = (
@@ -2598,3 +2650,233 @@ async def delete_quote(
         "message": f"Cotización {numero_cotizacion} eliminada.",
         "quoteId": quote_id,
     }
+
+
+@router.get("/account-status", response_model=AccountStatusResponse)
+async def get_account_status(
+    query: Optional[str] = None,
+    cliente: Optional[str] = None,
+    status: Optional[str] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
+    vencimiento_estado: Optional[str] = None,  # "vencido", "por_vencer", "al_dia"
+    production_type: Optional[str] = None,  # "cliente" | "stock"
+    preset: Optional[str] = None,  # "closed" | "pending"
+    sin_factura: Optional[bool] = False,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Genera el reporte de Estado de Cuenta con información financiera de cotizaciones.
+
+    Muestra por cada cotización:
+    - Ingreso (número cotización)
+    - ODC (orden de compra)
+    - Factura(s)
+    - Status general
+    - Valor total
+    - Total pagado
+    - Saldo pendiente
+    - Estado de vencimiento
+    - Fechas de entrega/despacho
+    """
+    company_id = _get_company_id(current_user)
+
+    # Query base de cotizaciones con sus productos y pagos
+    base_query = db.query(ProductionQuote).filter(
+        ProductionQuote.company_id == company_id
+    ).options(
+        joinedload(ProductionQuote.productos),
+        joinedload(ProductionQuote.pagos)
+    )
+
+    # Aplicar filtros
+    filters_applied = {}
+
+    if cliente:
+        base_query = base_query.filter(ProductionQuote.cliente.ilike(f"%{cliente}%"))
+        filters_applied["cliente"] = cliente
+
+    if query:
+        like_term = f"%{query}%"
+        base_query = base_query.filter(
+            or_(
+                ProductionQuote.numero_cotizacion.ilike(like_term),
+                ProductionQuote.odc.ilike(like_term),
+                ProductionQuote.cliente.ilike(like_term),
+            )
+        )
+        filters_applied["query"] = query
+
+    if fecha_desde:
+        base_query = base_query.filter(ProductionQuote.fecha_ingreso >= fecha_desde)
+        filters_applied["fecha_desde"] = fecha_desde.isoformat()
+
+    if fecha_hasta:
+        base_query = base_query.filter(ProductionQuote.fecha_ingreso <= fecha_hasta)
+        filters_applied["fecha_hasta"] = fecha_hasta.isoformat()
+
+    if production_type:
+        normalized_type = production_type.strip().lower()
+        if normalized_type in {"cliente", "stock"}:
+            base_query = base_query.filter(ProductionQuote.tipo_produccion == ProductionTypeEnum(normalized_type))
+            filters_applied["production_type"] = normalized_type
+
+    quotes = base_query.order_by(ProductionQuote.fecha_ingreso.desc()).all()
+
+    # Procesar cada cotización
+    items = []
+    hoy = date.today()
+
+    # Totales para summary
+    total_valor = Decimal("0")
+    total_pagado_sum = Decimal("0")
+    total_saldo = Decimal("0")
+    count_vencido = 0
+    count_por_vencer = 0
+    count_al_dia = 0
+
+    for quote in quotes:
+        # Calcular total pagado
+        total_pagado = sum((pago.monto for pago in quote.pagos), Decimal("0"))
+        valor_total = quote.valor_total or Decimal("0")
+        saldo_pendiente = max(valor_total - total_pagado, Decimal("0"))
+        is_pagado = saldo_pendiente <= Decimal("0.005")
+
+        # Determinar estado de vencimiento
+        dias_vencimiento = None
+        estado_vencimiento = "Sin vencimiento"
+
+        # Si no hay saldo pendiente, considerar como pagado independientemente de la fecha
+        if is_pagado:
+            estado_vencimiento = "Pagado"
+            dias_vencimiento = None
+            count_al_dia += 1
+        elif quote.fecha_vencimiento:
+            dias_vencimiento = (quote.fecha_vencimiento - hoy).days
+            if dias_vencimiento < 0:
+                estado_vencimiento = "Vencido"
+                count_vencido += 1
+            elif dias_vencimiento <= 7:
+                estado_vencimiento = "Por vencer"
+                count_por_vencer += 1
+            else:
+                estado_vencimiento = "Al día"
+                count_al_dia += 1
+        else:
+            count_al_dia += 1
+
+        # Obtener facturas únicas
+        facturas = list({p.factura for p in quote.productos if p.factura})
+        tiene_factura = len(facturas) > 0
+
+        # Determinar status general (más común o más avanzado)
+        status_counts = {}
+        for producto in quote.productos:
+            if producto.estatus:
+                status_value = producto.estatus.value if hasattr(producto.estatus, 'value') else str(producto.estatus)
+                status_counts[status_value] = status_counts.get(status_value, 0) + 1
+        total_productos = len(quote.productos)
+        entregado_completo = (
+            total_productos > 0
+            and all(prod.estatus == ProductionStatusEnum.ENTREGADO for prod in quote.productos)
+        )
+
+        if status_counts:
+            status_general = max(status_counts.items(), key=lambda x: x[1])[0]
+        else:
+            status_general = "Sin status"
+
+        # Filtro por status
+        if status and status_general != status:
+            continue
+
+        # Primera fecha de entrega y despacho
+        fecha_entrega = None
+        fecha_despacho = None
+
+        entregas = [p.fecha_entrega for p in quote.productos if p.fecha_entrega]
+        if entregas:
+            fecha_entrega = min(entregas)
+
+        despachos = [p.fecha_despacho for p in quote.productos if p.fecha_despacho]
+        if despachos:
+            fecha_despacho = min(despachos)
+
+        # Filtro por estado de vencimiento solicitado
+        if vencimiento_estado:
+            if vencimiento_estado == "vencido" and estado_vencimiento != "Vencido":
+                continue
+            if vencimiento_estado == "por_vencer" and estado_vencimiento != "Por vencer":
+                continue
+            if vencimiento_estado == "al_dia" and estado_vencimiento not in {"Al día", "Pagado"}:
+                continue
+
+        # Filtro por facturación
+        if sin_factura:
+            if tiene_factura:
+                continue
+
+        # Crear item
+        item = AccountStatusItem(
+            id=quote.id,
+            fecha_ingreso=quote.fecha_ingreso.date() if isinstance(quote.fecha_ingreso, datetime) else quote.fecha_ingreso,
+            numero_cotizacion=quote.numero_cotizacion,
+            tipo_produccion=quote.tipo_produccion.value if hasattr(quote.tipo_produccion, "value") else quote.tipo_produccion,
+            odc=quote.odc,
+            cliente=quote.cliente,
+            facturas=facturas,
+            status_general=status_general,
+            valor_total=float(valor_total),
+            total_pagado=float(total_pagado),
+            saldo_pendiente=float(saldo_pendiente),
+            estado_vencimiento=estado_vencimiento,
+            dias_vencimiento=dias_vencimiento,
+            fecha_vencimiento=quote.fecha_vencimiento,
+            fecha_entrega=fecha_entrega,
+            fecha_despacho=fecha_despacho,
+            is_pagado=is_pagado,
+            entregado_completo=entregado_completo,
+            tiene_factura=tiene_factura,
+            created_at=quote.created_at
+        )
+
+        # Filtro por preset
+        if preset:
+            preset_norm = preset.strip().lower()
+            if preset_norm == "closed":
+                if not (item.is_pagado and item.entregado_completo):
+                    continue
+            elif preset_norm == "pending":
+                if item.is_pagado and item.entregado_completo:
+                    continue
+
+        items.append(item)
+
+        # Acumular totales
+        total_valor += valor_total
+        total_pagado_sum += total_pagado
+        total_saldo += saldo_pendiente
+
+    # Agregar filtro de vencimiento si se usó
+    if vencimiento_estado:
+        filters_applied["vencimiento_estado"] = vencimiento_estado
+
+    # Crear summary
+    summary = {
+        "total_cotizaciones": len(items),
+        "valor_total": float(total_valor),
+        "total_pagado": float(total_pagado_sum),
+        "saldo_pendiente": float(total_saldo),
+        "vencimiento_breakdown": {
+            "vencido": count_vencido,
+            "por_vencer": count_por_vencer,
+            "al_dia": count_al_dia
+        }
+    }
+
+    return AccountStatusResponse(
+        items=items,
+        summary=summary,
+        filters_applied=filters_applied
+    )
